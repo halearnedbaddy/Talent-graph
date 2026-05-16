@@ -46,66 +46,72 @@ export default function AttributeVerificationPage() {
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-5">
             <div>
-                <h1 className="text-3xl font-black tracking-tight uppercase">Data Verification</h1>
+                <h1 className="text-2xl font-black tracking-tight uppercase">Data Verification</h1>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Institutional Audit Workflow</p>
             </div>
 
-            <div className="grid gap-6">
+            <div className="grid gap-4">
                 {isLoading ? (
                     <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>
                 ) : pendingAthletes && pendingAthletes.length > 0 ? (
                     pendingAthletes.map(a => (
                         <Card key={a.uid} className="border-none shadow-xl bg-background overflow-hidden">
                             <CardContent className="p-0">
-                                <div className="flex flex-col md:flex-row">
-                                    <div className="p-8 bg-neutral-50 md:w-1/3 border-r">
-                                        <div className="flex items-center gap-4 mb-6">
-                                            <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center font-black text-lg text-muted-foreground">
+                                <div className="flex flex-col sm:flex-row">
+                                    <div className="p-5 bg-muted/50 sm:w-1/3 border-b sm:border-b-0 sm:border-r">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center font-black text-base text-muted-foreground shrink-0">
                                                 {a.firstName[0]}{a.lastName[0]}
                                             </div>
-                                            <div>
-                                                <h3 className="text-lg font-black uppercase tracking-tight">{a.firstName} {a.lastName}</h3>
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{a.position} &bull; {a.age}yrs</p>
+                                            <div className="min-w-0">
+                                                <h3 className="text-base font-black uppercase tracking-tight truncate">{a.firstName} {a.lastName}</h3>
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{a.position} • {a.age}y</p>
                                             </div>
                                         </div>
-                                        <div className="space-y-4">
+                                        <div className="space-y-2">
                                             <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                                                <span className="text-muted-foreground">Master CSI</span>
-                                                <span className="text-primary text-xl">{a.compositeScoutingIndex || '--'}</span>
+                                                <span className="text-muted-foreground">CSI</span>
+                                                <span className="text-primary text-lg">{a.compositeScoutingIndex || '--'}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
                                                 <span className="text-muted-foreground">Data Points</span>
-                                                <span className="text-foreground">{Object.keys(a.rawMetrics || {}).length}</span>
+                                                <span>{Object.keys(a.rawMetrics || {}).length}</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="p-8 flex-1 bg-background relative">
-                                        <div className="flex items-center gap-2 mb-4 text-orange-500">
-                                            <AlertTriangle className="w-4 h-4" />
-                                            <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Institutional Confirmation</p>
+                                    <div className="p-5 flex-1 bg-background">
+                                        <div className="flex items-center gap-2 mb-3 text-orange-500">
+                                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                                            <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Confirmation</p>
                                         </div>
                                         <p className="text-sm font-bold text-muted-foreground leading-relaxed">
-                                            This athlete has submitted self-reported metrics and tactical attributes. 
-                                            By confirming, you are verifying these data points as accurate institutional records for your organization.
+                                            Verify these self-reported metrics as accurate institutional records.
                                         </p>
-                                        
-                                        <div className="flex flex-wrap gap-2 mt-6">
-                                            {Object.keys(a.detailedAttributes?.Technical || {}).map(attr => (
+
+                                        <div className="flex flex-wrap gap-1.5 mt-4">
+                                            {Object.keys(a.detailedAttributes?.Technical || {}).slice(0, 8).map(attr => (
                                                 <Badge key={attr} variant="secondary" className="text-[8px] font-bold uppercase px-1.5 py-0.5">
-                                                    {attr}: {a.detailedAttributes?.Technical[attr]} ⏳
+                                                    {attr}: {a.detailedAttributes?.Technical[attr]}
                                                 </Badge>
                                             ))}
                                         </div>
 
-                                        <div className="mt-8 flex gap-3">
-                                            <Button onClick={() => handleVerify(a.uid)} disabled={processingId === a.uid} className="bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest text-[10px] h-10 px-8">
+                                        <div className="mt-5 flex flex-wrap gap-2">
+                                            <Button
+                                                onClick={() => handleVerify(a.uid)}
+                                                disabled={processingId === a.uid}
+                                                className="bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest text-[10px] h-11 min-h-[44px] px-5 flex-1 sm:flex-none"
+                                            >
                                                 {processingId === a.uid ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
-                                                Verify Records ✅
+                                                Verify
                                             </Button>
-                                            <Button variant="outline" className="font-black uppercase tracking-widest text-[10px] h-10 border-red-500/20 text-red-600 hover:bg-red-50">
-                                                <X className="w-4 h-4 mr-2" /> Flag Discrepancy
+                                            <Button
+                                                variant="outline"
+                                                className="font-black uppercase tracking-widest text-[10px] h-11 min-h-[44px] border-red-500/20 text-red-600 hover:bg-red-50 flex-1 sm:flex-none"
+                                            >
+                                                <X className="w-4 h-4 mr-2" /> Flag
                                             </Button>
                                         </div>
                                     </div>
@@ -114,9 +120,9 @@ export default function AttributeVerificationPage() {
                         </Card>
                     ))
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-[400px] text-center text-muted-foreground bg-muted/10 rounded-3xl border-4 border-dashed">
-                        <ShieldCheck className="w-16 h-16 mb-4 opacity-10 text-green-600" />
-                        <p className="font-black uppercase tracking-widest">All organizational data is verified</p>
+                    <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground bg-muted/10 rounded-3xl border-4 border-dashed">
+                        <ShieldCheck className="w-14 h-14 mb-4 opacity-10 text-green-600" />
+                        <p className="font-black uppercase tracking-widest text-sm">All data is verified</p>
                     </div>
                 )}
             </div>

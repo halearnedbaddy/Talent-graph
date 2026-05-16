@@ -1,0 +1,28 @@
+UI/UX Overhaul — Mobile-First Responsive Design & Club Dashboard Functionality
+1. Full Mobile Responsiveness
+The entire app must be fully responsive for all smartphone screen sizes (320px–430px width) with no horizontal scrolling whatsoever
+All content, cards, tables, buttons, and forms must fit within the viewport width using fluid layouts (max-width: 100%, overflow-x: hidden)
+Use CSS Grid/Flexbox with proper wrapping so elements stack vertically on small screens
+Font sizes, padding, and margins must scale appropriately for mobile — no text cutoff, no overflowing containers
+Touch targets (buttons, links) must be at least 44×44px for comfortable tapping
+2. Club Dashboard — Bottom Navigation (Mobile App Style)
+On mobile, replace the sidebar/top nav with a fixed bottom navigation bar showing the 4 most important tabs with icons + labels
+Remaining tabs go into a top header bar or a "More" menu accessible via a hamburger/grid icon
+Default view on login must be the Dashboard tab
+Each tab must have a clear, relevant icon (use a consistent icon library e.g. Lucide, Heroicons, or Material Icons)
+Active tab must have a visible highlight (color change, underline, bold icon)
+3. All Tabs Must Be Fully Functional
+Every tab click must instantly render the correct view — zero loading states, no broken routes, no empty panels
+Each tab's content must be production-ready: real data bindings, working buttons, complete UI
+No placeholder text, no "coming soon" sections, no console errors on tab switch
+Transitions between tabs should be instant or use a subtle fade (≤150ms) — no spinners
+4. Toggle Menu Behavior
+The hamburger/toggle menu must open and close correctly on every tap
+Menu must close automatically when a menu item is selected
+Menu overlay must not block or overlap critical content when open
+Smooth open/close animation (slide or fade, ≤200ms)
+5. World-Class Quality Bar
+Consistent design language: spacing, colors, typography, border-radius across all screens
+No layout breaks at any screen width between 320px and 1440px
+Test and fix every interactive element: buttons, dropdowns, modals, forms, toggles
+The app must feel like a polished, production-grade mobile product — not a desktop site squeezed onto a phone

@@ -61,72 +61,92 @@ export default function ClubNetworkingPage() {
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Active Network Chats</CardTitle>
-                        <CardDescription>Private communication channel between club administrators.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {conversations && conversations.length > 0 ? (
-                            conversations.map(conv => {
-                                const otherId = conv.participants.find(p => p !== myClubId);
-                                const otherClub = allClubs?.find(c => c.uid === otherId);
-                                return (
-                                    <div key={conv.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => router.push(`/club-dashboard/messages/${conv.id}`)}>
-                                        <div className="flex items-center gap-4">
-                                            <Avatar>
-                                                <AvatarImage src={otherClub?.logoUrl} />
-                                                <AvatarFallback>{getInitials(otherClub?.clubName || '??')}</AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <p className="font-bold">{otherClub?.clubName || 'Unknown Club'}</p>
-                                                <p className="text-sm text-muted-foreground truncate max-w-xs">{conv.lastMessage || 'No messages yet'}</p>
-                                            </div>
-                                        </div>
-                                        <Button variant="ghost" size="sm"><MessageSquare className="w-4 h-4" /></Button>
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="text-center py-12 text-muted-foreground">
-                                <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                                <p>No active conversations. Start one from the directory.</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+        <div className="space-y-5">
+            <div>
+                <h1 className="text-2xl font-black tracking-tight uppercase">Network</h1>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Club-to-club communications</p>
             </div>
 
-            <div className="space-y-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm uppercase tracking-widest text-muted-foreground">Club Directory</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <Input 
-                                placeholder="Search clubs..." 
-                                className="pl-9" 
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            {filteredClubs?.map(club => (
-                                <div key={club.uid} className="flex items-center justify-between p-3 border rounded-md">
-                                    <div className="flex items-center gap-3">
-                                        <Building className="w-4 h-4 text-primary" />
-                                        <span className="text-sm font-semibold">{club.clubName}</span>
-                                    </div>
-                                    <Button size="xs" variant="outline" onClick={() => handleStartConversation(club.uid)}>Chat</Button>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="lg:col-span-2">
+                    <Card className="border-none shadow-xl bg-background overflow-hidden">
+                        <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                            <CardTitle className="text-sm font-black uppercase tracking-widest">Active Chats</CardTitle>
+                            <CardDescription className="text-[10px] font-bold">Private club-to-club channel</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            {conversations && conversations.length > 0 ? (
+                                conversations.map(conv => {
+                                    const otherId = conv.participants.find(p => p !== myClubId);
+                                    const otherClub = allClubs?.find(c => c.uid === otherId);
+                                    return (
+                                        <div
+                                            key={conv.id}
+                                            className="flex items-center gap-3 p-4 border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors active:bg-muted/50"
+                                            onClick={() => router.push(`/club-dashboard/messages/${conv.id}`)}
+                                        >
+                                            <Avatar className="h-10 w-10 shrink-0">
+                                                <AvatarImage src={otherClub?.logoUrl} />
+                                                <AvatarFallback className="font-black text-sm">{getInitials(otherClub?.clubName || '??')}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-black text-sm uppercase truncate">{otherClub?.clubName || 'Unknown Club'}</p>
+                                                <p className="text-xs text-muted-foreground truncate">{conv.lastMessage || 'No messages yet'}</p>
+                                            </div>
+                                            <MessageSquare className="w-4 h-4 text-muted-foreground shrink-0" />
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground px-4">
+                                    <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                    <p className="font-bold text-sm">No active conversations</p>
+                                    <p className="text-xs mt-1">Find clubs in the directory below</p>
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div>
+                    <Card className="border-none shadow-xl bg-background overflow-hidden">
+                        <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                            <CardTitle className="text-sm font-black uppercase tracking-widest">Club Directory</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 space-y-3">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search clubs..."
+                                    className="pl-9 h-11 min-h-[44px]"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                {filteredClubs?.map(club => (
+                                    <div key={club.uid} className="flex items-center justify-between p-3 border rounded-xl hover:bg-muted/30 transition-colors">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <Building className="w-4 h-4 text-primary shrink-0" />
+                                            <span className="text-sm font-bold truncate">{club.clubName}</span>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-9 min-h-[44px] text-[10px] font-black uppercase shrink-0 ml-2"
+                                            onClick={() => handleStartConversation(club.uid)}
+                                        >
+                                            Chat
+                                        </Button>
+                                    </div>
+                                ))}
+                                {filteredClubs?.length === 0 && (
+                                    <p className="text-center text-muted-foreground text-xs py-4">No clubs found</p>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
     );

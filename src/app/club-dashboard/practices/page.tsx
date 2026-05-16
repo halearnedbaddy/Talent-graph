@@ -95,19 +95,19 @@ export default function PracticeManagementPage() {
     };
 
     return (
-        <div className="space-y-8">
-            <div className="flex items-center justify-between">
+        <div className="space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-black tracking-tight uppercase">Performance Training</h1>
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Practice & Drill Management</p>
                 </div>
-                <div className="bg-background border rounded-lg p-1 flex gap-1">
-                    <Button variant={activeTab === 'sessions' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('sessions')} className="text-[10px] font-black h-8 px-4 uppercase">Sessions</Button>
-                    <Button variant={activeTab === 'drills' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('drills')} className="text-[10px] font-black h-8 px-4 uppercase">Drill Library</Button>
+                <div className="bg-background border rounded-lg p-1 flex gap-1 self-start sm:self-auto">
+                    <Button variant={activeTab === 'sessions' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('sessions')} className="text-[10px] font-black h-10 min-h-[44px] px-4 uppercase">Sessions</Button>
+                    <Button variant={activeTab === 'drills' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('drills')} className="text-[10px] font-black h-10 min-h-[44px] px-4 uppercase">Drills</Button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 space-y-6">
                     {activeTab === 'sessions' ? (
                         <Card className="border-none shadow-xl bg-background overflow-hidden">

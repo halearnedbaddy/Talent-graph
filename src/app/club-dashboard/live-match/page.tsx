@@ -288,18 +288,16 @@ export default function LiveMatchPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Radio className="w-5 h-5 text-red-500 animate-pulse shrink-0" />
         <div>
-          <h1 className="text-3xl font-black tracking-tight uppercase flex items-center gap-3">
-            <Radio className="w-7 h-7 text-red-500 animate-pulse" />
-            Live Match Tracker
-          </h1>
+          <h1 className="text-2xl font-black tracking-tight uppercase">Live Match Tracker</h1>
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Real-time event & statistics logging</p>
         </div>
       </div>
 
       {!activeLive ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <div className="space-y-6">
             <Card className="border-none shadow-2xl bg-background overflow-hidden">
               <CardHeader className="bg-neutral-900 text-white">

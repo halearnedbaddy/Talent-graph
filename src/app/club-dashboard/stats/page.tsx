@@ -82,12 +82,14 @@ export default function StatisticsHubPage() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="bg-background border p-1 h-10 mb-8">
-          <TabsTrigger value="overview" className="text-[10px] font-black uppercase px-4">Team Overview</TabsTrigger>
-          <TabsTrigger value="streaks" className="text-[10px] font-black uppercase px-4">Streaks & Records</TabsTrigger>
-          <TabsTrigger value="leaderboard" className="text-[10px] font-black uppercase px-4">Player Ranks</TabsTrigger>
-          <TabsTrigger value="individual" className="text-[10px] font-black uppercase px-4">Player Breakdown</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar mb-6">
+          <TabsList className="bg-background border p-1 h-11 w-max min-w-full">
+            <TabsTrigger value="overview" className="text-[10px] font-black uppercase px-3">Overview</TabsTrigger>
+            <TabsTrigger value="streaks" className="text-[10px] font-black uppercase px-3">Streaks</TabsTrigger>
+            <TabsTrigger value="leaderboard" className="text-[10px] font-black uppercase px-3">Rankings</TabsTrigger>
+            <TabsTrigger value="individual" className="text-[10px] font-black uppercase px-3">Player</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="space-y-8">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
@@ -266,60 +268,93 @@ export default function StatisticsHubPage() {
 
         <TabsContent value="leaderboard">
           <Card className="border-none shadow-2xl bg-background overflow-hidden">
-            <CardHeader className="bg-neutral-900 text-white">
+            <CardHeader className="bg-neutral-900 text-white py-3 px-4">
               <CardTitle className="text-sm font-black uppercase tracking-widest">Institutional Leaderboard</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-neutral-50">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-[9px] font-black uppercase">#</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase">Athlete</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase text-center">Goals</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase text-center">Assists</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase text-center">Avg Rating</TableHead>
-                    <TableHead className="text-[9px] font-black uppercase text-right">CSI</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {athletes?.sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map((a, idx) => {
-                    const career = a.matchHistory || [];
-                    const goals = career.reduce((acc, m) => acc + (Number(m.goals) || 0), 0);
-                    const assists = career.reduce((acc, m) => acc + (Number(m.assists) || 0), 0);
-                    const motm = career.filter(m => m.manOfTheMatch).length;
-                    const ratingSum = career.reduce((acc, m) => acc + ((Number(m.rating) || 0) * (Number(m.apps) || 0)), 0);
-                    const totalApps = career.reduce((acc, m) => acc + (Number(m.apps) || 0), 0);
-                    const avg = totalApps > 0 ? (ratingSum / totalApps).toFixed(1) : '--';
-
-                    return (
-                      <TableRow key={a.uid} className="hover:bg-muted/30">
-                        <TableCell className="font-black text-muted-foreground text-sm w-8">{idx + 1}</TableCell>
-                        <TableCell className="font-black uppercase text-xs">{a.firstName} {a.lastName}</TableCell>
-                        <TableCell className="text-center font-mono text-xs">{goals}</TableCell>
-                        <TableCell className="text-center font-mono text-xs">{assists}</TableCell>
-                        <TableCell className="text-center text-xs">
-                          {motm > 0 && <span className="flex items-center justify-center gap-1"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />{motm}</span>}
-                          {motm === 0 && <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-center font-black text-primary text-xs">{avg}</TableCell>
-                        <TableCell className="text-right font-black text-primary">{a.compositeScoutingIndex || '--'}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              {/* Mobile card list */}
+              <div className="divide-y md:hidden">
+                {athletes?.sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map((a, idx) => {
+                  const career = a.matchHistory || [];
+                  const goals = career.reduce((acc, m) => acc + (Number(m.goals) || 0), 0);
+                  const assists = career.reduce((acc, m) => acc + (Number(m.assists) || 0), 0);
+                  const motm = career.filter(m => m.manOfTheMatch).length;
+                  const ratingSum = career.reduce((acc, m) => acc + ((Number(m.rating) || 0) * (Number(m.apps) || 0)), 0);
+                  const totalApps = career.reduce((acc, m) => acc + (Number(m.apps) || 0), 0);
+                  const avg = totalApps > 0 ? (ratingSum / totalApps).toFixed(1) : '--';
+                  return (
+                    <div key={a.uid} className="flex items-center gap-3 p-4">
+                      <span className="text-sm font-black text-muted-foreground w-5 shrink-0">{idx + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black uppercase text-sm truncate">{a.firstName} {a.lastName}</p>
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase mt-0.5">{a.position}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 text-right">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-muted-foreground">G/A</p>
+                          <p className="text-sm font-black">{goals}/{assists}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-muted-foreground">CSI</p>
+                          <p className="text-sm font-black text-primary">{a.compositeScoutingIndex || '--'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-neutral-50">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-[9px] font-black uppercase">#</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase">Athlete</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase text-center">Goals</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase text-center">Assists</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase text-center">Avg Rating</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase text-right">CSI</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {athletes?.sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map((a, idx) => {
+                      const career = a.matchHistory || [];
+                      const goals = career.reduce((acc, m) => acc + (Number(m.goals) || 0), 0);
+                      const assists = career.reduce((acc, m) => acc + (Number(m.assists) || 0), 0);
+                      const motm = career.filter(m => m.manOfTheMatch).length;
+                      const ratingSum = career.reduce((acc, m) => acc + ((Number(m.rating) || 0) * (Number(m.apps) || 0)), 0);
+                      const totalApps = career.reduce((acc, m) => acc + (Number(m.apps) || 0), 0);
+                      const avg = totalApps > 0 ? (ratingSum / totalApps).toFixed(1) : '--';
+                      return (
+                        <TableRow key={a.uid} className="hover:bg-muted/30">
+                          <TableCell className="font-black text-muted-foreground text-sm w-8">{idx + 1}</TableCell>
+                          <TableCell className="font-black uppercase text-xs">{a.firstName} {a.lastName}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{goals}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{assists}</TableCell>
+                          <TableCell className="text-center text-xs">
+                            {motm > 0 && <span className="flex items-center justify-center gap-1"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />{motm}</span>}
+                            {motm === 0 && <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-center font-black text-primary text-xs">{avg}</TableCell>
+                          <TableCell className="text-right font-black text-primary">{a.compositeScoutingIndex || '--'}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="individual">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            <div className="lg:col-span-1 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+            <div className="lg:col-span-1 space-y-3">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Squad Member</h3>
               <div className="divide-y bg-background border rounded-xl overflow-hidden">
                 {athletes?.map(a => (
-                  <div key={a.uid} onClick={() => setSelectedAthleteId(a.uid)} className={`p-4 cursor-pointer transition-colors hover:bg-muted/50 ${selectedAthleteId === a.uid ? 'bg-primary/5 border-l-4 border-primary' : ''}`}>
+                  <div key={a.uid} onClick={() => setSelectedAthleteId(a.uid)} className={`p-3 min-h-[44px] flex flex-col justify-center cursor-pointer transition-colors hover:bg-muted/50 active:bg-muted/70 ${selectedAthleteId === a.uid ? 'bg-primary/5 border-l-4 border-primary' : ''}`}>
                     <p className="text-xs font-black uppercase">{a.firstName} {a.lastName}</p>
                     <p className="text-[9px] font-bold text-muted-foreground uppercase">{a.position}</p>
                   </div>
@@ -329,15 +364,15 @@ export default function StatisticsHubPage() {
             <div className="lg:col-span-3">
               {athletePerformance ? (
                 <Card className="border-none shadow-2xl bg-background overflow-hidden">
-                  <CardHeader className="bg-neutral-50 border-b p-8">
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <CardTitle className="text-2xl font-black uppercase tracking-tight">{athletePerformance.firstName} {athletePerformance.lastName}</CardTitle>
+                  <CardHeader className="bg-muted/50 border-b p-4 sm:p-6">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <CardTitle className="text-xl font-black uppercase tracking-tight truncate">{athletePerformance.firstName} {athletePerformance.lastName}</CardTitle>
                         <p className="text-xs font-bold text-primary uppercase tracking-[0.2em] mt-1">{athletePerformance.readinessTier || 'Developing'}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-5xl font-black tracking-tighter leading-none">{athletePerformance.compositeScoutingIndex || '--'}</p>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-1">Institutional Rating</p>
+                      <div className="text-right shrink-0">
+                        <p className="text-4xl font-black tracking-tighter leading-none">{athletePerformance.compositeScoutingIndex || '--'}</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-1">Rating</p>
                       </div>
                     </div>
                   </CardHeader>
@@ -348,37 +383,39 @@ export default function StatisticsHubPage() {
                       <MetricItem label="Risk Index" value={athletePerformance.riskIndex} />
                       <MetricItem label="Performance" value={athletePerformance.performanceIndex} />
                     </div>
-                    <Table>
-                      <TableHeader className="bg-neutral-50/50">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="text-[9px] font-black uppercase">Competition</TableHead>
-                          <TableHead className="text-[9px] font-black uppercase text-center">Mins</TableHead>
-                          <TableHead className="text-[9px] font-black uppercase text-center">G/A</TableHead>
-                          <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
-                          <TableHead className="text-[9px] font-black uppercase text-right">Rating</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {athletePerformance.matchHistory?.map((m, i) => (
-                          <TableRow key={i} className="hover:bg-muted/30">
-                            <TableCell className="text-xs font-bold uppercase">
-                              {m.competition}
-                              {m.opponent && <span className="text-muted-foreground font-normal"> vs {m.opponent}</span>}
-                            </TableCell>
-                            <TableCell className="text-center font-mono text-xs">{m.minutes}</TableCell>
-                            <TableCell className="text-center font-mono text-xs">{m.goals}/{m.assists}</TableCell>
-                            <TableCell className="text-center">{m.manOfTheMatch ? <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mx-auto" /> : <span className="text-muted-foreground">—</span>}</TableCell>
-                            <TableCell className="text-right font-black text-primary text-xs">{Number(m.rating || 0).toFixed(1)}</TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader className="bg-muted/30">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="text-[9px] font-black uppercase">Competition</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase text-center">Mins</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase text-center">G/A</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase text-right">Rating</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {athletePerformance.matchHistory?.map((m, i) => (
+                            <TableRow key={i} className="hover:bg-muted/30">
+                              <TableCell className="text-xs font-bold uppercase">
+                                {m.competition}
+                                {m.opponent && <span className="text-muted-foreground font-normal"> vs {m.opponent}</span>}
+                              </TableCell>
+                              <TableCell className="text-center font-mono text-xs">{m.minutes}</TableCell>
+                              <TableCell className="text-center font-mono text-xs">{m.goals}/{m.assists}</TableCell>
+                              <TableCell className="text-center">{m.manOfTheMatch ? <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mx-auto" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+                              <TableCell className="text-right font-black text-primary text-xs">{Number(m.rating || 0).toFixed(1)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[400px] text-center text-muted-foreground bg-muted/10 rounded-3xl border-4 border-dashed">
-                  <Activity className="w-16 h-16 mb-4 opacity-10" />
-                  <p className="font-black uppercase tracking-widest">Select an athlete to view performance breakdown</p>
+                <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground bg-muted/10 rounded-3xl border-4 border-dashed">
+                  <Activity className="w-14 h-14 mb-4 opacity-10" />
+                  <p className="font-black uppercase tracking-widest text-sm">Select an athlete</p>
                 </div>
               )}
             </div>

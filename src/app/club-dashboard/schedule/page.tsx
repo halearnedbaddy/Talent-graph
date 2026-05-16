@@ -48,87 +48,84 @@ export default function SchedulePage() {
     const selectedDayEvents = allEvents.filter(e => date && isSameDay(new Date(e.date), date));
 
     return (
-        <div className="space-y-8">
-            <div className="flex items-center justify-between">
+        <div className="space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-black tracking-tight uppercase">Master Schedule</h1>
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Unified fixture & training calendar</p>
                 </div>
-                <div className="bg-background border rounded-lg p-1 flex gap-1">
+                <div className="bg-background border rounded-lg p-1 flex gap-1 self-start sm:self-auto">
                     {(['all', 'upcoming', 'past'] as const).map(f => (
-                        <Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" onClick={() => setFilter(f)} className="text-[10px] font-black h-8 px-4 uppercase">{f}</Button>
+                        <Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" onClick={() => setFilter(f)} className="text-[10px] font-black h-10 min-h-[44px] px-3 uppercase capitalize">{f}</Button>
                     ))}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 <Card className="lg:col-span-4 border-none shadow-xl bg-background overflow-hidden">
-                    <CardHeader className="bg-neutral-900 text-white">
+                    <CardHeader className="bg-neutral-900 text-white py-3 px-4">
                         <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                            <CalendarIcon className="w-4 h-4 text-primary" /> Squad Calendar
+                            <CalendarIcon className="w-4 h-4 text-primary" /> Calendar
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-0 flex justify-center">
+                    <CardContent className="p-0 flex justify-center overflow-x-auto">
                         <Calendar
                             mode="single"
                             selected={date}
                             onSelect={setDate}
-                            className="p-4"
+                            className="p-3"
                         />
                     </CardContent>
                 </Card>
 
-                <div className="lg:col-span-8 space-y-6">
-                    <Card className="border-none shadow-2xl bg-background overflow-hidden">
-                        <CardHeader className="bg-neutral-50 border-b">
+                <div className="lg:col-span-8 space-y-5">
+                    <Card className="border-none shadow-xl bg-background overflow-hidden">
+                        <CardHeader className="bg-muted/50 border-b py-3 px-4">
                             <CardTitle className="text-sm font-black uppercase tracking-widest">
-                                {date ? format(date, 'PPPP') : 'Timeline'}
+                                {date ? format(date, 'PPP') : 'Timeline'}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
                             <div className="divide-y">
                                 {selectedDayEvents.length > 0 ? selectedDayEvents.map(e => (
-                                    <div key={e.id} className="p-6 flex items-center justify-between group hover:bg-muted/20">
-                                        <div className="flex items-center gap-6">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${e.type === 'match' ? 'bg-primary/10 text-primary' : 'bg-orange-500/10 text-orange-600'}`}>
-                                                {e.type === 'match' ? <Trophy className="w-6 h-6" /> : <Activity className="w-6 h-6" />}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="text-lg font-black uppercase">
-                                                        {e.type === 'match' ? `vs ${(e as any).opponent}` : (e as any).name}
-                                                    </h3>
-                                                    <Badge className={`${e.type === 'match' ? 'bg-primary' : 'bg-orange-600'} text-white border-none font-black text-[8px] h-4 uppercase`}>
-                                                        {e.type}
-                                                    </Badge>
-                                                </div>
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
-                                                    {(e as any).location} &bull; {(e as any).time || 'Kickoff'} &bull; {(e as any).competition || (e as any).season}
-                                                </p>
-                                            </div>
+                                    <div key={e.id} className="p-4 flex items-center gap-3 hover:bg-muted/20">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${e.type === 'match' ? 'bg-primary/10 text-primary' : 'bg-orange-500/10 text-orange-600'}`}>
+                                            {e.type === 'match' ? <Trophy className="w-5 h-5" /> : <Activity className="w-5 h-5" />}
                                         </div>
-                                        <Button variant="outline" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest">Details</Button>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h3 className="text-sm font-black uppercase truncate">
+                                                    {e.type === 'match' ? `vs ${(e as any).opponent}` : (e as any).name}
+                                                </h3>
+                                                <Badge className={`${e.type === 'match' ? 'bg-primary' : 'bg-orange-600'} text-white border-none font-black text-[8px] h-4 uppercase`}>
+                                                    {e.type}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5 truncate">
+                                                {(e as any).location}{(e as any).time ? ` • ${(e as any).time}` : ''}
+                                            </p>
+                                        </div>
                                     </div>
                                 )) : (
-                                    <div className="p-12 text-center text-muted-foreground font-black uppercase text-[10px] tracking-[0.2em]">
-                                        No scheduled events for this date
+                                    <div className="p-10 text-center text-muted-foreground font-black uppercase text-[10px] tracking-[0.2em]">
+                                        No events on this date
                                     </div>
                                 )}
                             </div>
                         </CardContent>
                     </Card>
 
-                    <div className="space-y-4">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Upcoming Agenda</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                        <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Upcoming</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {allEvents.filter(e => isAfter(new Date(e.date), today)).slice(0, 4).map(e => (
-                                <Card key={e.id} className="border-none shadow-sm bg-background p-4">
+                                <Card key={e.id} className="border-none shadow-sm bg-background p-3">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${e.type === 'match' ? 'bg-primary/10 text-primary' : 'bg-orange-500/10 text-orange-600'}`}>
+                                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${e.type === 'match' ? 'bg-primary/10 text-primary' : 'bg-orange-500/10 text-orange-600'}`}>
                                             {e.type === 'match' ? <Trophy className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
                                         </div>
-                                        <div>
-                                            <p className="text-xs font-black uppercase leading-none truncate max-w-[150px]">
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black uppercase leading-none truncate">
                                                 {e.type === 'match' ? `vs ${(e as any).opponent}` : (e as any).name}
                                             </p>
                                             <p className="text-[9px] font-bold text-muted-foreground uppercase mt-1">

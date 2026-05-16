@@ -23,11 +23,12 @@ import {
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import type { ScoutConnection, AthleteProfile, ClubMember } from '@/lib/types';
-import { Loader2, ArrowUpDown, ShieldCheck, Clock, ExternalLink } from 'lucide-react';
+import { Loader2, ArrowUpDown, ShieldCheck, Clock, ExternalLink, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export default function SquadListPage() {
     const { user } = useUser();
@@ -53,6 +54,17 @@ export default function SquadListPage() {
     ), [firestore, athleteIds]);
     const { data: athletes, isLoading: athletesLoading } = useCollection<AthleteProfile>(athletesQuery);
 
+    const [searchValue, setSearchValue] = React.useState('');
+
+    const filteredAthletes = React.useMemo(() => {
+        if (!athletes) return [];
+        if (!searchValue) return athletes;
+        return athletes.filter(a =>
+            `${a.firstName} ${a.lastName}`.toLowerCase().includes(searchValue.toLowerCase()) ||
+            a.username?.toLowerCase().includes(searchValue.toLowerCase())
+        );
+    }, [athletes, searchValue]);
+
     const columns: ColumnDef<AthleteProfile>[] = [
         {
             accessorKey: 'name',
@@ -60,7 +72,7 @@ export default function SquadListPage() {
             accessorFn: (row) => `${row.firstName} ${row.lastName}`,
             cell: ({ row }) => (
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center font-black text-[10px] text-muted-foreground uppercase">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center font-black text-[10px] text-muted-foreground uppercase shrink-0">
                         {row.original.firstName[0]}{row.original.lastName[0]}
                     </div>
                     <div>
@@ -72,7 +84,7 @@ export default function SquadListPage() {
         },
         {
             accessorKey: 'position',
-            header: 'Position',
+            header: 'Pos',
             cell: ({ row }) => <span className="capitalize font-bold text-xs">{row.original.position}</span>
         },
         {
@@ -84,40 +96,16 @@ export default function SquadListPage() {
             accessorKey: 'compositeScoutingIndex',
             header: ({ column }) => (
                 <Button variant="ghost" className="p-0 text-[10px] font-black uppercase tracking-widest hover:bg-transparent" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-                    CSI <ArrowUpDown className="ml-2 h-3 w-3" />
+                    CSI <ArrowUpDown className="ml-1 h-3 w-3" />
                 </Button>
             ),
             cell: ({ row }) => <span className="font-black text-primary">{row.original.compositeScoutingIndex || '--'}</span>
         },
         {
-            accessorKey: 'performanceIndex',
-            header: 'Performance',
-            cell: ({ row }) => <span className="font-mono text-xs">{row.original.performanceIndex || '--'}</span>
-        },
-        {
-            accessorKey: 'efficiencyIndex',
-            header: 'Efficiency',
-            cell: ({ row }) => <span className="font-mono text-xs">{row.original.efficiencyIndex || '--'}</span>
-        },
-        {
-            accessorKey: 'consistencyIndex',
-            header: 'Consistency',
-            cell: ({ row }) => <span className="font-mono text-xs">{row.original.consistencyIndex || '--'}</span>
-        },
-        {
-            accessorKey: 'riskIndex',
-            header: 'Risk',
-            cell: ({ row }) => (
-                <Badge variant={row.original.riskIndex && row.original.riskIndex > 70 ? 'destructive' : 'outline'} className="text-[9px] font-black h-5">
-                    {row.original.riskIndex || '--'}
-                </Badge>
-            )
-        },
-        {
             accessorKey: 'isVerified',
             header: 'Status',
             cell: ({ row }) => (
-                row.original.isVerified 
+                row.original.isVerified
                     ? <ShieldCheck className="w-4 h-4 text-green-600" />
                     : <Clock className="w-4 h-4 text-orange-500" />
             )
@@ -126,7 +114,7 @@ export default function SquadListPage() {
             id: 'actions',
             header: '',
             cell: ({ row }) => (
-                <Button variant="ghost" size="icon" asChild className="h-8 w-8">
+                <Button variant="ghost" size="icon" asChild className="h-9 w-9 min-h-[44px] min-w-[44px]">
                     <Link href={`/${row.original.username}`}>
                         <ExternalLink className="w-4 h-4" />
                     </Link>
@@ -136,70 +124,111 @@ export default function SquadListPage() {
     ];
 
     const table = useReactTable({
-        data: athletes || [],
+        data: filteredAthletes,
         columns,
         getCoreRowModel: getCoreRowModel(),
         onSortingChange: setSorting,
         getSortedRowModel: getSortedRowModel(),
         onColumnFiltersChange: setColumnFilters,
         getFilteredRowModel: getFilteredRowModel(),
-        state: {
-            sorting,
-            columnFilters,
-        },
+        state: { sorting, columnFilters },
     });
 
     const isLoading = connectionsLoading || athletesLoading;
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="space-y-5">
+            {/* Header */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-black tracking-tight">SQUAD LIST</h1>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Complete roster management</p>
+                    <h1 className="text-2xl font-black tracking-tight uppercase">Squad List</h1>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        {filteredAthletes.length} player{filteredAthletes.length !== 1 ? 's' : ''}
+                    </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search athlete name..."
-                        value={(table.getColumn('name')?.getFilterValue() as string) ?? ''}
-                        onChange={(event) => table.getColumn('name')?.setFilterValue(event.target.value)}
-                        className="w-64 h-9 bg-background"
+                        placeholder="Search by name..."
+                        value={searchValue}
+                        onChange={(e) => setSearchValue(e.target.value)}
+                        className="pl-9 h-11 w-full sm:w-56 bg-background text-sm"
                     />
                 </div>
             </div>
 
-            <div className="rounded-xl border bg-background overflow-hidden shadow-xl">
-                <Table>
-                    <TableHeader className="bg-neutral-50">
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="hover:bg-transparent border-b">
-                                {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id} className="text-[10px] font-black uppercase tracking-widest h-12">
-                                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                                    </TableHead>
-                                ))}
-                            </TableRow>
+            {isLoading ? (
+                <div className="flex h-32 items-center justify-center">
+                    <Loader2 className="animate-spin text-primary" />
+                </div>
+            ) : filteredAthletes.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-center">
+                    <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest">
+                        No squad members detected
+                    </p>
+                </div>
+            ) : (
+                <>
+                    {/* Mobile card list */}
+                    <div className="md:hidden space-y-3">
+                        {filteredAthletes.map((a) => (
+                            <div key={a.uid} className="flex items-center gap-3 rounded-xl bg-background border p-3 shadow-sm">
+                                <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center font-black text-sm text-muted-foreground uppercase shrink-0">
+                                    {a.firstName[0]}{a.lastName[0]}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black uppercase leading-tight truncate">{a.firstName} {a.lastName}</p>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <span className="text-[10px] font-bold text-muted-foreground uppercase">{a.position}</span>
+                                        <span className="text-[10px] text-muted-foreground">•</span>
+                                        <span className="text-[10px] font-bold text-muted-foreground">{a.age}y</span>
+                                        <span className="text-[10px] font-black text-primary">CSI: {a.compositeScoutingIndex || '--'}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {a.isVerified
+                                        ? <ShieldCheck className="w-4 h-4 text-green-600" />
+                                        : <Clock className="w-4 h-4 text-orange-500" />
+                                    }
+                                    <Button variant="ghost" size="icon" asChild className="h-10 w-10">
+                                        <Link href={`/${a.username}`}>
+                                            <ExternalLink className="w-4 h-4" />
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </div>
                         ))}
-                    </TableHeader>
-                    <TableBody>
-                        {isLoading ? (
-                            <TableRow><TableCell colSpan={columns.length} className="h-32 text-center"><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                        ) : table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id} className="hover:bg-muted/30 border-b last:border-0">
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id} className="py-3">
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow><TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground font-bold uppercase text-[10px] tracking-widest">No squad members detected</TableCell></TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                    </div>
+
+                    {/* Desktop table */}
+                    <div className="hidden md:block rounded-xl border bg-background overflow-hidden shadow-xl">
+                        <Table>
+                            <TableHeader className="bg-neutral-50 dark:bg-neutral-900">
+                                {table.getHeaderGroups().map((headerGroup) => (
+                                    <TableRow key={headerGroup.id} className="hover:bg-transparent border-b">
+                                        {headerGroup.headers.map((header) => (
+                                            <TableHead key={header.id} className="text-[10px] font-black uppercase tracking-widest h-12">
+                                                {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableHeader>
+                            <TableBody>
+                                {table.getRowModel().rows.map((row) => (
+                                    <TableRow key={row.id} className="hover:bg-muted/30 border-b last:border-0">
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id} className="py-3">
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

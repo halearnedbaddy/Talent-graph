@@ -78,8 +78,24 @@
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
   }
-  body {
+  html, body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
