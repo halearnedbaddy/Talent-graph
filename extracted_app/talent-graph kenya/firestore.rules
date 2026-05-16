@@ -1,0 +1,223 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ----------------------------------------------------------------------
+    // Helper Functions
+    // ----------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function isClubAdmin() {
+      return isSignedIn() && getUserData().role == 'club';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isScoutRole() {
+      return isSignedIn() && getUserData().role == 'scout';
+    }
+
+    function isMemberOfClub(clubId) {
+      return exists(/databases/$(database)/documents/club_members/$(request.auth.uid + '_' + clubId));
+    }
+
+    function isActiveMemberOfClub(clubId) {
+      let memberPath = /databases/$(database)/documents/club_members/$(request.auth.uid + '_' + clubId);
+      return exists(memberPath) && get(memberPath).data.status == 'active';
+    }
+
+    // ----------------------------------------------------------------------
+    // Standard Collection Rules
+    // ----------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /athletes/{athleteId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(athleteId);
+      allow update: if isOwner(athleteId) || isScoutRole() || isClubAdmin() || isAdmin();
+      allow delete: if isOwner(athleteId) || isAdmin();
+    }
+    
+    match /scouts/{scoutId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(scoutId);
+        allow update, delete: if isOwner(scoutId) || isAdmin();
+    }
+
+    match /clubs/{clubId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && clubId == ('club_' + request.auth.uid);
+      allow update: if isSignedIn() && (clubId == ('club_' + request.auth.uid) || isAdmin());
+      allow delete: if isAdmin();
+
+      // Squad Chat Subcollection
+      match /squad_messages/{msgId} {
+        allow read, create: if isSignedIn() && (
+          clubId == ('club_' + request.auth.uid) || 
+          isActiveMemberOfClub(clubId) ||
+          get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.affiliatedClubId == clubId
+        );
+      }
+    }
+
+    match /club_members/{memberId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.role == 'admin';
+      allow update, delete: if isAdmin() || isClubAdmin();
+    }
+
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin() || isAdmin();
+    }
+
+    match /match_invitations/{inviteId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /practices/{practiceId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin() || isAdmin();
+    }
+
+    match /drills/{drillId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin() || isAdmin();
+    }
+
+    match /scout_connections/{connectionId} {
+      allow read: if isSignedIn(); 
+      allow create: if isSignedIn() && request.resource.data.scoutId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.scoutId || 
+        request.auth.uid == request.resource.data.athleteId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.scoutId);
+
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn() && (
+          request.auth.uid == get(/databases/$(database)/documents/scout_connections/$(connectionId)).data.scoutId || 
+          request.auth.uid == get(/databases/$(database)/documents/scout_connections/$(connectionId)).data.athleteId ||
+          isAdmin()
+        );
+      }
+    }
+
+    match /club_conversations/{conversationId} {
+      allow read, create, update: if isSignedIn();
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    match /support_threads/{threadId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        resource == null ||
+        resource.data.userId == request.auth.uid || 
+        resource.data.adminId == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.adminId == request.auth.uid
+      );
+
+      match /messages/{msgId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    match /scoutData/{scoutId}/privateNotes/{athleteId} {
+      allow read, write: if isOwner(scoutId);
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+    }
+
+    match /waiting_list/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+    
+    match /verification_requests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.targetUid == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+    }
+
+    // ----------------------------------------------------------------------
+    // Profile View Tracking
+    // ----------------------------------------------------------------------
+    match /profile_views/{athleteId}/viewers/{viewerId} {
+      // Any signed-in user can record a view (write their own viewer doc)
+      allow create, update: if isSignedIn();
+      // Only the athlete can read who viewed their profile
+      allow read: if isOwner(athleteId);
+      allow list: if isOwner(athleteId);
+    }
+
+    // ----------------------------------------------------------------------
+    // Notifications
+    // ----------------------------------------------------------------------
+    match /notifications/{userId}/items/{notificationId} {
+      // The owner reads their own notifications; any signed-in user can push a notification
+      allow read, list: if isOwner(userId);
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    // ----------------------------------------------------------------------
+    // Profile Reactions (Likes)
+    // ----------------------------------------------------------------------
+    match /profile_reactions/{reactionId} {
+      // Anyone signed in can read all reactions (needed for like count + own like state)
+      allow read, list: if isSignedIn();
+      // A user can only create/delete their own reaction
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ----------------------------------------------------------------------
+    // Profile Comments
+    // ----------------------------------------------------------------------
+    match /profile_comments/{athleteId}/comments/{commentId} {
+      // Anyone signed in can read comments on a profile
+      allow read, list: if isSignedIn();
+      // Any signed-in user can post a comment
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      // Only the comment author or the profile owner can delete
+      allow delete: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid || isOwner(athleteId)
+      );
+    }
+  }
+}

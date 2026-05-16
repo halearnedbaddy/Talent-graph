@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "hero-image",
+      "description": "Athlete running on a track, blurred background",
+      "imageUrl": "https://images.unsplash.com/photo-1695918427235-2d6faaae356a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxhdGhsZXRlJTIwcnVubmluZ3xlbnwwfHx8fDE3NzA2MDM2NjR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "athlete running"
+    },
+    {
+      "id": "athlete-persona",
+      "description": "Focused athlete tying their shoelaces in a locker room",
+      "imageUrl": "https://images.unsplash.com/photo-1761258772691-57924c33d1c4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxhdGhsZXRlJTIwZm9jdXNlZHxlbnwwfHx8fDE3NzA2MDM2NjR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "athlete focused"
+    },
+    {
+      "id": "scout-persona",
+      "description": "A person with a clipboard and pen, observing from the sidelines",
+      "imageUrl": "https://images.unsplash.com/photo-1685802684702-a69215e9b908?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8c2NvdXQlMjB3YXRjaGluZ3xlbnwwfHx8fDE3NzA2MDM2NjR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "scout watching"
+    }
+  ]
+}
