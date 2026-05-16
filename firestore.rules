@@ -75,6 +75,22 @@ service cloud.firestore {
           get(/databases/$(database)/documents/athletes/$(request.auth.uid)).data.affiliatedClubId == clubId
         );
       }
+
+      // Push Notification Subscriptions
+      match /push_subscriptions/{subId} {
+        allow read, write: if isSignedIn() && (
+          clubId == ('club_' + request.auth.uid) ||
+          isActiveMemberOfClub(clubId)
+        );
+      }
+
+      // Notification History
+      match /notification_history/{histId} {
+        allow read, write: if isSignedIn() && (
+          clubId == ('club_' + request.auth.uid) ||
+          isActiveMemberOfClub(clubId)
+        );
+      }
     }
 
     match /club_members/{memberId} {
@@ -87,7 +103,17 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin();
+      allow write: if isSignedIn();
+    }
+
+    match /live_matches/{matchId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /live_match_events/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
     match /match_invitations/{inviteId} {
