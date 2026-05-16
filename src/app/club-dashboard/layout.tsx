@@ -17,7 +17,8 @@ import {
   MessageSquare,
   Radio,
   Grid3X3,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,7 @@ const navItems = [
   { href: '/club-dashboard/stats', label: 'Stats', icon: BarChart },
   { href: '/club-dashboard/verification', label: 'Verify', icon: ClipboardCheck },
   { href: '/club-dashboard/messages', label: 'Network', icon: MessageSquareShare },
+  { href: '/club-dashboard/notifications', label: 'Alerts', icon: Bell },
   { href: '/club-dashboard/settings', label: 'Settings', icon: Settings },
 ];
 

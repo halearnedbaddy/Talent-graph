@@ -468,3 +468,15 @@ export interface WaitingListEntry {
   createdAt: string;
   notified: boolean;
 }
+
+export interface NotificationHistoryItem {
+  id: string;
+  clubId: string;
+  title: string;
+  body: string;
+  url: string;
+  tag: string;
+  sentAt: string;
+  sentBy?: string;
+  recipientCount: number;
+}

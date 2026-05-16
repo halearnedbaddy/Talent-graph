@@ -124,25 +124,43 @@ export async function sendClubNotification(params: {
   url?: string;
   tag?: string;
   excludeUserId?: string;
+  sentBy?: string;
   firestore: ReturnType<typeof useFirestore>;
 }) {
-  const { clubId, title, body, url, tag, excludeUserId, firestore } = params;
+  const { clubId, title, body, url, tag, excludeUserId, sentBy, firestore } = params;
   if (!firestore) return;
 
   try {
     const snap = await getDocs(collection(firestore, 'clubs', clubId, 'push_subscriptions'));
-    if (snap.empty) return;
 
-    const subscriptions = snap.docs
-      .filter((d) => !excludeUserId || d.data().userId !== excludeUserId)
-      .map((d) => d.data().subscription);
+    const subscriptions = snap.empty
+      ? []
+      : snap.docs
+          .filter((d) => !excludeUserId || d.data().userId !== excludeUserId)
+          .map((d) => d.data().subscription);
 
-    if (!subscriptions.length) return;
+    let sent = 0;
+    if (subscriptions.length > 0) {
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptions, title, body, url, tag }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        sent = data.sent ?? subscriptions.length;
+      }
+    }
 
-    await fetch('/api/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptions, title, body, url, tag }),
+    await addDoc(collection(firestore, 'clubs', clubId, 'notification_history'), {
+      clubId,
+      title,
+      body,
+      url: url || '/club-dashboard',
+      tag: tag || 'general',
+      sentAt: new Date().toISOString(),
+      ...(sentBy ? { sentBy } : {}),
+      recipientCount: sent,
     });
   } catch (err) {
     console.error('[push] sendClubNotification error', err);
