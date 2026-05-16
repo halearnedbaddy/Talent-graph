@@ -52,6 +52,9 @@ FIREBASE_SERVICE_ACCOUNT = """
   \"client_x509_cert_url\": \"https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40studio-1186001190-d08bc.iam.gserviceaccount.com\",\r
   \"universe_domain\": \"googleapis.com\"\r
 }"""
+NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BCR9rT5Xsja2n2JkZ-pECoKUIans7COp1InTe4eNKdOYwl_t3ZWtt5fq1GswCZ7mjnnptlED8UTSK5psuhdrc5c"
+VAPID_PRIVATE_KEY = "9CtrXYNVuf795SK5xlXBEr7dB68o0DAHtjHU7DtKF4g"
+VAPID_SUBJECT = "mailto:admin@talentgraph.ke"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-861fa5b4-5e0b-48d7-9cb7-f5ce499e7c4b"

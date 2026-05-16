@@ -22,12 +22,15 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { SupportDialog } from '@/components/support/support-dialog';
+import { PushNotificationToggle, PushNotificationPrompt } from '@/components/club/push-notification-prompt';
+import type { ClubMember } from '@/lib/types';
 
 const navItems = [
   { href: '/club-dashboard', label: 'Overview', icon: Home },
@@ -54,7 +57,15 @@ export default function ClubDashboardLayout({
   const pathname = usePathname();
   const auth = useAuth();
   const router = useRouter();
+  const { user } = useUser();
+  const firestore = useFirestore();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  const clubMemberQuery = useMemoFirebase(() => (
+    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
+  ), [firestore, user]);
+  const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
+  const clubId = userMemberships?.[0]?.clubId;
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -101,6 +112,7 @@ export default function ClubDashboardLayout({
             <SidebarNavLinks />
           </div>
           <div className="mt-auto p-4 border-t space-y-2">
+            <PushNotificationToggle clubId={clubId} userId={user?.uid} />
             <SupportDialog />
             <Button
               size="sm"
@@ -163,6 +175,7 @@ export default function ClubDashboardLayout({
                 </nav>
               </div>
               <div className="p-4 border-t space-y-2">
+                <PushNotificationToggle clubId={clubId} userId={user?.uid} />
                 <SupportDialog />
                 <Button
                   variant="ghost"
@@ -179,6 +192,7 @@ export default function ClubDashboardLayout({
 
         {/* Page Content */}
         <main className="flex flex-1 flex-col gap-4 p-4 pb-24 md:pb-4 lg:gap-6 lg:p-6 overflow-x-hidden bg-muted/10">
+          <PushNotificationPrompt clubId={clubId} userId={user?.uid} />
           {children}
         </main>
 

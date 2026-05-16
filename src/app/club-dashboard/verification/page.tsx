@@ -9,6 +9,7 @@ import { Loader2, ShieldCheck, Clock, Check, X, AlertTriangle } from 'lucide-rea
 import type { AthleteProfile, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { sendClubNotification } from '@/hooks/usePushNotifications';
 
 export default function AttributeVerificationPage() {
     const { user } = useUser();
@@ -27,7 +28,7 @@ export default function AttributeVerificationPage() {
     ), [firestore, clubId]);
     const { data: pendingAthletes, isLoading } = useCollection<AthleteProfile>(pendingAthletesQuery);
 
-    const handleVerify = async (athleteId: string) => {
+    const handleVerify = async (athleteId: string, athleteName?: string) => {
         if (!firestore) return;
         setProcessingId(athleteId);
         try {
@@ -38,6 +39,17 @@ export default function AttributeVerificationPage() {
                 updatedAt: new Date().toISOString()
             });
             toast({ title: 'Profile Verified', description: 'Athlete data has been confirmed as institutional truth.' });
+
+            if (clubId) {
+                sendClubNotification({
+                    clubId,
+                    title: 'Athlete Verified',
+                    body: `${athleteName || 'An athlete'}'s profile has been verified as institutional truth.`,
+                    url: '/club-dashboard/verification',
+                    tag: 'athlete-verified',
+                    firestore,
+                });
+            }
         } catch (e) {
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to verify athlete.' });
         } finally {
@@ -100,7 +112,7 @@ export default function AttributeVerificationPage() {
 
                                         <div className="mt-5 flex flex-wrap gap-2">
                                             <Button
-                                                onClick={() => handleVerify(a.uid)}
+                                                onClick={() => handleVerify(a.uid, `${a.firstName} ${a.lastName}`)}
                                                 disabled={processingId === a.uid}
                                                 className="bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest text-[10px] h-11 min-h-[44px] px-5 flex-1 sm:flex-none"
                                             >

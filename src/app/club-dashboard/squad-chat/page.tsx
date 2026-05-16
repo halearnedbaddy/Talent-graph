@@ -12,6 +12,7 @@ import { Loader2, Send, MessageSquare, ShieldCheck, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { ClubMember, UserAccount, ClubProfile } from '@/lib/types';
+import { sendClubNotification } from '@/hooks/usePushNotifications';
 
 export default function SquadChatPage() {
     const { user } = useUser();
@@ -46,12 +47,23 @@ export default function SquadChatPage() {
         e.preventDefault();
         if (!firestore || !user || !clubId || !newMessage.trim()) return;
 
+        const senderName = user.displayName || 'Staff Member';
         const now = new Date().toISOString();
         await addDoc(collection(firestore, 'clubs', clubId, 'squad_messages'), {
             senderId: user.uid,
-            senderName: user.displayName || 'Staff Member',
+            senderName,
             content: newMessage,
             timestamp: now,
+        });
+
+        sendClubNotification({
+            clubId,
+            title: `${senderName} — Squad Chat`,
+            body: newMessage.length > 80 ? newMessage.slice(0, 80) + '…' : newMessage,
+            url: '/club-dashboard/squad-chat',
+            tag: 'squad-chat',
+            excludeUserId: user.uid,
+            firestore,
         });
 
         setNewMessage('');

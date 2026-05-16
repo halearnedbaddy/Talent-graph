@@ -1,4 +1,4 @@
-const CACHE_NAME = 'talent-graph-v1';
+const CACHE_NAME = 'talent-graph-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -38,5 +38,54 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => caches.match(event.request))
+  );
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: 'Talent Graph', body: event.data.text() };
+  }
+
+  const { title = 'Talent Graph Kenya', body = '', icon, badge, url, tag } = payload;
+
+  const options = {
+    body,
+    icon: icon || '/icons/icon-192x192.png',
+    badge: badge || '/icons/icon-72x72.png',
+    tag: tag || 'tg-notification',
+    renotify: true,
+    requireInteraction: false,
+    vibrate: [200, 100, 200],
+    data: { url: url || '/club-dashboard' },
+    actions: [
+      { action: 'open', title: 'Open' },
+      { action: 'dismiss', title: 'Dismiss' },
+    ],
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  if (event.action === 'dismiss') return;
+
+  const targetUrl = event.notification.data?.url || '/club-dashboard';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(targetUrl) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(targetUrl);
+    })
   );
 });

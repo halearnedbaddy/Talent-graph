@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { ClubMember, ClubMatch, LiveMatch, LiveMatchEvent, LiveMatchStatSnapshot, LiveMatchRefereeDetails } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { sendClubNotification } from '@/hooks/usePushNotifications';
 
 const EVENT_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
   goal: { icon: '⚽', color: 'text-green-600', bg: 'bg-green-50 border-green-200' },
@@ -201,6 +202,20 @@ export default function LiveMatchPage() {
       });
       setActiveLive({ ...activeLive, homeScore: newHomeScore, awayScore: newAwayScore });
       toast({ title: 'Goal Logged', description: `${goalForm.playerName} — ${goalForm.minute}'` });
+
+      if (clubId) {
+        const scorer = goalForm.playerName || 'Unknown';
+        const assist = goalForm.assistPlayerName ? ` (assist: ${goalForm.assistPlayerName})` : '';
+        sendClubNotification({
+          clubId,
+          title: `⚽ GOAL — ${goalForm.minute}'`,
+          body: `${scorer}${assist} • ${newHomeScore}–${newAwayScore}`,
+          url: '/club-dashboard/live-match',
+          tag: 'live-match-goal',
+          firestore,
+        });
+      }
+
       setEventDialog(null);
       setGoalForm(f => ({ ...f, playerName: '', assistPlayerName: '', goalDistance: 0, offsideFlag: false }));
     } catch {
