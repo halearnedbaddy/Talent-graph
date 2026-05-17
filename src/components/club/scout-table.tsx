@@ -19,15 +19,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, useMemoFirebase, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
 import type { ClubMember, ScoutProfile, ScoutConnection, AthleteProfile } from '@/lib/types';
-import { Loader2, ExternalLink } from 'lucide-react';
+import { Loader2, ExternalLink, UserMinus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 type ScoutData = {
   scoutProfile: ScoutProfile;
+  membershipId: string;
   activeAthletes: number;
   avgAthleteScore: number | string;
 };
@@ -93,6 +105,7 @@ function useClubScoutsData(): { data: ScoutData[], isLoading: boolean } {
       return;
     }
 
+    const membershipMap = new Map(clubScoutMembers?.map(m => [m.userId, m.id]));
     const athleteMap = new Map(athletes?.map(a => [a.uid, a]));
 
     const processedData = scoutProfiles.map(scout => {
@@ -105,6 +118,7 @@ function useClubScoutsData(): { data: ScoutData[], isLoading: boolean } {
 
       return {
         scoutProfile: scout,
+        membershipId: membershipMap.get(scout.uid) || '',
         activeAthletes,
         avgAthleteScore,
       };
@@ -118,52 +132,88 @@ function useClubScoutsData(): { data: ScoutData[], isLoading: boolean } {
   return { data, isLoading };
 }
 
-export const columns: ColumnDef<ScoutData>[] = [
-    {
-        accessorKey: 'scoutProfile.name',
-        header: 'Scout Name',
-        cell: ({ row }) => (
-            <div className="flex items-center gap-2">
-                <span className="font-medium">{row.original.scoutProfile.name}</span>
-                <span className="text-xs text-muted-foreground">@{row.original.scoutProfile.username}</span>
-            </div>
-        )
-    },
-    {
-        accessorKey: 'activeAthletes',
-        header: 'Active Athletes',
-    },
-    {
-        accessorKey: 'avgAthleteScore',
-        header: 'Avg. Athlete Score',
-    },
-    {
-        id: 'actions',
-        header: 'Profile',
-        cell: ({ row }) => (
-            <Button variant="ghost" size="sm" asChild className="h-8">
-                <Link href={`/scout/${row.original.scoutProfile.username}`}>
-                    <ExternalLink className="h-3 w-3 mr-2" />
-                    View
-                </Link>
-            </Button>
-        )
-    }
-];
-
 export function ScoutTable() {
     const { data, isLoading } = useClubScoutsData();
+    const firestore = useFirestore();
     const [sorting, setSorting] = React.useState<SortingState>([]);
-    
+
+    const handleRemoveMember = (membershipId: string) => {
+        if (!firestore || !membershipId) return;
+        const memberRef = doc(firestore, 'club_members', membershipId);
+        deleteDocumentNonBlocking(memberRef);
+    };
+
+    const columns: ColumnDef<ScoutData>[] = [
+        {
+            accessorKey: 'scoutProfile.name',
+            header: 'Scout Name',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2">
+                    <span className="font-medium">{row.original.scoutProfile.name}</span>
+                    <span className="text-xs text-muted-foreground">@{row.original.scoutProfile.username}</span>
+                </div>
+            )
+        },
+        {
+            accessorKey: 'activeAthletes',
+            header: 'Active Athletes',
+        },
+        {
+            accessorKey: 'avgAthleteScore',
+            header: 'Avg. Score',
+        },
+        {
+            id: 'profile',
+            header: 'Profile',
+            cell: ({ row }) => (
+                <Button variant="ghost" size="sm" asChild className="h-8">
+                    <Link href={`/scout/${row.original.scoutProfile.username}`}>
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        View
+                    </Link>
+                </Button>
+            )
+        },
+        {
+            id: 'remove',
+            header: 'Actions',
+            cell: ({ row }) => (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                            <UserMinus className="h-3.5 w-3.5 mr-1" />
+                            Remove
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Remove Scout</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to remove <strong>{row.original.scoutProfile.name}</strong> from your club? They will lose access to squad data and the internal network.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => handleRemoveMember(row.original.membershipId)}
+                            >
+                                Remove
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )
+        }
+    ];
+
     const table = useReactTable({
         data,
         columns,
         getCoreRowModel: getCoreRowModel(),
         onSortingChange: setSorting,
         getSortedRowModel: getSortedRowModel(),
-        state: {
-            sorting,
-        },
+        state: { sorting },
     });
 
     return (
@@ -173,18 +223,11 @@ export function ScoutTable() {
                 <TableHeader>
                     {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => {
-                        return (
+                        {headerGroup.headers.map((header) => (
                             <TableHead key={header.id}>
-                            {header.isPlaceholder
-                                ? null
-                                : flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext()
-                                )}
+                                {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                             </TableHead>
-                        );
-                        })}
+                        ))}
                     </TableRow>
                     ))}
                 </TableHeader>
@@ -196,24 +239,21 @@ export function ScoutTable() {
                             </TableCell>
                         </TableRow>
                     ) : table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                        <TableRow
-                        key={row.id}
-                        data-state={row.getIsSelected() && 'selected'}
-                        >
-                        {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                        ))}
-                        </TableRow>
-                    ))
+                        table.getRowModel().rows.map((row) => (
+                            <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                                {row.getVisibleCells().map((cell) => (
+                                    <TableCell key={cell.id}>
+                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </TableCell>
+                                ))}
+                            </TableRow>
+                        ))
                     ) : (
-                    <TableRow>
-                        <TableCell colSpan={columns.length} className="h-24 text-center">
-                        No active scouts found in this club.
-                        </TableCell>
-                    </TableRow>
+                        <TableRow>
+                            <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground text-sm">
+                                No active scouts in this club yet.
+                            </TableCell>
+                        </TableRow>
                     )}
                 </TableBody>
                 </Table>

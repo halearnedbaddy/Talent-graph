@@ -8,6 +8,7 @@ import { signOut } from 'firebase/auth';
 import { useAuth, useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { LogOut, User, Eye, BarChart3, Users, Building2 } from 'lucide-react';
+import { ScoutNotificationBell } from './notification-bell';
 import { FilterSidebar } from './filter-sidebar';
 import { ResultsList } from './results-list';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
@@ -112,10 +113,13 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
                   <SidebarTrigger className="md:hidden"/>
                   <h1 className="text-xl font-bold tracking-tight">Scout Console</h1>
               </div>
-              <Button onClick={handleSignOut} variant="ghost" size="sm">
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
-              </Button>
+              <div className="flex items-center gap-1">
+                <ScoutNotificationBell />
+                <Button onClick={handleSignOut} variant="ghost" size="sm">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </div>
         </header>
