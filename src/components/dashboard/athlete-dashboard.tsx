@@ -50,6 +50,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { VideoEngagement } from './video-engagement';
+import { ReapplyClubDialog } from './reapply-club-dialog';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -384,7 +385,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               ? 'bg-destructive/5 border-destructive/20'
               : 'bg-primary/5 border-primary/20'
           }`}>
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
                 athleteProfile.clubStatus === 'active'
                   ? 'bg-green-500/15'
@@ -396,7 +397,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 {athleteProfile.clubStatus === 'rejected' && <ShieldX className="h-5 w-5 text-destructive" />}
                 {athleteProfile.clubStatus === 'pending' && <Clock className="h-5 w-5 text-primary" />}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-sm font-black truncate">{athleteProfile.clubName}</span>
@@ -420,6 +421,13 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 </p>
               </div>
             </div>
+            {athleteProfile.clubStatus === 'rejected' && (
+              <ReapplyClubDialog
+                athleteProfile={athleteProfile}
+                userAccount={userAccount}
+                onSuccess={() => {}}
+              />
+            )}
           </div>
         )}
 
