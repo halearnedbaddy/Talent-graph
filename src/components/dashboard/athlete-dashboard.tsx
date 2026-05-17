@@ -7,12 +7,12 @@ import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
-  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2
+  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
-import { useAuth, useFirestore } from '@/firebase';
-import { doc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { useAuth, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { doc, updateDoc, arrayRemove, collection, query, orderBy, limit, where, writeBatch } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import {
   AlertDialog,
@@ -69,7 +69,7 @@ interface AthleteDashboardProps {
   athleteProfile?: AthleteProfile;
 }
 
-type ActiveTab = 'home' | 'edit' | 'support';
+type ActiveTab = 'home' | 'edit' | 'support' | 'notifications';
 
 export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboardProps) {
   const auth = useAuth();
@@ -83,6 +83,27 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
   const [isDeletingMatch, setIsDeletingMatch] = useState(false);
   const { toast } = useToast();
+
+  // Live unread notification count
+  const notifsQuery = useMemoFirebase(() => (
+    firestore && athleteProfile ? query(
+      collection(firestore, 'notifications', athleteProfile.uid, 'items'),
+      where('isRead', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    ) : null
+  ), [firestore, athleteProfile?.uid]);
+  const { data: unreadNotifs } = useCollection<{ id: string; isRead: boolean }>(notifsQuery);
+  const unreadCount = unreadNotifs?.length ?? 0;
+
+  const handleMarkAllRead = async () => {
+    if (!firestore || !athleteProfile || !unreadNotifs?.length) return;
+    const batch = writeBatch(firestore);
+    unreadNotifs.forEach(n => {
+      batch.update(doc(firestore, 'notifications', athleteProfile.uid, 'items', n.id), { isRead: true });
+    });
+    await batch.commit();
+  };
 
   const handleDeleteMatch = async () => {
     if (!confirmDeleteMatch || !athleteProfile || !firestore) return;
@@ -239,6 +260,20 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   <span className="text-[10px] text-orange-500/70 font-medium">streak</span>
                 </div>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9"
+                onClick={() => setActiveTab('notifications')}
+                aria-label="Notifications"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Button>
               <SupportDialog />
               <EditProfileMediaDialog profile={athleteProfile} />
               <Button variant="outline" size="sm" asChild>
@@ -731,6 +766,34 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         onOpenChange={(open) => { if (!open) setActiveTab('home'); }}
       />
 
+      {/* ── Notifications Sheet ── */}
+      <Sheet open={activeTab === 'notifications'} onOpenChange={(open) => { if (!open) setActiveTab('home'); }}>
+        <SheetContent side="right" className="w-full sm:w-[420px] p-0 flex flex-col overflow-hidden">
+          <SheetHeader className="p-5 border-b shrink-0">
+            <div className="flex items-center justify-between">
+              <SheetTitle className="flex items-center gap-2 font-black uppercase tracking-widest text-sm">
+                <Bell className="h-4 w-4 text-primary" />
+                Notifications
+                {unreadCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground px-1.5">
+                    {unreadCount}
+                  </span>
+                )}
+              </SheetTitle>
+              {unreadCount > 0 && (
+                <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold shrink-0" onClick={handleMarkAllRead}>
+                  <CheckCheck className="w-3 h-3 mr-1" />
+                  Mark all read
+                </Button>
+              )}
+            </div>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-4">
+            <ProfileViewsCard athleteId={athleteProfile.uid} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* ── Quick-Action FAB ── */}
       <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2 md:bottom-6">
         {/* Action items — slide up when open */}
@@ -836,6 +899,30 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           <Eye className="h-5 w-5" />
           <span className="text-[10px] font-bold uppercase tracking-wide">Preview</span>
         </Link>
+
+        {/* Notifications */}
+        <button
+          onClick={() => setActiveTab('notifications')}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+            activeTab === 'notifications' ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {activeTab === 'notifications' && (
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+          )}
+          <div className="relative">
+            <Bell className={cn('h-5 w-5 transition-transform', activeTab === 'notifications' && 'scale-110')} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-black text-primary-foreground">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </div>
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'notifications' && 'font-black')}>
+            Alerts
+          </span>
+        </button>
 
         {/* Support */}
         <button
