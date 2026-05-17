@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
   collection, query, where, doc, writeBatch, deleteDoc,
-  onSnapshot, orderBy,
+  onSnapshot, orderBy, addDoc,
 } from 'firebase/firestore';
 import type { ClubMember, PendingMember } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +79,15 @@ export default function MemberRequestsPage() {
 
       await batch.commit();
 
+      await addDoc(collection(firestore, 'notifications', member.uid, 'items'), {
+        type: 'club_approved',
+        actorName: member.clubName || 'Your Club',
+        actorRole: 'club',
+        message: `You've been approved and added to ${member.clubName || 'the club'}'s squad!`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+
       toast({
         title: 'Member approved',
         description: `${member.fullName} has been added to the squad.`,
@@ -104,6 +113,15 @@ export default function MemberRequestsPage() {
       batch.delete(doc(firestore, 'clubs', clubId, 'pendingMembers', member.uid));
 
       await batch.commit();
+
+      await addDoc(collection(firestore, 'notifications', member.uid, 'items'), {
+        type: 'club_rejected',
+        actorName: member.clubName || 'Your Club',
+        actorRole: 'club',
+        message: `Your request to join ${member.clubName || 'the club'} was not approved at this time.`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
 
       toast({
         title: 'Request rejected',

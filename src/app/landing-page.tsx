@@ -12,14 +12,13 @@ import {
   User,
   GitGraph,
   Medal,
-  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Header } from '@/components/landing/header';
 import { Footer } from '@/components/landing/footer';
-import { PWAInstallButton } from '@/components/pwa-install-button';
+import { PWAInstallButton, IOSInstallBanner } from '@/components/pwa-install-button';
 
 export function LandingPage() {
   const heroImage = PlaceHolderImages.find((img) => img.id === 'hero-image');
@@ -28,6 +27,7 @@ export function LandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      <IOSInstallBanner />
       <Header />
       <main className="flex-1">
         {/* Hero Section */}
@@ -305,30 +305,6 @@ export function LandingPage() {
              <Button size="lg" asChild className="mt-8">
                 <Link href="/signup">Join The Movement</Link>
               </Button>
-          </div>
-        </section>
-
-        {/* Install section */}
-        <section className="py-16 md:py-20 bg-primary/5 border-t border-primary/10">
-          <div className="container mx-auto px-4 text-center max-w-2xl">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
-                <Download className="h-8 w-8 text-primary-foreground" />
-              </div>
-            </div>
-            <h2 className="text-2xl md:text-3xl font-bold mb-3">Install Talent Graph</h2>
-            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-              Add Talent Graph to your home screen for instant access — works on Android, iOS, and desktop. No app store needed.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <PWAInstallButton size="lg" className="min-w-[180px]" />
-              <Button size="lg" variant="outline" asChild>
-                <Link href="/signup">Create Free Account</Link>
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-6">
-              Works on Chrome, Edge, Safari (iOS), and most Android browsers.
-            </p>
           </div>
         </section>
 

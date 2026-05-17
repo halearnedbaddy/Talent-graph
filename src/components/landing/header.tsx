@@ -8,8 +8,6 @@ import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PWAInstallButton } from '@/components/pwa-install-button';
-
 export function Header() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
@@ -34,7 +32,6 @@ export function Header() {
           <span className="text-lg font-bold text-foreground tracking-tight">Talent Graph</span>
         </Link>
         <nav className="flex items-center gap-2 sm:gap-3">
-          <PWAInstallButton className="hidden sm:inline-flex h-9 px-4 text-sm" />
           {isUserLoading ? (
             <div className="flex items-center gap-4">
               <Skeleton className="h-9 w-20" />
