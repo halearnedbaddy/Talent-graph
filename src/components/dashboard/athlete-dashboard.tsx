@@ -42,6 +42,8 @@ import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import {
   Sheet,
   SheetContent,
@@ -78,6 +80,29 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const [fabOpen, setFabOpen] = useState(false);
   const [confirmDeleteVideo, setConfirmDeleteVideo] = useState<ShowcaseVideo | null>(null);
   const [isDeletingVideo, setIsDeletingVideo] = useState(false);
+  const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
+  const [isDeletingMatch, setIsDeletingMatch] = useState(false);
+  const { toast } = useToast();
+
+  const handleDeleteMatch = async () => {
+    if (!confirmDeleteMatch || !athleteProfile || !firestore) return;
+    setIsDeletingMatch(true);
+    try {
+      const updatedHistory = (athleteProfile.matchHistory || []).filter(m => m.id !== confirmDeleteMatch);
+      const newScores = calculateTalentGraphScore({ ...athleteProfile, matchHistory: updatedHistory }, userAccount);
+      await updateDoc(doc(firestore, 'athletes', athleteProfile.uid), {
+        matchHistory: updatedHistory,
+        ...newScores,
+        updatedAt: new Date().toISOString(),
+      });
+      toast({ title: 'Match removed', description: 'Your performance indices have been recalculated.' });
+      setConfirmDeleteMatch(null);
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not delete match. Please try again.' });
+    } finally {
+      setIsDeletingMatch(false);
+    }
+  };
 
   const handleDeleteShowcaseVideo = async () => {
     if (!confirmDeleteVideo || !athleteProfile || !firestore) return;
@@ -524,7 +549,11 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 <CardDescription>Performance breakdown by official competition.</CardDescription>
               </CardHeader>
               <CardContent>
-                <MatchStatisticsTable matchHistory={athleteProfile.matchHistory || []} />
+                <MatchStatisticsTable
+                  matchHistory={athleteProfile.matchHistory || []}
+                  onEdit={(id) => router.push(`/dashboard/add-match?id=${id}`)}
+                  onDelete={(id) => setConfirmDeleteMatch(id)}
+                />
               </CardContent>
             </Card>
 
@@ -620,6 +649,28 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   >
                     {isDeletingVideo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
                     Delete Video
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={!!confirmDeleteMatch} onOpenChange={(o) => { if (!o) setConfirmDeleteMatch(null); }}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove this match?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This match entry will be permanently deleted and your performance indices will be recalculated. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeletingMatch}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteMatch}
+                    disabled={isDeletingMatch}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {isDeletingMatch ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    Remove Match
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

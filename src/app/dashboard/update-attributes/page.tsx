@@ -97,10 +97,12 @@ export default function UpdateAttributesPage() {
                       <div key={attr} className="space-y-4">
                         <div className="flex justify-between items-center">
                           <Label className="font-bold text-xs uppercase tracking-widest">{attr}</Label>
-                          <span className="text-lg font-black text-primary">{scores[category][attr] || 5}</span>
+                          <span className={`text-lg font-black ${scores[category][attr] != null ? 'text-primary' : 'text-muted-foreground'}`}>
+                            {scores[category][attr] ?? '–'}
+                          </span>
                         </div>
                         <Slider 
-                          defaultValue={[scores[category][attr] || 5]} 
+                          value={[scores[category][attr] ?? 5]} 
                           max={10} 
                           min={1} 
                           step={1} 

@@ -27,6 +27,10 @@ export default function AddMatchPage() {
   const athleteDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'athletes', user.uid) : null), [firestore, user?.uid]);
   const { data: profile, isLoading: isProfileLoading } = useDoc<AthleteProfile>(athleteDocRef);
 
+  const existingMatch = pendingMatchId && profile
+    ? profile.matchHistory?.find(m => m.id === pendingMatchId) ?? null
+    : null;
+
   const [formData, setFormData] = useState({
     competition: '',
     category: 'league' as MatchEntry['category'],
@@ -128,8 +132,20 @@ export default function AddMatchPage() {
             <div className="flex items-center gap-3">
               <Trophy className="w-6 h-6 text-primary" />
               <div>
-                <CardTitle>{pendingMatchId ? 'Finalise Club Match Stats' : 'Log Independent Match'}</CardTitle>
-                <CardDescription className="text-neutral-400">Record your performance data to update your institutional Talent Graph.</CardDescription>
+                <CardTitle>
+                  {existingMatch?.clubMatchId
+                    ? 'Finalise Club Match Stats'
+                    : pendingMatchId
+                    ? 'Edit Match Performance'
+                    : 'Log Independent Match'}
+                </CardTitle>
+                <CardDescription className="text-neutral-400">
+                  {existingMatch?.clubMatchId
+                    ? 'Record your stats for this institutional fixture to update your Talent Graph.'
+                    : pendingMatchId
+                    ? 'Update your stats for this match. Changes will recalculate your indices.'
+                    : 'Record your performance data to update your institutional Talent Graph.'}
+                </CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -141,7 +157,7 @@ export default function AddMatchPage() {
                   placeholder="e.g. National Premier League"
                   value={formData.competition}
                   onChange={e => setFormData({ ...formData, competition: e.target.value })}
-                  disabled={!!pendingMatchId}
+                  disabled={!!(existingMatch?.clubMatchId)}
                   className="font-bold h-10"
                 />
               </div>

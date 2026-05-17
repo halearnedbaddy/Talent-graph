@@ -2,8 +2,9 @@
 
 import { MatchEntry } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ShieldCheck, Clock, Star, Shield } from 'lucide-react';
+import { ShieldCheck, Clock, Star, Shield, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 const CATEGORY_COLORS: Record<string, string> = {
   league: 'bg-blue-500/10 text-blue-700 border-blue-200',
@@ -13,7 +14,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: 'bg-gray-500/10 text-gray-700 border-gray-200',
 };
 
-export function MatchStatisticsTable({ matchHistory }: { matchHistory: MatchEntry[] }) {
+interface Props {
+  matchHistory: MatchEntry[];
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+}
+
+export function MatchStatisticsTable({ matchHistory, onEdit, onDelete }: Props) {
   const totals = matchHistory.reduce((acc, m) => ({
     apps: acc.apps + (Number(m.apps) || 0),
     minutes: acc.minutes + (Number(m.minutes) || 0),
@@ -83,7 +90,38 @@ export function MatchStatisticsTable({ matchHistory }: { matchHistory: MatchEntr
                 </div>
               </TableCell>
               <TableCell className="text-right">
-                {m.isVerified ? <ShieldCheck className="w-3 h-3 text-green-500 inline" /> : <Clock className="w-3 h-3 text-muted-foreground inline" />}
+                <div className="flex items-center justify-end gap-1">
+                  {m.isVerified
+                    ? <ShieldCheck className="w-3 h-3 text-green-500" />
+                    : <Clock className="w-3 h-3 text-muted-foreground" />
+                  }
+                  {!m.isVerified && (onEdit || onDelete) && (
+                    <div className="flex items-center gap-0.5 ml-1">
+                      {onEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onClick={() => onEdit(m.id)}
+                          title="Edit match"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => onDelete(m.id)}
+                          title="Delete match"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}
