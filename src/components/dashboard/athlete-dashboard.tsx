@@ -32,6 +32,7 @@ import { ProfileHeader } from './profile-header';
 import { MatchStatisticsTable } from './match-statistics-table';
 import { MatchActionCenter } from './match-action-center';
 import { ProfileViewsCard } from './profile-views-card';
+import { RecruitmentPipelineTracker } from './recruitment-pipeline-tracker';
 import { EditProfileMediaDialog } from './edit-profile-media-dialog';
 import { CareerHistoryCard } from './career-history-card';
 import { DeleteAccountDialog } from '@/components/account/delete-account-dialog';
@@ -716,6 +717,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             <EngagementLoop profile={athleteProfile} />
             <ProfileStrengthCard profile={athleteProfile} />
             <TierProgressionCard profile={athleteProfile} />
+            <RecruitmentPipelineTracker athleteId={athleteProfile.uid} />
             <ProfileViewsCard athleteId={athleteProfile.uid} />
             <ActivitySummary userAccount={userAccount} athleteProfile={athleteProfile} />
             <ScoutRequests athleteId={athleteProfile.uid} />
