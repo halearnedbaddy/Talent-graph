@@ -1,6 +1,6 @@
 'use client';
 
-import type { UserAccount, AthleteProfile } from '@/lib/types';
+import type { UserAccount, AthleteProfile, ShowcaseVideo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import {
@@ -11,8 +11,19 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
+import { doc, updateDoc, arrayRemove } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ActivitySummary } from './activity-summary';
 import { ScoutRequests } from './scout-requests';
 import { Badge } from '@/components/ui/badge';
@@ -59,10 +70,28 @@ type ActiveTab = 'home' | 'edit' | 'support';
 
 export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboardProps) {
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [moreOpen, setMoreOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [confirmDeleteVideo, setConfirmDeleteVideo] = useState<ShowcaseVideo | null>(null);
+  const [isDeletingVideo, setIsDeletingVideo] = useState(false);
+
+  const handleDeleteShowcaseVideo = async () => {
+    if (!confirmDeleteVideo || !athleteProfile || !firestore) return;
+    setIsDeletingVideo(true);
+    try {
+      await updateDoc(doc(firestore, 'athletes', athleteProfile.uid), {
+        showcaseVideos: arrayRemove(confirmDeleteVideo),
+      });
+      setConfirmDeleteVideo(null);
+    } catch {
+      // silent - toast not available here without hook; failure is non-critical
+    } finally {
+      setIsDeletingVideo(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -484,10 +513,17 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 </h3>
                 {athleteProfile.showcaseVideos.map((vid) => (
                   <Card key={vid.id} className="shadow-lg border-none overflow-hidden">
-                    <CardHeader className="bg-neutral-950 text-white py-3 px-4">
-                      <CardTitle className="text-sm font-black uppercase tracking-widest">
+                    <CardHeader className="bg-neutral-950 text-white py-3 px-4 flex flex-row items-center justify-between">
+                      <CardTitle className="text-sm font-black uppercase tracking-widest flex-1">
                         {vid.title || 'Showcase Clip'}
                       </CardTitle>
+                      <button
+                        onClick={() => setConfirmDeleteVideo(vid)}
+                        className="ml-3 p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-white/10 transition-colors shrink-0"
+                        title="Delete this video"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </CardHeader>
                     <CardContent className="p-0 bg-black">
                       <div className="aspect-video w-full">
@@ -510,6 +546,28 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 ))}
               </div>
             )}
+
+            <AlertDialog open={!!confirmDeleteVideo} onOpenChange={(o) => { if (!o) setConfirmDeleteVideo(null); }}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this showcase video?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    <strong>{confirmDeleteVideo?.title || 'This clip'}</strong> will be permanently removed from your profile. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeletingVideo}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteShowcaseVideo}
+                    disabled={isDeletingVideo}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {isDeletingVideo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    Delete Video
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
 
           <div className="space-y-8">

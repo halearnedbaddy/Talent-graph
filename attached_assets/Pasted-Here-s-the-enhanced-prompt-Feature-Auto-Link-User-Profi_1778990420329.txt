@@ -1,0 +1,123 @@
+Here's the enhanced prompt:
+
+---
+
+**Feature — Auto-Link User Profile to Club Dashboard on Registration**
+
+**Overview**
+When a user creates an account and selects or registers their club during onboarding, their profile must be automatically linked to that club's admin dashboard. The club admin should immediately see the new user in a pending/new members list and be able to add them to the squad with one click — no manual searching or re-entering of data.
+
+---
+
+**1. User Side — Registration Flow**
+
+During account creation, add a **"Select Your Club"** step where the user either:
+- Searches and selects an existing club from the database, OR
+- Registers a new club (if they are a club admin)
+
+On form submission, the user's Firestore document must be created with the following fields:
+
+```ts
+{
+  uid: string,
+  fullName: string,
+  email: string,
+  phone: string,
+  clubId: string,          // ID of the club they selected
+  clubName: string,        // for quick display
+  role: 'player',          // default role
+  status: 'pending',       // pending until club admin approves
+  position: string | null,
+  jerseyNumber: string | null,
+  createdAt: timestamp,
+  linkedToClub: true
+}
+```
+
+---
+
+**2. Firestore Structure**
+
+When a user registers and selects a club, write to two places simultaneously:
+
+**`/users/{uid}`** — the user's own profile document (above)
+
+**`/clubs/{clubId}/pendingMembers/{uid}`** — a mirror entry so the club admin sees them immediately:
+
+```ts
+{
+  uid: string,
+  fullName: string,
+  email: string,
+  phone: string,
+  position: string | null,
+  jerseyNumber: string | null,
+  status: 'pending',
+  requestedAt: timestamp
+}
+```
+
+Use a **Firestore batch write** so both writes succeed or fail together — no orphaned records.
+
+---
+
+**3. Club Admin Dashboard — New Member Requests**
+
+Add a **"Member Requests"** tab or section to the club admin dashboard that:
+
+- Shows a real-time list of all users with `status: 'pending'` for that club
+- Displays: Name, Email, Phone, Position, Jersey Number requested
+- Has two action buttons per user:
+  - ✅ **Approve & Add to Squad** — updates `status` to `'active'`, moves user from `pendingMembers` to `squad` subcollection
+  - ❌ **Reject** — updates `status` to `'rejected'`, notifies user, removes from pending list
+
+On approval, automatically update:
+- `/clubs/{clubId}/squad/{uid}` — add to squad
+- `/users/{uid}` — update `status` to `'active'`
+- `/clubs/{clubId}/pendingMembers/{uid}` — delete the pending entry
+
+All in a single **batch write**.
+
+---
+
+**4. Real-Time Updates**
+
+- Use Firestore `onSnapshot` listeners so the admin dashboard updates **instantly** when a new user registers — no page refresh needed
+- Show a **badge/notification count** on the "Member Requests" tab when there are pending members
+- The user's profile page should also update in real-time when their status changes from `pending` → `active`
+
+---
+
+**5. User Feedback**
+
+- After registration, show the user a clear message: *"Your request has been sent to [Club Name]. You'll be notified once the admin approves you."*
+- When approved, send a **push notification or email** to the user: *"You've been added to [Club Name]'s squad!"*
+- When rejected, notify the user with the reason if provided
+
+---
+
+**6. Security Rules**
+
+Update Firestore rules to ensure:
+- Users can only write to their own `/users/{uid}` document
+- Users can write to `/clubs/{clubId}/pendingMembers/{uid}` only during registration
+- Only the club admin (`role: 'clubAdmin'`) can read/write the full squad and approve/reject members
+
+```js
+match /clubs/{clubId}/pendingMembers/{uid} {
+  allow create: if request.auth.uid == uid;
+  allow read, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clubAdmin'
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clubId == clubId;
+}
+```
+
+---
+
+**Expected Result**
+- User registers → selects club → profile instantly appears in club admin dashboard under "Member Requests"
+- Admin approves → user is live in the squad with no extra steps
+- Entire flow is real-time, seamless, and requires zero manual data re-entry on either side
+
+---
+
+Clean, production-ready, and developer-actionable. Send this as-is. 🚀

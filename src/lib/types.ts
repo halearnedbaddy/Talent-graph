@@ -489,3 +489,16 @@ export interface NotificationHistoryItem {
   sentBy?: string;
   recipientCount: number;
 }
+
+export interface PendingMember {
+  uid: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  position?: string;
+  jerseyNumber?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  clubId?: string;
+  clubName?: string;
+}

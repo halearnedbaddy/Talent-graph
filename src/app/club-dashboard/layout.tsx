@@ -18,16 +18,17 @@ import {
   Radio,
   Grid3X3,
   X,
-  Bell
+  Bell,
+  UserCheck,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { SupportDialog } from '@/components/support/support-dialog';
 import { PushNotificationToggle, PushNotificationPrompt } from '@/components/club/push-notification-prompt';
@@ -36,6 +37,7 @@ import type { ClubMember } from '@/lib/types';
 const navItems = [
   { href: '/club-dashboard', label: 'Overview', icon: Home },
   { href: '/club-dashboard/athletes', label: 'Squad', icon: Users },
+  { href: '/club-dashboard/requests', label: 'Requests', icon: UserCheck, pendingBadge: true },
   { href: '/club-dashboard/scouts', label: 'Staff', icon: UserPlus },
   { href: '/club-dashboard/squad-chat', label: 'Chat', icon: MessageSquare },
   { href: '/club-dashboard/matches', label: 'Matches', icon: Trophy },
@@ -63,11 +65,23 @@ export default function ClubDashboardLayout({
   const firestore = useFirestore();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  const [pendingCount, setPendingCount] = useState(0);
+
   const clubMemberQuery = useMemoFirebase(() => (
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
   ), [firestore, user]);
   const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
   const clubId = userMemberships?.[0]?.clubId;
+
+  useEffect(() => {
+    if (!firestore || !clubId) return;
+    const unsub = onSnapshot(
+      collection(firestore, 'clubs', clubId, 'pendingMembers'),
+      (snap) => setPendingCount(snap.size),
+      () => setPendingCount(0)
+    );
+    return () => unsub();
+  }, [firestore, clubId]);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -92,6 +106,11 @@ export default function ClubDashboardLayout({
           {(item as any).badge && (
             <Badge className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0 h-4 tracking-wider">
               {(item as any).badge}
+            </Badge>
+          )}
+          {(item as any).pendingBadge && pendingCount > 0 && (
+            <Badge className="bg-primary text-primary-foreground font-black text-[8px] px-1.5 py-0 h-4 min-w-4 tracking-wider">
+              {pendingCount}
             </Badge>
           )}
         </Link>
@@ -170,6 +189,11 @@ export default function ClubDashboardLayout({
                       {(item as any).badge && (
                         <Badge className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0 h-4 tracking-wider">
                           {(item as any).badge}
+                        </Badge>
+                      )}
+                      {(item as any).pendingBadge && pendingCount > 0 && (
+                        <Badge className="bg-primary text-primary-foreground font-black text-[8px] px-1.5 py-0 h-4 min-w-4 tracking-wider">
+                          {pendingCount}
                         </Badge>
                       )}
                     </Link>
