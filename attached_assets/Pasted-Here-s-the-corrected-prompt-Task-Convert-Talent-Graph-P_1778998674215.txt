@@ -1,0 +1,54 @@
+Here's the corrected prompt:
+
+---
+
+**Task: Convert Talent-Graph PWA to Sideloadable APK using TWA (Bubblewrap)**
+
+**Objective:**
+Generate a distributable `.apk` file from the Talent-Graph web app using Trusted Web Activity (Bubblewrap). The APK should be sideloadable — no Play Store needed.
+
+**Requirements:**
+
+1. **Install Prompt on Browser Load**
+When a user opens `https://talent-graph.vercel.app` in Chrome/Android browser, an "Install Now" prompt must appear automatically. This requires:
+   - A valid `manifest.json` with `name`, `short_name`, `start_url`, `display: standalone`, `icons` (192px and 512px), and `theme_color`
+   - A registered service worker (`sw.js`) that caches at least one asset
+   - The site must be served over **HTTPS** (Vercel handles this automatically ✅)
+   - Implement the `beforeinstallprompt` event in JS to capture and trigger a custom "Install Now" button/banner — don't rely on the default browser prompt alone
+
+   ```js
+   let deferredPrompt;
+   window.addEventListener('beforeinstallprompt', (e) => {
+     e.preventDefault();
+     deferredPrompt = e;
+     showInstallBanner(); // show your custom UI
+   });
+
+   document.getElementById('install-btn').addEventListener('click', () => {
+     deferredPrompt.prompt();
+     deferredPrompt.choice.then((outcome) => {
+       deferredPrompt = null;
+     });
+   });
+   ```
+
+2. **TWA Build via Bubblewrap**
+   - Install Bubblewrap: `npm install -g @bubblewrap/cli`
+   - Run: `bubblewrap init --manifest https://talent-graph.vercel.app/manifest.json`
+   - Build: `bubblewrap build`
+   - Output: `app-release-signed.apk`
+
+3. **Signing**
+   - Generate a keystore for signing the APK
+   - Store keystore credentials securely (not in git)
+
+4. **Deliverables:**
+   - Working `app-release-signed.apk` sideloadable file
+   - Verified install prompt appearing on first browser visit
+   - Service worker confirmed active in Chrome DevTools → Application tab
+
+**Stack:** Next.js, hosted on `https://talent-graph.vercel.app`
+
+---
+
+Ready to send. Just paste and go.

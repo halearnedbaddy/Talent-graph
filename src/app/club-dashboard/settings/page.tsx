@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Save, Plus, X } from 'lucide-react';
-import type { ClubProfile, ClubMember, ClubSettings } from '@/lib/types';
+import type { ClubProfile, ClubSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 
@@ -18,11 +18,6 @@ export default function ClubSettingsPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
-
-    const clubMemberQuery = useMemoFirebase(() => (
-        firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
-    ), [firestore, user]);
-    // Note: We'll use a direct doc ref for the club settings instead
     const [clubId, setClubId] = useState<string | null>(null);
 
     // Initial fetch to get clubId from membership

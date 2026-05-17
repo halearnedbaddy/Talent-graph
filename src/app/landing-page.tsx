@@ -51,12 +51,6 @@ export function LandingPage() {
               The Talent Graph for athletes and scouts. Verified data, structured profiles, and long-term performance tracking.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Button size="lg" asChild className="bg-primary-foreground text-primary hover:bg-primary-foreground/90">
-                <Link href="/signup">Create Account</Link>
-              </Button>
-              <Button size="lg" variant="secondary" asChild>
-                <Link href="/login">Sign In</Link>
-              </Button>
               <PWAInstallButton className="bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-sm" />
             </div>
           </div>

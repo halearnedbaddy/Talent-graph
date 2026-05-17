@@ -1,5 +1,5 @@
 {
-  "name": "Talent Graph",
+  "name": "Talent Graph Kenya",
   "short_name": "Talent Graph",
   "description": "Your professional identity in sports. Verified data, structured profiles, and long-term performance tracking.",
   "start_url": "/",
@@ -8,6 +8,8 @@
   "theme_color": "#000000",
   "orientation": "portrait-primary",
   "scope": "/",
+  "lang": "en",
+  "id": "/",
   "icons": [
     { "src": "/icons/icon-72x72.png",   "sizes": "72x72",   "type": "image/png", "purpose": "any maskable" },
     { "src": "/icons/icon-96x96.png",   "sizes": "96x96",   "type": "image/png", "purpose": "any maskable" },
@@ -22,10 +24,31 @@
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
-      "description": "Go to your athlete dashboard",
-      "url": "/dashboard",
+      "description": "Go to your dashboard",
+      "url": "/",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Scout Dashboard",
+      "short_name": "Scouts",
+      "description": "Scout talent discovery",
+      "url": "/scout-dashboard",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Club Dashboard",
+      "short_name": "Club",
+      "description": "Club management",
+      "url": "/club-dashboard/athletes",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ],
-  "categories": ["sports", "productivity", "lifestyle"]
+  "categories": ["sports", "productivity", "business"],
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "https://talent-graph.vercel.app/manifest.json"
+    }
+  ]
 }
