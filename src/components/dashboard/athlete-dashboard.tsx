@@ -7,7 +7,7 @@ import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
-  Plus
+  Plus, Flame
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
@@ -104,6 +104,31 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const profileScore = completionItems.reduce((s, i) => s + (i.achieved ? i.weight : 0), 0);
   const isComplete = profileScore === 100;
 
+  // ── Streak: consecutive weeks (Mon–Sun) with ≥1 match logged ──
+  const matchStreak = (() => {
+    const history = athleteProfile.matchHistory ?? [];
+    if (!history.length) return 0;
+    const getMonday = (d: Date) => {
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const m = new Date(d);
+      m.setDate(diff);
+      m.setHours(0, 0, 0, 0);
+      return m.getTime();
+    };
+    const weeksWithMatches = new Set(
+      history
+        .map(m => { const d = new Date(m.updatedAt); return isNaN(d.getTime()) ? null : getMonday(d); })
+        .filter((v): v is number => v !== null)
+    );
+    let streak = 0;
+    const MS_WEEK = 7 * 24 * 60 * 60 * 1000;
+    let week = getMonday(new Date());
+    if (!weeksWithMatches.has(week)) week -= MS_WEEK;
+    while (weeksWithMatches.has(week)) { streak++; week -= MS_WEEK; }
+    return streak;
+  })();
+
   const bannerBg = isComplete
     ? 'bg-green-500/10 border-green-500/20'
     : profileScore >= 50
@@ -151,6 +176,13 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 <span className="text-xs font-black">{profileScore}%</span>
                 <span className="text-[10px] text-muted-foreground font-medium">profile strength</span>
               </div>
+              {matchStreak > 0 && (
+                <div className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-orange-400/40 bg-orange-500/10 mr-2">
+                  <Flame className="h-3.5 w-3.5 text-orange-500" />
+                  <span className="text-xs font-black text-orange-600">{matchStreak}w</span>
+                  <span className="text-[10px] text-orange-500/70 font-medium">streak</span>
+                </div>
+              )}
               <SupportDialog />
               <EditProfileMediaDialog profile={athleteProfile} />
               <Button variant="outline" size="sm" asChild>
@@ -172,6 +204,12 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 <div className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-green-500' : profileScore >= 50 ? 'bg-primary' : 'bg-yellow-500'}`} />
                 <span className="text-[11px] font-black tabular-nums">{profileScore}%</span>
               </div>
+              {matchStreak > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full border border-orange-400/40 bg-orange-500/10">
+                  <Flame className="h-3 w-3 text-orange-500" />
+                  <span className="text-[11px] font-black text-orange-600 tabular-nums">{matchStreak}w</span>
+                </div>
+              )}
 
               <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
                 <SheetTrigger asChild>
@@ -306,6 +344,50 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             </div>
           </div>
         </div>
+
+        {/* ── Streak Card ── */}
+        {matchStreak > 0 ? (
+          <div className="rounded-xl border border-orange-400/30 bg-gradient-to-r from-orange-500/10 to-amber-500/5 p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-orange-500/15 flex items-center justify-center shrink-0">
+                <Flame className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-orange-600">
+                  {matchStreak === 1 ? 'Streak started!' : `${matchStreak}-week streak`}
+                  {matchStreak >= 4 && ' 🔥'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {matchStreak === 1
+                    ? 'You logged a match this week — keep it going next week.'
+                    : matchStreak < 4
+                    ? `You've logged matches ${matchStreak} weeks running. Keep the momentum.`
+                    : `${matchStreak} consecutive weeks of match data — scouts love consistency.`}
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 flex flex-col items-center">
+              <span className="text-3xl font-black text-orange-500 tabular-nums leading-none">{matchStreak}</span>
+              <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">weeks</span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-muted-foreground/20 p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+              <Flame className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-muted-foreground">No active streak yet</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Log a match this week to start your streak — consistency builds scout confidence.</p>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0 text-xs font-black h-8 gap-1.5" asChild>
+              <Link href="/dashboard/add-match">
+                Log Match
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </Button>
+          </div>
+        )}
 
         <ProfileHeader profile={athleteProfile} />
 
