@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  collection, query, where, doc, writeBatch,
+  collection, query, where, doc, writeBatch, addDoc,
 } from 'firebase/firestore';
 import { Search, Building2, Check, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -92,6 +92,21 @@ export function ReapplyClubDialog({ athleteProfile, userAccount, onSuccess }: Pr
       });
 
       await batch.commit();
+
+      // Notify the club admin — clubId is always 'club_{adminUid}'
+      const adminUid = selectedClubId.replace(/^club_/, '');
+      if (adminUid) {
+        const fullName = `${userAccount.firstName} ${userAccount.lastName}`.trim();
+        await addDoc(collection(firestore, 'notifications', adminUid, 'items'), {
+          type: 'club_join_request',
+          actorName: fullName || 'An athlete',
+          actorRole: 'athlete',
+          athleteId: athleteProfile.uid,
+          message: `${fullName || 'An athlete'} has sent a join request to ${selectedClubName}.`,
+          isRead: false,
+          createdAt: now,
+        });
+      }
 
       toast({
         title: 'Request sent!',
