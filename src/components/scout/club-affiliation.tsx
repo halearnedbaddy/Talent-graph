@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search, Building, Check, Clock } from 'lucide-react';
+import { Loader2, Search, Building, Check, Clock, X } from 'lucide-react';
 import type { ClubProfile, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -16,8 +16,7 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
-    const [requestingId, setRequestingId] = useState<string | null>(null);
+    const [loadingId, setLoadingId] = useState<string | null>(null);
 
     // 1. Get clubs matching search
     const clubsQuery = useMemoFirebase(() => (
@@ -33,7 +32,7 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
 
     const handleJoinRequest = async (clubId: string) => {
         if (!user || !firestore) return;
-        setRequestingId(clubId);
+        setLoadingId(clubId);
         try {
             const memberId = `${user.uid}_${clubId}`;
             await setDoc(doc(firestore, 'club_members', memberId), {
@@ -44,15 +43,31 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
                 status: 'pending',
                 joinedAt: new Date().toISOString()
             });
-            toast({ title: 'Request Sent', description: 'Institutional administrators have been notified.' });
-        } catch (e) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Failed to send join request.' });
+            toast({ title: 'Request Sent', description: 'Club administrators have been notified of your request.' });
+        } catch (e: any) {
+            console.error('[ClubAffiliation] join error:', e);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to send join request. Please try again.' });
         } finally {
-            setRequestingId(null);
+            setLoadingId(null);
         }
     };
 
-    const myMembershipMap = new Map(memberships?.map(m => [m.clubId, m.status]));
+    const handleCancelRequest = async (clubId: string) => {
+        if (!user || !firestore) return;
+        setLoadingId(clubId);
+        try {
+            const memberId = `${user.uid}_${clubId}`;
+            await deleteDoc(doc(firestore, 'club_members', memberId));
+            toast({ title: 'Request Cancelled', description: 'Your join request has been withdrawn.' });
+        } catch (e: any) {
+            console.error('[ClubAffiliation] cancel error:', e);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to cancel request. Please try again.' });
+        } finally {
+            setLoadingId(null);
+        }
+    };
+
+    const myMembershipMap = new Map(memberships?.map(m => [m.clubId, m]));
 
     return (
         <Card className="border-none shadow-sm bg-background">
@@ -63,9 +78,9 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
             <CardContent className="space-y-6">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                        placeholder="Search for an organization..." 
-                        className="pl-9" 
+                    <Input
+                        placeholder="Search for an organization..."
+                        className="pl-9"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -73,7 +88,10 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
 
                 <div className="space-y-2">
                     {clubs?.filter(c => c.uid !== currentClubId).map(club => {
-                        const status = myMembershipMap.get(club.uid);
+                        const membership = myMembershipMap.get(club.uid);
+                        const status = membership?.status;
+                        const isLoading = loadingId === club.uid;
+
                         return (
                             <div key={club.uid} className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/30 transition-colors">
                                 <div className="flex items-center gap-4">
@@ -85,22 +103,35 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
                                         <p className="text-xs text-muted-foreground">{club.location}</p>
                                     </div>
                                 </div>
+
                                 {status === 'active' ? (
                                     <Badge className="bg-green-500/10 text-green-600 border-none font-black text-[10px] h-7 px-3">
                                         <Check className="w-3 h-3 mr-1" /> ACTIVE
                                     </Badge>
                                 ) : status === 'pending' ? (
-                                    <Badge variant="outline" className="text-orange-500 border-orange-200 font-black text-[10px] h-7 px-3">
-                                        <Clock className="w-3 h-3 mr-1" /> PENDING
-                                    </Badge>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-orange-500 border-orange-200 font-black text-[10px] h-7 px-3">
+                                            <Clock className="w-3 h-3 mr-1" /> PENDING
+                                        </Badge>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => handleCancelRequest(club.uid)}
+                                            disabled={isLoading}
+                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                            title="Cancel request"
+                                        >
+                                            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                                        </Button>
+                                    </div>
                                 ) : (
-                                    <Button 
-                                        size="sm" 
+                                    <Button
+                                        size="sm"
                                         onClick={() => handleJoinRequest(club.uid)}
-                                        disabled={requestingId === club.uid}
+                                        disabled={isLoading}
                                         className="font-black text-[10px] uppercase tracking-widest h-8"
                                     >
-                                        {requestingId === club.uid ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Join Club'}
+                                        {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Join Club'}
                                     </Button>
                                 )}
                             </div>
@@ -108,6 +139,9 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
                     })}
                     {searchQuery.length > 2 && clubs?.length === 0 && (
                         <p className="text-center py-8 text-sm text-muted-foreground">No clubs found matching "{searchQuery}"</p>
+                    )}
+                    {searchQuery.length > 0 && searchQuery.length <= 2 && (
+                        <p className="text-center py-4 text-xs text-muted-foreground">Type at least 3 characters to search</p>
                     )}
                 </div>
             </CardContent>

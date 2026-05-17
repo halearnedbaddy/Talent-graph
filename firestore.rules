@@ -95,10 +95,17 @@ service cloud.firestore {
 
     match /club_members/{memberId} {
       allow read: if isSignedIn();
+      // Admins can create their own admin membership; scouts can create a pending join request
       allow create: if isSignedIn() && 
         request.resource.data.userId == request.auth.uid &&
-        request.resource.data.role == 'admin';
-      allow update, delete: if isAdmin() || isClubAdmin();
+        (
+          request.resource.data.role == 'admin' ||
+          (request.resource.data.role == 'scout' && request.resource.data.status == 'pending')
+        );
+      // Club admins and system admins can approve/reject; scouts can cancel their own pending request
+      allow update: if isAdmin() || isClubAdmin();
+      allow delete: if isAdmin() || isClubAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'pending');
     }
 
     match /matches/{matchId} {
