@@ -27,6 +27,7 @@ export default function ClubSettingsPage() {
     const logoInputRef = useRef<HTMLInputElement>(null);
     const [logoPreview, setLogoPreview] = useState<string>('');
     const [logoUpload, setLogoUpload] = useState<UploadProgress | null>(null);
+    const [isCompressingLogo, setIsCompressingLogo] = useState(false);
     const [pendingLogoUrl, setPendingLogoUrl] = useState<string | null>(null);
 
     useEffect(() => {
@@ -70,23 +71,31 @@ export default function ClubSettingsPage() {
             toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select an image file.' });
             return;
         }
+        if (file.size > 15 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'File too large', description: 'Please choose an image under 15 MB.' });
+            return;
+        }
         if (!clubId) return;
         const previewUrl = URL.createObjectURL(file);
         setLogoPreview(previewUrl);
-        setLogoUpload({ progress: 0, state: 'running' });
+        setIsCompressingLogo(true);
+        setLogoUpload(null);
         setPendingLogoUrl(null);
         try {
-            const compressed = await compressImage(file, 400, 0.85);
+            const compressed = await compressImage(file, 400, 0.82);
+            setIsCompressingLogo(false);
+            setLogoUpload({ progress: 5, state: 'running' });
             const logoBlob = new File([compressed], 'logo.jpg', { type: 'image/jpeg' });
             const downloadUrl = await uploadFileWithProgress(
                 firebaseApp,
                 `club-logos/${clubId}/logo.jpg`,
                 logoBlob,
-                setLogoUpload
+                (p) => setLogoUpload({ ...p, progress: Math.max(5, p.progress) })
             );
             setPendingLogoUrl(downloadUrl);
             setLogoPreview(downloadUrl);
         } catch (err: any) {
+            setIsCompressingLogo(false);
             setLogoUpload({ progress: 0, state: 'error', error: err.message });
             toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
         }

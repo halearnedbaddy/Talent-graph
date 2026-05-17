@@ -42,6 +42,7 @@ export default function ScoutProfilePage() {
     const photoInputRef = useRef<HTMLInputElement>(null);
     const [photoPreview, setPhotoPreview] = useState<string>('');
     const [photoUpload, setPhotoUpload] = useState<UploadProgress | null>(null);
+    const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
     const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
 
     const scoutDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'scouts', user.uid) : null), [firestore, user?.uid]);
@@ -86,23 +87,31 @@ export default function ScoutProfilePage() {
             toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select an image file.' });
             return;
         }
+        if (file.size > 15 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'File too large', description: 'Please choose an image under 15 MB.' });
+            return;
+        }
         if (!user?.uid) return;
         const previewUrl = URL.createObjectURL(file);
         setPhotoPreview(previewUrl);
-        setPhotoUpload({ progress: 0, state: 'running' });
+        setIsCompressingPhoto(true);
+        setPhotoUpload(null);
         setPendingPhotoUrl(null);
         try {
-            const compressed = await compressImage(file, 400, 0.85);
+            const compressed = await compressImage(file, 400, 0.82);
+            setIsCompressingPhoto(false);
+            setPhotoUpload({ progress: 5, state: 'running' });
             const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
             const downloadUrl = await uploadFileWithProgress(
                 firebaseApp,
                 `scout-photos/${user.uid}/photo.jpg`,
                 photoBlob,
-                setPhotoUpload
+                (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
             );
             setPendingPhotoUrl(downloadUrl);
             setPhotoPreview(downloadUrl);
         } catch (err: any) {
+            setIsCompressingPhoto(false);
             setPhotoUpload({ progress: 0, state: 'error', error: err.message });
             toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
         }
@@ -219,18 +228,21 @@ export default function ScoutProfilePage() {
                                     size="sm"
                                     className="gap-2 font-bold text-xs h-9"
                                     onClick={() => photoInputRef.current?.click()}
-                                    disabled={photoUpload?.state === 'running'}
+                                    disabled={isCompressingPhoto || photoUpload?.state === 'running'}
                                 >
                                     <Upload className="w-3.5 h-3.5" />
                                     {photoPreview ? 'Change Photo' : 'Upload Photo'}
                                 </Button>
-                                {photoUpload?.state === 'running' && (
+                                {(isCompressingPhoto || photoUpload?.state === 'running') && (
                                     <div className="space-y-1 max-w-xs">
                                         <div className="flex justify-between text-xs text-muted-foreground">
-                                            <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Uploading...</span>
-                                            <span>{photoUpload.progress}%</span>
+                                            <span className="flex items-center gap-1">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                {isCompressingPhoto ? 'Compressing…' : 'Uploading…'}
+                                            </span>
+                                            <span>{isCompressingPhoto ? '—' : `${photoUpload?.progress ?? 0}%`}</span>
                                         </div>
-                                        <Progress value={photoUpload.progress} className="h-1.5" />
+                                        <Progress value={isCompressingPhoto ? undefined : photoUpload?.progress} className="h-1.5" />
                                     </div>
                                 )}
                                 {photoUpload?.state === 'success' && (

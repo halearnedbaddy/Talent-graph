@@ -64,6 +64,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
   // Photo state
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [photoUpload, setPhotoUpload] = useState<UploadProgress | null>(null);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
   const [photoDragOver, setPhotoDragOver] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +94,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
   const resetState = useCallback(() => {
     setPhotoPreview(profile.photoUrl || '');
     setPhotoUpload(null);
+    setIsCompressingPhoto(false);
     setPendingPhotoUrl(null);
     setPhotoDragOver(false);
     setVideoFile(null);
@@ -116,7 +118,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
       if (isControlled) onExternalOpenChange?.(true);
       else setInternalOpen(true);
     } else {
-      if (photoUpload?.state === 'running' || videoUpload?.state === 'running') return;
+      if (isCompressingPhoto || photoUpload?.state === 'running' || videoUpload?.state === 'running') return;
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
       if (isControlled) onExternalOpenChange?.(false);
       else setInternalOpen(false);
@@ -135,24 +137,32 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
       toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select an image file.' });
       return;
     }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'File too large', description: 'Please choose an image under 15 MB.' });
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setPhotoPreview(previewUrl);
-    setPhotoUpload({ progress: 0, state: 'running' });
+    setIsCompressingPhoto(true);
+    setPhotoUpload(null);
     setPendingPhotoUrl(null);
 
     try {
       if (!auth.currentUser) throw new Error('Not signed in');
-      const compressed = await compressImage(file, 600, 0.85);
+      const compressed = await compressImage(file, 400, 0.82);
+      setIsCompressingPhoto(false);
+      setPhotoUpload({ progress: 5, state: 'running' });
       const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
       const downloadUrl = await uploadFileWithProgress(
         firebaseApp,
         `profile-photos/${profile.uid}/photo.jpg`,
         photoBlob,
-        setPhotoUpload
+        (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
       );
       setPendingPhotoUrl(downloadUrl);
       setPhotoPreview(downloadUrl);
     } catch (err: any) {
+      setIsCompressingPhoto(false);
       setPhotoUpload({ progress: 0, state: 'error', error: err.message });
       toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
     }
@@ -307,7 +317,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     }
   };
 
-  const isUploading = photoUpload?.state === 'running' || videoUpload?.state === 'running' || showcaseUpload?.state === 'running';
+  const isUploading = isCompressingPhoto || photoUpload?.state === 'running' || videoUpload?.state === 'running' || showcaseUpload?.state === 'running';
   const canSave = !isSaving && (
     bio.trim() !== (profile.bio || '').trim() ||
     videoTitle.trim() !== (profile.highlightVideoTitle || '').trim() ||
@@ -395,10 +405,10 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                   </div>
                 </div>
 
-                {photoUpload?.state === 'running' ? (
+                {(isCompressingPhoto || photoUpload?.state === 'running') ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Uploading...
+                    {isCompressingPhoto ? 'Compressing image…' : 'Uploading…'}
                   </div>
                 ) : (
                   <div className="text-center">
@@ -412,13 +422,16 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
               </button>
 
               {/* Upload progress */}
-              {photoUpload?.state === 'running' && (
+              {(isCompressingPhoto || photoUpload?.state === 'running') && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Uploading photo...</span>
-                    <span>{photoUpload.progress}%</span>
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {isCompressingPhoto ? 'Compressing image…' : 'Uploading photo…'}
+                    </span>
+                    <span>{isCompressingPhoto ? '—' : `${photoUpload?.progress ?? 0}%`}</span>
                   </div>
-                  <Progress value={photoUpload.progress} className="h-2" />
+                  <Progress value={isCompressingPhoto ? undefined : photoUpload?.progress} className="h-2" />
                 </div>
               )}
 
