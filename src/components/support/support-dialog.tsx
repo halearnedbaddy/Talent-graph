@@ -22,11 +22,24 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
-export function SupportDialog() {
+interface SupportDialogProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  trigger?: React.ReactNode;
+}
+
+export function SupportDialog({ open: externalOpen, onOpenChange: externalOnOpenChange, trigger }: SupportDialogProps = {}) {
   const { user } = useUser();
   const firestore = useFirestore();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [view, setStep] = useState<'list' | 'chat'>('list');
+
+  const isControlled = externalOpen !== undefined;
+  const isOpen = isControlled ? externalOpen : internalOpen;
+  const setIsOpen = (val: boolean) => {
+    if (isControlled) externalOnOpenChange?.(val);
+    else setInternalOpen(val);
+  };
   const [selectedAdminId, setSelectedAdminId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,12 +106,16 @@ export function SupportDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { setIsOpen(open); if(!open) setStep('list'); }}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Headphones className="h-4 w-4" />
-          Support
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline" size="sm" className="gap-2">
+              <Headphones className="h-4 w-4" />
+              Support
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[450px] h-[600px] flex flex-col p-0 overflow-hidden">
         <DialogHeader className="p-6 border-b bg-muted/20">
           <div className="flex items-center gap-2">

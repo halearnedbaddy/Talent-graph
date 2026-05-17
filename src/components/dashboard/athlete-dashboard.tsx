@@ -3,7 +3,11 @@
 import type { UserAccount, AthleteProfile } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3, Eye, Award, Bell, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight, CheckCircle2 } from 'lucide-react';
+import {
+  LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
+  Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
+  CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
 import { useAuth } from '@/firebase';
@@ -24,25 +28,38 @@ import { TierProgressionCard } from './tier-progression-card';
 import { EngagementLoop } from './engagement-loop';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
-const PerformanceRadarChart = dynamic(() => import('./performance-radar-chart').then(mod => mod.PerformanceRadarChart), {
-  loading: () => <div className="flex h-full items-center justify-center"><Skeleton className="h-64 w-64 rounded-full" /></div>,
-  ssr: false
-});
+const PerformanceRadarChart = dynamic(
+  () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
+  { loading: () => <div className="flex h-full items-center justify-center"><Skeleton className="h-64 w-64 rounded-full" /></div>, ssr: false }
+);
 
-const AttributeRadarCharts = dynamic(() => import('./attribute-radar-charts').then(mod => mod.AttributeRadarCharts), {
-  loading: () => <div className="h-[400px] w-full bg-muted/20 animate-pulse rounded-xl" />,
-  ssr: false
-});
+const AttributeRadarCharts = dynamic(
+  () => import('./attribute-radar-charts').then((mod) => mod.AttributeRadarCharts),
+  { loading: () => <div className="h-[400px] w-full bg-muted/20 animate-pulse rounded-xl" />, ssr: false }
+);
 
 interface AthleteDashboardProps {
   userAccount: UserAccount;
   athleteProfile?: AthleteProfile;
 }
 
+type ActiveTab = 'home' | 'edit' | 'support';
+
 export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboardProps) {
   const auth = useAuth();
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -72,7 +89,6 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
     return val;
   };
 
-  // Profile completion score (same weights as ProfileStrengthCard)
   const verifiedApps = countVerifiedAppearances(athleteProfile);
   const attributeCount = countAttributes(athleteProfile);
   const completionItems = [
@@ -85,7 +101,6 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   ];
   const profileScore = completionItems.reduce((s, i) => s + (i.achieved ? i.weight : 0), 0);
   const isComplete = profileScore === 100;
-  const topMissing = completionItems.find(i => !i.achieved);
 
   const bannerBg = isComplete
     ? 'bg-green-500/10 border-green-500/20'
@@ -104,22 +119,36 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
     ? { label: 'Log a Match', href: '/dashboard/add-match' }
     : null;
 
+  const bottomTabs = [
+    { id: 'home' as ActiveTab, label: 'Home', icon: Home },
+    { id: 'edit' as ActiveTab, label: 'Edit', icon: Pencil },
+    { id: 'support' as ActiveTab, label: 'Support', icon: Headphones },
+  ];
+
   return (
-    <div className="min-h-screen bg-muted/40 pb-20">
+    <div className="min-h-screen bg-muted/40 pb-20 md:pb-0">
+
+      {/* ── Top Header ── */}
       <header className="bg-background border-b sticky top-0 z-30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold tracking-tight">Talent Graph</h1>
-              <Badge variant="outline" className="hidden sm:block">Institutional Console</Badge>
+          <div className="flex items-center justify-between h-14 md:h-16">
+
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <Zap className="h-5 w-5 text-primary shrink-0" />
+              <h1 className="text-base md:text-xl font-black tracking-tight uppercase">Talent Graph</h1>
+              <Badge variant="outline" className="hidden md:block text-[9px] font-black uppercase tracking-widest">
+                Athlete Console
+              </Badge>
             </div>
-            {/* Profile completion % in header */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/40">
-              <div className={`w-2 h-2 rounded-full ${isComplete ? 'bg-green-500' : profileScore >= 50 ? 'bg-primary' : 'bg-yellow-500'}`} />
-              <span className="text-xs font-black">{profileScore}%</span>
-              <span className="text-[10px] text-muted-foreground font-medium">profile strength</span>
-            </div>
-            <div className="flex items-center gap-2">
+
+            {/* Desktop actions */}
+            <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/40 mr-2">
+                <div className={`w-2 h-2 rounded-full ${isComplete ? 'bg-green-500' : profileScore >= 50 ? 'bg-primary' : 'bg-yellow-500'}`} />
+                <span className="text-xs font-black">{profileScore}%</span>
+                <span className="text-[10px] text-muted-foreground font-medium">profile strength</span>
+              </div>
               <SupportDialog />
               <EditProfileMediaDialog profile={athleteProfile} />
               <Button variant="outline" size="sm" asChild>
@@ -134,12 +163,93 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 Logout
               </Button>
             </div>
+
+            {/* Mobile right: completion % + more sheet */}
+            <div className="flex md:hidden items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border bg-muted/40">
+                <div className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-green-500' : profileScore >= 50 ? 'bg-primary' : 'bg-yellow-500'}`} />
+                <span className="text-[11px] font-black tabular-nums">{profileScore}%</span>
+              </div>
+
+              <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <MoreHorizontal className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-72 p-0 flex flex-col">
+                  <SheetHeader className="p-5 border-b text-left">
+                    <SheetTitle className="flex items-center gap-2 font-black uppercase tracking-widest text-sm">
+                      <Zap className="h-4 w-4 text-primary" />
+                      {athleteProfile.firstName} {athleteProfile.lastName}
+                    </SheetTitle>
+                  </SheetHeader>
+                  <div className="flex-1 p-4 space-y-1">
+                    <Button variant="ghost" className="w-full justify-start gap-3 h-12 font-bold text-sm" asChild>
+                      <Link href={`/${athleteProfile.username}`} onClick={() => setMoreOpen(false)}>
+                        <Eye className="h-4 w-4 text-primary" />
+                        Public View
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/onboarding/metrics" onClick={() => setMoreOpen(false)}>
+                        <Layers className="h-4 w-4 text-primary" />
+                        Update Master Index
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/dashboard/update-attributes" onClick={() => setMoreOpen(false)}>
+                        <GitGraph className="h-4 w-4 text-primary" />
+                        Refine Attributes
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/dashboard/add-match" onClick={() => setMoreOpen(false)}>
+                        <PlusCircle className="h-4 w-4 text-primary" />
+                        Log a Match
+                      </Link>
+                    </Button>
+                  </div>
+                  <div className="p-4 border-t space-y-1">
+                    <DeleteAccountDialog
+                      trigger={
+                        <button className="w-full flex items-center gap-3 h-12 px-3 rounded-xl font-bold text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                          <Trash2 className="h-4 w-4" />
+                          Delete Account
+                        </button>
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm text-muted-foreground hover:text-destructive"
+                      onClick={handleSignOut}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
         </div>
       </header>
 
+      {/* ── Main Content ── */}
       <main className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        {/* Profile completion notification banner */}
+        {/* Profile completion banner */}
         <div className={`rounded-xl border p-4 ${bannerBg}`}>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -172,7 +282,6 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              {/* Mini progress bar */}
               <div className="hidden sm:flex items-center gap-2">
                 <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
                   <div
@@ -198,7 +307,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
 
         <ProfileHeader profile={athleteProfile} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {indices.map((idx) => (
             <Card key={idx.label} className="border-none shadow-sm overflow-hidden group bg-background">
               <CardHeader className="p-4 pb-2 space-y-0 flex flex-row items-center justify-between">
@@ -292,7 +401,9 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   <Award className="w-5 h-5 text-primary" />
                   Scouting Pipeline
                 </CardTitle>
-                <CardDescription className="text-neutral-400 text-xs">Update your professional data points to influence your CSI rating.</CardDescription>
+                <CardDescription className="text-neutral-400 text-xs">
+                  Update your professional data points to influence your CSI rating.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button variant="secondary" className="w-full justify-start font-black text-[10px] uppercase tracking-widest h-12" asChild>
@@ -318,6 +429,93 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </div>
         </div>
       </main>
+
+      {/* ── Controlled dialogs (opened by bottom nav) ── */}
+      <EditProfileMediaDialog
+        profile={athleteProfile}
+        externalOpen={activeTab === 'edit'}
+        onExternalOpenChange={(open) => { if (!open) setActiveTab('home'); }}
+      />
+      <SupportDialog
+        open={activeTab === 'support'}
+        onOpenChange={(open) => { if (!open) setActiveTab('home'); }}
+      />
+
+      {/* ── Mobile Bottom Tab Bar ── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden h-16 items-stretch border-t bg-background/95 backdrop-blur shadow-[0_-1px_12px_rgba(0,0,0,0.08)]">
+
+        {/* Home */}
+        <button
+          onClick={() => setActiveTab('home')}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+            activeTab === 'home' ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {activeTab === 'home' && (
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+          )}
+          <Home className={cn('h-5 w-5 transition-transform', activeTab === 'home' && 'scale-110')} />
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'home' && 'font-black')}>
+            Home
+          </span>
+        </button>
+
+        {/* Edit Profile */}
+        <button
+          onClick={() => setActiveTab('edit')}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+            activeTab === 'edit' ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {activeTab === 'edit' && (
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+          )}
+          <Pencil className={cn('h-5 w-5 transition-transform', activeTab === 'edit' && 'scale-110')} />
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'edit' && 'font-black')}>
+            Edit
+          </span>
+        </button>
+
+        {/* Public View — link, not a dialog */}
+        <Link
+          href={`/${athleteProfile.username}`}
+          className="flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground transition-colors relative"
+        >
+          <Eye className="h-5 w-5" />
+          <span className="text-[10px] font-bold uppercase tracking-wide">Preview</span>
+        </Link>
+
+        {/* Support */}
+        <button
+          onClick={() => setActiveTab('support')}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+            activeTab === 'support' ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {activeTab === 'support' && (
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+          )}
+          <Headphones className={cn('h-5 w-5 transition-transform', activeTab === 'support' && 'scale-110')} />
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'support' && 'font-black')}>
+            Support
+          </span>
+        </button>
+
+        {/* More (account/logout) */}
+        <button
+          onClick={() => setMoreOpen(true)}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors',
+            moreOpen ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          <MoreHorizontal className="h-5 w-5" />
+          <span className="text-[10px] font-bold uppercase tracking-wide">More</span>
+        </button>
+      </nav>
     </div>
   );
 }

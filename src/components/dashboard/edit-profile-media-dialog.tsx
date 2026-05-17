@@ -43,14 +43,19 @@ function getInitials(name: string) {
 
 interface EditProfileMediaDialogProps {
   profile: AthleteProfile;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
 }
 
-export function EditProfileMediaDialog({ profile }: EditProfileMediaDialogProps) {
+export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenChange }: EditProfileMediaDialogProps) {
   const firestore = useFirestore();
   const auth = useAuth();
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const isControlled = externalOpen !== undefined;
+  const open = isControlled ? externalOpen : internalOpen;
 
   const fullName = `${profile.firstName} ${profile.lastName}`;
 
@@ -91,11 +96,13 @@ export function EditProfileMediaDialog({ profile }: EditProfileMediaDialogProps)
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
       resetState();
-      setOpen(true);
+      if (isControlled) onExternalOpenChange?.(true);
+      else setInternalOpen(true);
     } else {
       if (photoUpload?.state === 'running' || videoUpload?.state === 'running') return;
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-      setOpen(false);
+      if (isControlled) onExternalOpenChange?.(false);
+      else setInternalOpen(false);
     }
   };
 
@@ -231,15 +238,17 @@ export function EditProfileMediaDialog({ profile }: EditProfileMediaDialogProps)
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-2 font-bold"
-        onClick={() => handleOpenChange(true)}
-      >
-        <Pencil className="w-4 h-4" />
-        Edit Profile
-      </Button>
+      {!isControlled && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 font-bold"
+          onClick={() => handleOpenChange(true)}
+        >
+          <Pencil className="w-4 h-4" />
+          Edit Profile
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
