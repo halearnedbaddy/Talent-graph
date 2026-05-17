@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { PerformanceAlerts } from '@/components/club/performance-alerts';
+import { SquadAnalytics } from '@/components/club/squad-analytics';
 
 export default function ClubOverviewPage() {
   const { user } = useUser();
@@ -235,6 +236,9 @@ export default function ClubOverviewPage() {
           <PerformanceAlerts athletes={athletes || []} />
         </div>
       </div>
+
+      {/* Analytics section */}
+      <SquadAnalytics athletes={athletes || []} />
     </div>
   );
 }
