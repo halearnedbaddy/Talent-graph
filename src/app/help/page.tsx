@@ -49,7 +49,7 @@ export default function HelpCenterPage() {
                     This page answers common questions about how the Platform works for Athletes, Scouts, and Clubs.
                 </p>
                 <p className="mt-2 text-muted-foreground">
-                    If you cannot find what you need, contact us at: <a href="mailto:vervevigor.co@gmail.com" className="text-primary underline">vervevigor.co@gmail.com</a>
+                    If you cannot find what you need, contact us at: <a href="mailto:billionaireomenda@gmail.com" className="text-primary underline">billionaireomenda@gmail.com</a> or call <a href="tel:+254727946012" className="text-primary underline">+254 727 946 012</a>
                 </p>
             </div>
             
@@ -86,7 +86,7 @@ export default function HelpCenterPage() {
                         <p>Yes. You can update your metrics at any time from your profile dashboard. Updates may affect your Talent Score.</p>
                     </HelpItem>
                     <HelpItem question="5. How do I delete my account?">
-                        <p>You may request account deletion by contacting: <a href="mailto:vervevigor.co@gmail.com" className="text-primary underline">vervevigor.co@gmail.com</a>. Deletion requests are processed in accordance with our Privacy Policy.</p>
+                        <p>You may request account deletion by contacting: <a href="mailto:billionaireomenda@gmail.com" className="text-primary underline">billionaireomenda@gmail.com</a>. Deletion requests are processed in accordance with our Privacy Policy.</p>
                     </HelpItem>
                 </HelpSection>
 
@@ -142,7 +142,7 @@ export default function HelpCenterPage() {
                         <p>Use the “Forgot Password” link on the login page to reset your credentials.</p>
                     </HelpItem>
                      <HelpItem question="14. I’m experiencing a technical issue.">
-                        <p>If you encounter errors, please refresh the page, clear your browser cache, or try another browser. If the issue persists, contact: <a href="mailto:vervevigor.co@gmail.com" className="text-primary underline">vervevigor.co@gmail.com</a> with:</p>
+                        <p>If you encounter errors, please refresh the page, clear your browser cache, or try another browser. If the issue persists, contact: <a href="mailto:billionaireomenda@gmail.com" className="text-primary underline">billionaireomenda@gmail.com</a> or call <a href="tel:+254727946012" className="text-primary underline">+254 727 946 012</a> with:</p>
                         <ul className="list-disc pl-5">
                             <li>Your role (Athlete / Scout / Club)</li>
                             <li>Device type</li>

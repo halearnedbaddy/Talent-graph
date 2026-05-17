@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Headphones, Send, Loader2, User, ChevronRight, ArrowLeft, Clock } from 'lucide-react';
+import { Headphones, Send, Loader2, User, ChevronRight, ArrowLeft, Clock, Mail, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -140,6 +140,19 @@ export function SupportDialog({ open: externalOpen, onOpenChange: externalOnOpen
           {view === 'list' ? (
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-2">
+                {/* Direct contact details */}
+                <div className="mb-4 p-3 rounded-xl border bg-muted/30 space-y-2">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Direct Contact</p>
+                  <a href="mailto:billionaireomenda@gmail.com" className="flex items-center gap-2 text-sm font-semibold hover:text-primary transition-colors">
+                    <Mail className="h-3.5 w-3.5 text-primary shrink-0" />
+                    billionaireomenda@gmail.com
+                  </a>
+                  <a href="tel:+254727946012" className="flex items-center gap-2 text-sm font-semibold hover:text-primary transition-colors">
+                    <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
+                    +254 727 946 012
+                  </a>
+                </div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground px-1 pb-1">Or chat with an admin</p>
                 {isAdminsLoading ? (
                   <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>
                 ) : admins?.length ? (

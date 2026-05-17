@@ -24,7 +24,7 @@ const jobs = [
     location: 'Remote',
     type: 'Full-time',
     description: 'Generalist engineer to work across our product suite, building intuitive tools for athletes and scouts.',
-    link: 'mailto:vervevigor.co@gmail.com?subject=Application: Software Developer',
+    link: 'mailto:billionaireomenda@gmail.com?subject=Application: Software Developer',
     icon: Terminal,
     action: 'Email Resume'
   },
@@ -35,7 +35,7 @@ const jobs = [
     location: 'Remote',
     type: 'Full-time',
     description: 'Expert in React and Next.js to craft high-performance, accessible, and beautiful sports analytics interfaces.',
-    link: 'mailto:vervevigor.co@gmail.com?subject=Application: Frontend Developer',
+    link: 'mailto:billionaireomenda@gmail.com?subject=Application: Frontend Developer',
     icon: Monitor,
     action: 'Email Resume'
   },
@@ -46,7 +46,7 @@ const jobs = [
     location: 'Remote',
     type: 'Full-time',
     description: 'Focus on scaling our Firestore architecture, Genkit AI flows, and real-time data processing engines.',
-    link: 'mailto:vervevigor.co@gmail.com?subject=Application: Backend Developer',
+    link: 'mailto:billionaireomenda@gmail.com?subject=Application: Backend Developer',
     icon: Database,
     action: 'Email Resume'
   },
@@ -121,10 +121,10 @@ export default function JobsPage() {
             <Briefcase className="w-12 h-12 text-primary/20 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-4">Don't see a fit?</h2>
             <p className="text-muted-foreground mb-8">
-              We are always looking for passionate sports professionals and engineers. Send your resume to <span className="font-bold text-foreground">vervevigor.co@gmail.com</span> for future consideration.
+              We are always looking for passionate sports professionals and engineers. Send your resume to <span className="font-bold text-foreground">billionaireomenda@gmail.com</span> for future consideration.
             </p>
             <Button variant="outline" asChild>
-                <a href="mailto:vervevigor.co@gmail.com?subject=General Inquiry: Careers">General Inquiry</a>
+                <a href="mailto:billionaireomenda@gmail.com?subject=General Inquiry: Careers">General Inquiry</a>
             </Button>
           </div>
         </div>

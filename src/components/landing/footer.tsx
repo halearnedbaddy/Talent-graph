@@ -81,11 +81,11 @@ export function Footer() {
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Email</p>
-                    <p className="text-sm font-bold group-hover:text-primary transition-colors">admin@talentgraph.ke</p>
+                    <p className="text-sm font-bold group-hover:text-primary transition-colors">billionaireomenda@gmail.com</p>
                   </div>
                 </a>
                 <a
-                  href="tel:+254700000000"
+                  href="tel:+254727946012"
                   className="flex items-center gap-3 group"
                 >
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
@@ -93,7 +93,7 @@ export function Footer() {
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Phone</p>
-                    <p className="text-sm font-bold group-hover:text-primary transition-colors">+254 700 000 000</p>
+                    <p className="text-sm font-bold group-hover:text-primary transition-colors">+254 727 946 012</p>
                   </div>
                 </a>
               </div>
