@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Search, Building, Check, Clock } from 'lucide-react';
 import type { ClubProfile, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 
 export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
     const { user } = useUser();

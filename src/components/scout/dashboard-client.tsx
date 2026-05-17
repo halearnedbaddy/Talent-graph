@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import type { ScoutProfile, AthleteProfile, ScoutConnection } from '@/lib/types';
+import type { ScoutProfile, AthleteProfile, ScoutConnection, ClubMember } from '@/lib/types';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, SidebarFooter } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { signOut } from 'firebase/auth';
-import { useAuth } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
-import { LogOut, User, Eye, BarChart3, Users, Headphones } from 'lucide-react';
+import { LogOut, User, Eye, BarChart3, Users, Building2 } from 'lucide-react';
 import { FilterSidebar } from './filter-sidebar';
 import { ResultsList } from './results-list';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
@@ -18,9 +18,11 @@ import { Separator } from '../ui/separator';
 import { AdvancedAnalytics } from './advanced-analytics';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SupportDialog } from '@/components/support/support-dialog';
+import { ClubAffiliation } from './club-affiliation';
 
 export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const auth = useAuth();
+  const { user } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
   const [activeTab, setActiveTab] = useState('discovery');
@@ -45,6 +47,12 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
   const { data: myConnections } = useCollection<ScoutConnection>(scoutConnectionsQuery);
   const myScoutedIds = new Set(myConnections?.map(c => c.athleteId) || []);
   const scoutedAthletes = athletes?.filter(a => myScoutedIds.has(a.uid)) || [];
+
+  const myMembershipsQuery = useMemoFirebase(() => (
+    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
+  ), [firestore, user]);
+  const { data: myMemberships } = useCollection<ClubMember>(myMembershipsQuery);
+  const activeClubId = myMemberships?.[0]?.clubId;
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -121,7 +129,11 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
                         </TabsTrigger>
                         <TabsTrigger value="analytics" className="flex items-center gap-2">
                             <BarChart3 className="w-4 h-4" />
-                            Advanced Analytics
+                            Analytics
+                        </TabsTrigger>
+                        <TabsTrigger value="club" className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4" />
+                            Club
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -132,6 +144,12 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
 
                 <TabsContent value="analytics">
                     <AdvancedAnalytics scoutedAthletes={scoutedAthletes} />
+                </TabsContent>
+
+                <TabsContent value="club">
+                    <div className="max-w-2xl mx-auto">
+                        <ClubAffiliation currentClubId={activeClubId} />
+                    </div>
                 </TabsContent>
             </Tabs>
         </main>
