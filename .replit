@@ -38,7 +38,7 @@ externalPort = 80
 [userenv]
 
 [userenv.shared]
-BULKSMS_SENDER_ID = "TalentGraph"
+BULKSMS_SENDER_ID = "XpressKard"
 VAPID_SUBJECT = "mailto:admin@talentgraph.ke"
 NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BCR9rT5Xsja2n2JkZ-pECoKUIans7COp1InTe4eNKdOYwl_t3ZWtt5fq1GswCZ7mjnnptlED8UTSK5psuhdrc5c"
 
