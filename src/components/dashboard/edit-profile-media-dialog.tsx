@@ -159,8 +159,16 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
         photoBlob,
         (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
       );
+      // Auto-save photoUrl to Firestore immediately — no second click needed
+      if (firestore) {
+        await updateDoc(doc(firestore, 'athletes', profile.uid), {
+          photoUrl: downloadUrl,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       setPendingPhotoUrl(downloadUrl);
       setPhotoPreview(downloadUrl);
+      toast({ title: 'Photo saved!', description: 'Your profile photo has been updated.' });
     } catch (err: any) {
       setIsCompressingPhoto(false);
       setPhotoUpload({ progress: 0, state: 'error', error: err.message });
@@ -202,7 +210,16 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
         file,
         setVideoUpload
       );
+      // Auto-save video URL + title to Firestore immediately
+      if (firestore) {
+        await updateDoc(doc(firestore, 'athletes', profile.uid), {
+          highlightVideoUrl: downloadUrl,
+          highlightVideoTitle: videoTitle.trim() || null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       setPendingVideoUrl(downloadUrl);
+      toast({ title: 'Video saved!', description: 'Your highlight video has been updated.' });
     } catch (err: any) {
       setVideoUpload({ progress: 0, state: 'error', error: err.message });
       toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
@@ -251,12 +268,21 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
         file,
         setShowcaseUpload
       );
-      setPendingShowcaseVideo({
+      const videoToSave: ShowcaseVideo = {
         id: `${ts}`,
         url: downloadUrl,
         title: showcaseTitle.trim() || undefined,
         uploadedAt: new Date().toISOString(),
-      });
+      };
+      // Auto-save showcase video to Firestore immediately
+      if (firestore) {
+        await updateDoc(doc(firestore, 'athletes', profile.uid), {
+          showcaseVideos: arrayUnion(videoToSave),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      setPendingShowcaseVideo(videoToSave);
+      toast({ title: 'Showcase video added!', description: 'Your new clip has been saved to your profile.' });
     } catch (err: any) {
       setShowcaseUpload({ progress: 0, state: 'error', error: err.message });
       toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
@@ -288,43 +314,23 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     if (!firestore) return;
     setIsSaving(true);
     try {
-      const updates: Record<string, any> = {
+      await updateDoc(doc(firestore, 'athletes', profile.uid), {
         bio: bio.trim() || null,
-        highlightVideoTitle: videoTitle.trim() || null,
         updatedAt: new Date().toISOString(),
-      };
-      if (pendingPhotoUrl) updates.photoUrl = pendingPhotoUrl;
-      if (pendingVideoUrl) updates.highlightVideoUrl = pendingVideoUrl;
-
-      if (pendingShowcaseVideo) {
-        const videoToSave: ShowcaseVideo = {
-          ...pendingShowcaseVideo,
-          title: showcaseTitle.trim() || pendingShowcaseVideo.title,
-        };
-        updates.showcaseVideos = arrayUnion(videoToSave);
-      }
-
-      await updateDoc(doc(firestore, 'athletes', profile.uid), updates);
-      toast({ title: 'Profile updated', description: 'Your changes have been saved.' });
-      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-      if (showcasePreviewUrl) URL.revokeObjectURL(showcasePreviewUrl);
+      });
+      toast({ title: 'Bio saved', description: 'Your bio has been updated.' });
       if (isControlled) onExternalOpenChange?.(false);
       else setInternalOpen(false);
     } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not save changes.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not save your bio. Please try again.' });
     } finally {
       setIsSaving(false);
     }
   };
 
   const isUploading = isCompressingPhoto || photoUpload?.state === 'running' || videoUpload?.state === 'running' || showcaseUpload?.state === 'running';
-  const canSave = !isSaving && (
-    bio.trim() !== (profile.bio || '').trim() ||
-    videoTitle.trim() !== (profile.highlightVideoTitle || '').trim() ||
-    pendingPhotoUrl !== null ||
-    pendingVideoUrl !== null ||
-    pendingShowcaseVideo !== null
-  );
+  const canSave = !isSaving && !isUploading &&
+    bio.trim() !== (profile.bio || '').trim();
 
   return (
     <>
@@ -438,7 +444,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
               {photoUpload?.state === 'success' && (
                 <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
                   <CheckCircle2 className="w-4 h-4" />
-                  Photo ready — click Save Changes to apply
+                  Photo saved to your profile!
                 </div>
               )}
 
@@ -575,7 +581,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                   {videoUpload?.state === 'success' && (
                     <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
                       <CheckCircle2 className="w-4 h-4" />
-                      Video ready — click Save Changes to apply
+                      Video saved to your profile!
                     </div>
                   )}
 
@@ -714,7 +720,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                   {showcaseUpload?.state === 'success' && (
                     <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
                       <CheckCircle2 className="w-4 h-4" />
-                      Video ready — click Save Changes to add it
+                      Showcase clip saved to your profile!
                     </div>
                   )}
 
@@ -751,34 +757,39 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
           </Tabs>
 
           <div className="flex gap-3 pt-2 border-t mt-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => handleOpenChange(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1 font-black"
-              onClick={handleSave}
-              disabled={!canSave || isUploading}
-              title={isUploading ? 'Wait for upload to complete before saving' : undefined}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </Button>
+            {isUploading ? (
+              <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Uploading — please keep this open…
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => handleOpenChange(false)}
+                  disabled={isSaving}
+                >
+                  Close
+                </Button>
+                {canSave && (
+                  <Button
+                    className="flex-1 font-black"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      'Save Bio'
+                    )}
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
