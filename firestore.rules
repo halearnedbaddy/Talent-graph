@@ -247,6 +247,32 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
+    // Club Subcollections (pendingMembers, squad)
+    // ----------------------------------------------------------------------
+    match /clubs/{clubId}/pendingMembers/{memberId} {
+      // Only the club admin can read/write pending member requests
+      allow read, list: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) || isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) || isAdmin()
+      );
+    }
+
+    match /clubs/{clubId}/squad/{memberId} {
+      // Club admin and active members can read the squad list
+      allow read, list: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) ||
+        isActiveMemberOfClub(clubId) ||
+        isAdmin()
+      );
+      allow write: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) || isAdmin()
+      );
+    }
+
+    // ----------------------------------------------------------------------
     // Video Reactions (Likes on highlight videos)
     // ----------------------------------------------------------------------
     match /video_reactions/{reactionId} {
