@@ -1,12 +1,12 @@
 'use client';
 
-import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, useCollection } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase, useFirebaseApp, updateDocumentNonBlocking, useCollection } from '@/firebase';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2, ArrowLeft, Building, User as UserIcon } from 'lucide-react';
+import { Loader2, ArrowLeft, Building, User as UserIcon, Camera, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,9 @@ import type { ScoutProfile, ClubMember } from '@/lib/types';
 import { doc, query, collection, where } from 'firebase/firestore';
 import { Label } from '@/components/ui/label';
 import { ClubAffiliation } from '@/components/scout/club-affiliation';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Progress } from '@/components/ui/progress';
+import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
 
 const scoutUpdateFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -31,9 +34,15 @@ const scoutUpdateFormSchema = z.object({
 export default function ScoutProfilePage() {
     const { user, isUserLoading } = useUser();
     const firestore = useFirestore();
+    const firebaseApp = useFirebaseApp();
     const router = useRouter();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
+
+    const photoInputRef = useRef<HTMLInputElement>(null);
+    const [photoPreview, setPhotoPreview] = useState<string>('');
+    const [photoUpload, setPhotoUpload] = useState<UploadProgress | null>(null);
+    const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
 
     const scoutDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'scouts', user.uid) : null), [firestore, user?.uid]);
     const { data: scoutProfile, isLoading: isScoutProfileLoading } = useDoc<ScoutProfile>(scoutDocRef);
@@ -68,22 +77,57 @@ export default function ScoutProfilePage() {
                 website: scoutProfile.website || '',
                 bio: scoutProfile.bio || '',
             });
+            if (scoutProfile.photoUrl) setPhotoPreview(scoutProfile.photoUrl);
         }
     }, [scoutProfile, form]);
+
+    const handlePhotoFile = async (file: File) => {
+        if (!file.type.startsWith('image/')) {
+            toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select an image file.' });
+            return;
+        }
+        if (!user?.uid) return;
+        const previewUrl = URL.createObjectURL(file);
+        setPhotoPreview(previewUrl);
+        setPhotoUpload({ progress: 0, state: 'running' });
+        setPendingPhotoUrl(null);
+        try {
+            const compressed = await compressImage(file, 400, 0.85);
+            const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
+            const downloadUrl = await uploadFileWithProgress(
+                firebaseApp,
+                `scout-photos/${user.uid}/photo.jpg`,
+                photoBlob,
+                setPhotoUpload
+            );
+            setPendingPhotoUrl(downloadUrl);
+            setPhotoPreview(downloadUrl);
+        } catch (err: any) {
+            setPhotoUpload({ progress: 0, state: 'error', error: err.message });
+            toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
+        }
+    };
+
+    const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) await handlePhotoFile(file);
+        e.target.value = '';
+    };
 
     const onSubmit = async (values: z.infer<typeof scoutUpdateFormSchema>) => {
         if (!user || !firestore || !scoutDocRef) return;
         setIsLoading(true);
 
         try {
-            const updatedData = {
+            const updatedData: Record<string, any> = {
                 name: values.name,
                 sports: values.sports.split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
                 website: values.website,
                 bio: values.bio,
                 updatedAt: new Date().toISOString(),
             };
-            
+            if (pendingPhotoUrl) updatedData.photoUrl = pendingPhotoUrl;
+
             updateDocumentNonBlocking(scoutDocRef, updatedData);
 
             toast({
@@ -117,6 +161,10 @@ export default function ScoutProfilePage() {
         );
     }
 
+    const nameInitials = scoutProfile.name
+        ? scoutProfile.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+        : 'SC';
+
     return (
         <div className="min-h-screen bg-muted/40 p-4 sm:p-8">
              <div className="max-w-3xl mx-auto mb-4">
@@ -128,6 +176,91 @@ export default function ScoutProfilePage() {
                 </Button>
             </div>
             <div className="max-w-3xl mx-auto space-y-8 pb-24">
+
+                {/* Profile Photo Card */}
+                <Card className="w-full shadow-xl">
+                    <CardHeader>
+                        <CardTitle className="text-xl">Profile Photo</CardTitle>
+                        <CardDescription>Upload a professional photo so athletes and clubs can recognise you.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={handlePhotoSelect}
+                        />
+                        <div className="flex items-start gap-5">
+                            <div className="relative shrink-0">
+                                <Avatar className="h-20 w-20 border-4 border-background shadow-xl rounded-2xl">
+                                    <AvatarImage src={photoPreview} className="object-cover" />
+                                    <AvatarFallback className="text-lg font-black rounded-2xl bg-primary text-primary-foreground">
+                                        {nameInitials}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <button
+                                    type="button"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    disabled={photoUpload?.state === 'running'}
+                                    className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                                >
+                                    <Camera className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <div>
+                                    <p className="font-black text-sm">{scoutProfile.name}</p>
+                                    <p className="text-xs text-muted-foreground capitalize">{scoutProfile.entityType} · @{scoutProfile.username}</p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2 font-bold text-xs h-9"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    disabled={photoUpload?.state === 'running'}
+                                >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                                </Button>
+                                {photoUpload?.state === 'running' && (
+                                    <div className="space-y-1 max-w-xs">
+                                        <div className="flex justify-between text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Uploading...</span>
+                                            <span>{photoUpload.progress}%</span>
+                                        </div>
+                                        <Progress value={photoUpload.progress} className="h-1.5" />
+                                    </div>
+                                )}
+                                {photoUpload?.state === 'success' && (
+                                    <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Photo ready — click Save Profile to apply
+                                    </p>
+                                )}
+                                {photoUpload?.state === 'error' && (
+                                    <div className="space-y-1">
+                                        <p className="flex items-center gap-1.5 text-destructive text-xs">
+                                            <AlertCircle className="w-3.5 h-3.5" />
+                                            {photoUpload.error}
+                                        </p>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-xs h-8"
+                                            onClick={() => photoInputRef.current?.click()}
+                                        >
+                                            Try Again
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <Card className="w-full shadow-xl">
                     <CardHeader>
                         <CardTitle className="text-2xl md:text-3xl">Professional ID</CardTitle>

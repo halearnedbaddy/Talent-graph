@@ -116,8 +116,8 @@ export function uploadFileViaProxy(
 }
 
 /**
- * @deprecated Use uploadFileViaProxy instead — avoids CORS issues.
- * Left here in case a server context needs direct SDK access.
+ * Uploads a file directly to Firebase Storage using the client SDK.
+ * Requires the user to be authenticated. Provides real-time progress events.
  */
 export function uploadFileWithProgress(
   app: FirebaseApp,

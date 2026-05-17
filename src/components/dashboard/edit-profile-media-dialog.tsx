@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useFirestore, useAuth } from '@/firebase';
+import { useFirestore, useAuth, useFirebaseApp } from '@/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { compressImage, uploadFileViaProxy, type UploadProgress } from '@/firebase/storage';
+import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
 import type { AthleteProfile, ShowcaseVideo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +51,7 @@ interface EditProfileMediaDialogProps {
 export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenChange }: EditProfileMediaDialogProps) {
   const firestore = useFirestore();
   const auth = useAuth();
+  const firebaseApp = useFirebaseApp();
   const { toast } = useToast();
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -140,14 +141,13 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setPendingPhotoUrl(null);
 
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Not signed in');
+      if (!auth.currentUser) throw new Error('Not signed in');
       const compressed = await compressImage(file, 600, 0.85);
       const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
-      const downloadUrl = await uploadFileViaProxy(
+      const downloadUrl = await uploadFileWithProgress(
+        firebaseApp,
         `profile-photos/${profile.uid}/photo.jpg`,
         photoBlob,
-        idToken,
         setPhotoUpload
       );
       setPendingPhotoUrl(downloadUrl);
@@ -184,13 +184,12 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setPendingVideoUrl(null);
 
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Not signed in');
+      if (!auth.currentUser) throw new Error('Not signed in');
       const ext = file.name.split('.').pop() || 'mp4';
-      const downloadUrl = await uploadFileViaProxy(
+      const downloadUrl = await uploadFileWithProgress(
+        firebaseApp,
         `profile-videos/${profile.uid}/highlight.${ext}`,
         file,
-        idToken,
         setVideoUpload
       );
       setPendingVideoUrl(downloadUrl);
@@ -233,14 +232,13 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setShowcaseUpload({ progress: 0, state: 'running' });
     setPendingShowcaseVideo(null);
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Not signed in');
+      if (!auth.currentUser) throw new Error('Not signed in');
       const ts = Date.now();
       const ext = file.name.split('.').pop() || 'mp4';
-      const downloadUrl = await uploadFileViaProxy(
+      const downloadUrl = await uploadFileWithProgress(
+        firebaseApp,
         `profile-videos/${profile.uid}/showcase_${ts}.${ext}`,
         file,
-        idToken,
         setShowcaseUpload
       );
       setPendingShowcaseVideo({

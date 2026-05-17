@@ -1,26 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { useState, useEffect, useRef } from 'react';
+import { useUser, useFirestore, useDoc, useMemoFirebase, useFirebaseApp } from '@/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, Plus, X } from 'lucide-react';
+import { Loader2, Save, Plus, X, Camera, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import type { ClubProfile, ClubSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Progress } from '@/components/ui/progress';
+import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
 
 export default function ClubSettingsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
+    const firebaseApp = useFirebaseApp();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [clubId, setClubId] = useState<string | null>(null);
 
-    // Initial fetch to get clubId from membership
+    const logoInputRef = useRef<HTMLInputElement>(null);
+    const [logoPreview, setLogoPreview] = useState<string>('');
+    const [logoUpload, setLogoUpload] = useState<UploadProgress | null>(null);
+    const [pendingLogoUrl, setPendingLogoUrl] = useState<string | null>(null);
+
     useEffect(() => {
         if (!firestore || !user) return;
         const checkMembership = async () => {
@@ -34,6 +42,10 @@ export default function ClubSettingsPage() {
 
     const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
     const { data: club } = useDoc<ClubProfile>(clubRef);
+
+    useEffect(() => {
+        if (club?.logoUrl) setLogoPreview(club.logoUrl);
+    }, [club]);
 
     const [settings, setSettings] = useState<ClubSettings>({
         seasons: [],
@@ -53,14 +65,50 @@ export default function ClubSettingsPage() {
     const [newSeason, setNewSeason] = useState('');
     const [newComp, setNewComp] = useState('');
 
+    const handleLogoFile = async (file: File) => {
+        if (!file.type.startsWith('image/')) {
+            toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select an image file.' });
+            return;
+        }
+        if (!clubId) return;
+        const previewUrl = URL.createObjectURL(file);
+        setLogoPreview(previewUrl);
+        setLogoUpload({ progress: 0, state: 'running' });
+        setPendingLogoUrl(null);
+        try {
+            const compressed = await compressImage(file, 400, 0.85);
+            const logoBlob = new File([compressed], 'logo.jpg', { type: 'image/jpeg' });
+            const downloadUrl = await uploadFileWithProgress(
+                firebaseApp,
+                `club-logos/${clubId}/logo.jpg`,
+                logoBlob,
+                setLogoUpload
+            );
+            setPendingLogoUrl(downloadUrl);
+            setLogoPreview(downloadUrl);
+        } catch (err: any) {
+            setLogoUpload({ progress: 0, state: 'error', error: err.message });
+            toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
+        }
+    };
+
+    const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) await handleLogoFile(file);
+        e.target.value = '';
+    };
+
     const handleSave = async () => {
         if (!firestore || !clubId) return;
         setIsSaving(true);
         try {
-            await updateDoc(doc(firestore, 'clubs', clubId), {
+            const updates: Record<string, any> = {
                 settings: settings,
                 updatedAt: new Date().toISOString()
-            });
+            };
+            if (pendingLogoUrl) updates.logoUrl = pendingLogoUrl;
+            await updateDoc(doc(firestore, 'clubs', clubId), updates);
+            setPendingLogoUrl(null);
             toast({ title: 'Settings Updated', description: 'Organizational configuration synced.' });
         } catch (e) {
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to update settings.' });
@@ -84,6 +132,10 @@ export default function ClubSettingsPage() {
 
     if (!clubId) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
+    const clubInitials = club?.clubName
+        ? club.clubName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+        : 'CL';
+
     return (
         <div className="max-w-4xl mx-auto space-y-5 pb-24">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -96,6 +148,78 @@ export default function ClubSettingsPage() {
                     Save Changes
                 </Button>
             </div>
+
+            {/* Club Logo Upload */}
+            <Card className="border-none shadow-xl bg-background overflow-hidden">
+                <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                    <CardTitle className="text-sm font-black uppercase tracking-widest">Club Identity</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                    <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={handleLogoSelect}
+                    />
+                    <div className="flex items-start gap-5">
+                        <div className="relative shrink-0">
+                            <Avatar className="h-20 w-20 border-4 border-background shadow-xl rounded-2xl">
+                                <AvatarImage src={logoPreview} className="object-cover" />
+                                <AvatarFallback className="text-lg font-black rounded-2xl bg-primary text-primary-foreground">
+                                    {clubInitials}
+                                </AvatarFallback>
+                            </Avatar>
+                            <button
+                                type="button"
+                                onClick={() => logoInputRef.current?.click()}
+                                disabled={logoUpload?.state === 'running'}
+                                className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            >
+                                <Camera className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            <div>
+                                <p className="font-black text-sm">{club?.clubName || 'Your Club'}</p>
+                                <p className="text-xs text-muted-foreground">Upload your club logo or crest</p>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2 font-bold text-xs h-9"
+                                onClick={() => logoInputRef.current?.click()}
+                                disabled={logoUpload?.state === 'running'}
+                            >
+                                <Upload className="w-3.5 h-3.5" />
+                                {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                            </Button>
+                            {logoUpload?.state === 'running' && (
+                                <div className="space-y-1 max-w-xs">
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Uploading...</span>
+                                        <span>{logoUpload.progress}%</span>
+                                    </div>
+                                    <Progress value={logoUpload.progress} className="h-1.5" />
+                                </div>
+                            )}
+                            {logoUpload?.state === 'success' && (
+                                <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Logo ready — click Save Changes to apply
+                                </p>
+                            )}
+                            {logoUpload?.state === 'error' && (
+                                <p className="flex items-center gap-1.5 text-destructive text-xs">
+                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    {logoUpload.error}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <Card className="border-none shadow-xl bg-background overflow-hidden">

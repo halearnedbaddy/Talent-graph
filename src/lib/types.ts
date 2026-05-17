@@ -188,6 +188,7 @@ export interface ScoutProfile {
   bio?: string;
   website?: string;
   sports?: string[];
+  photoUrl?: string;
   profileCompleted: boolean;
   isVerified?: boolean;
   createdAt: string;
