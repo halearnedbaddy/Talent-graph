@@ -21,6 +21,7 @@ import {
 import type { ClubMember, ClubMatch, LiveMatch, LiveMatchEvent, LiveMatchStatSnapshot, LiveMatchRefereeDetails } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
+import { smsSend } from '@/hooks/useSMS';
 
 const EVENT_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
   goal: { icon: '⚽', color: 'text-green-600', bg: 'bg-green-50 border-green-200' },
@@ -215,6 +216,17 @@ export default function LiveMatchPage() {
           firestore,
         });
       }
+
+      // SMS scouts subscribed to this match
+      smsSend('live-goal', {
+        scoutPhones: (activeLive as any).subscribedScoutPhones ?? [],
+        scorer: goalForm.playerName || 'Unknown',
+        minute: goalForm.minute,
+        homeTeam: activeLive.homeTeam,
+        awayTeam: activeLive.awayTeam,
+        homeScore: newHomeScore,
+        awayScore: newAwayScore,
+      });
 
       setEventDialog(null);
       setGoalForm(f => ({ ...f, playerName: '', assistPlayerName: '', goalDistance: 0, offsideFlag: false }));

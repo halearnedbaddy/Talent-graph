@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { smsSend } from '@/hooks/useSMS';
 import React, { useEffect, useRef } from 'react';
 import { Separator } from '@/components/ui/separator';
 
@@ -123,6 +124,16 @@ export default function UsernamePage() {
                 createdAt: viewedAt,
             }
         ).catch(() => {});
+
+        // SMS alert — only fire for scout/club viewers
+        if (viewerRole === 'scout' || viewerRole === 'club') {
+            smsSend('profile-view', {
+                athletePhone: (athlete as any).phone,
+                athleteName: athlete.firstName,
+                viewerName,
+                viewerRole,
+            });
+        }
     }, [firestore, athlete?.uid, currentUserProfile, isOwner, authUser?.uid]);
 
     const handleRequestAccess = () => {

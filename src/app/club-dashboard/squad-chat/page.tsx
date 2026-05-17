@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { ClubMember, UserAccount, ClubProfile } from '@/lib/types';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
+import { smsSend } from '@/hooks/useSMS';
 
 export default function SquadChatPage() {
     const { user } = useUser();
@@ -65,6 +66,13 @@ export default function SquadChatPage() {
             tag: 'squad-chat',
             excludeUserId: user.uid,
             firestore,
+        });
+
+        // SMS fallback for offline squad members — fire-and-forget
+        smsSend('squad-chat', {
+            memberPhones: (club as any)?.squadPhones ?? [],
+            senderName,
+            message: newMessage,
         });
 
         setNewMessage('');

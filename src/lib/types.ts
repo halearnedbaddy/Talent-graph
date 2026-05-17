@@ -134,6 +134,7 @@ export interface AthleteProfile {
   highlightVideoUrl?: string;
   highlightVideoTitle?: string;
   likeCount?: number;
+  phone?: string;
 }
 
 export interface ProfileView {

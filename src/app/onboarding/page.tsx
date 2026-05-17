@@ -102,6 +102,7 @@ const athleteFormSchema = z.object({
   minutesPlayed: z.coerce.number().min(0, "Cannot be negative").default(0).optional(),
   leagueLevel: z.string().min(1, "League level is required"),
   username: z.string().min(3, 'Username must be at least 3 characters.').max(30, 'Username must be 30 characters or less.').regex(/^[a-z0-9_]+$/, 'Username can only contain lowercase letters, numbers, and underscores.'),
+  phone: z.string().regex(/^[0-9+\s\-()]{7,15}$/, 'Enter a valid phone number').optional().or(z.literal('')),
 }).refine(data => {
   if (data.sport === 'football' || data.sport === 'basketball') {
     return !!data.position && data.position !== '';
@@ -130,7 +131,8 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       heightCm: undefined,
       weightKg: undefined,
       minutesPlayed: 0, 
-      leagueLevel: '1.0' 
+      leagueLevel: '1.0',
+      phone: '',
     },
   });
 
@@ -170,6 +172,7 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       if (values.position) athleteData.position = values.position;
       if (values.team) athleteData.team = values.team;
       if (values.dominantFoot) athleteData.dominantFoot = values.dominantFoot;
+      if (values.phone) athleteData.phone = values.phone;
 
       await updateDoc(userDocRef, { 
         role: 'athlete',
@@ -325,6 +328,20 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
                   <FormItem>
                     <FormLabel>Public Username</FormLabel>
                     <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span><FormControl><Input placeholder="alex_morgan" className="pl-7" {...field} /></FormControl></div>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="phone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5" />
+                      Phone Number
+                      <span className="text-[10px] font-normal text-muted-foreground">(for SMS alerts)</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="0712 345 678" type="tel" {...field} />
+                    </FormControl>
+                    <FormDescription>We'll SMS you when scouts view your profile or clubs show interest.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />

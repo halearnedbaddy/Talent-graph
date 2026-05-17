@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, Bell, CheckCheck } from 'lucide-react';
+import { Eye, Bell, CheckCheck, TrendingUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -61,6 +61,12 @@ export function ProfileViewsCard({ athleteId }: ProfileViewsCardProps) {
 
   const unreadCount = notifications?.filter(n => !n.isRead).length ?? 0;
 
+  const thisWeekStart = new Date();
+  thisWeekStart.setDate(thisWeekStart.getDate() - 7);
+  thisWeekStart.setHours(0, 0, 0, 0);
+  const weeklyViews = views?.filter(v => new Date(v.viewedAt) >= thisWeekStart) ?? [];
+  const scoutViews = weeklyViews.filter(v => v.viewerRole === 'scout' || v.viewerRole === 'club');
+
   const handleMarkAllRead = async () => {
     if (!firestore || !notifications?.length) return;
     const batch = writeBatch(firestore);
@@ -75,16 +81,24 @@ export function ProfileViewsCard({ athleteId }: ProfileViewsCardProps) {
     <div className="space-y-4">
       <Card className="border-none shadow-lg bg-background">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
               <Eye className="w-4 h-4 text-primary" />
-              Profile Views
+              Scout Views
             </CardTitle>
-            {views && views.length > 0 && (
-              <Badge variant="secondary" className="text-xs font-bold">
-                {views.length} {views.length === 1 ? 'view' : 'views'}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {weeklyViews.length > 0 && (
+                <Badge variant="secondary" className="text-xs font-bold gap-1">
+                  <TrendingUp className="w-3 h-3" />
+                  {weeklyViews.length} this week
+                </Badge>
+              )}
+              {scoutViews.length > 0 && (
+                <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px] font-black">
+                  {scoutViews.length} scout{scoutViews.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">

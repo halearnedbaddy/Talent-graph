@@ -1,0 +1,27 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { sendSMS, sendSMSBatch } from '@/lib/sms';
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { to, message, batch } = body;
+
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json({ error: 'message is required' }, { status: 400 });
+    }
+
+    if (batch && Array.isArray(batch)) {
+      await sendSMSBatch(batch, message);
+      return NextResponse.json({ success: true, sent: batch.length });
+    }
+
+    if (!to) {
+      return NextResponse.json({ error: 'to or batch is required' }, { status: 400 });
+    }
+
+    const result = await sendSMS(to, message);
+    return NextResponse.json(result, { status: result.success ? 200 : 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
+  }
+}

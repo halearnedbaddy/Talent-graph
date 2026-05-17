@@ -10,6 +10,7 @@ import type { AthleteProfile, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
+import { smsSend } from '@/hooks/useSMS';
 
 export default function AttributeVerificationPage() {
     const { user } = useUser();
@@ -28,7 +29,7 @@ export default function AttributeVerificationPage() {
     ), [firestore, clubId]);
     const { data: pendingAthletes, isLoading } = useCollection<AthleteProfile>(pendingAthletesQuery);
 
-    const handleVerify = async (athleteId: string, athleteName?: string) => {
+    const handleVerify = async (athleteId: string, athleteName?: string, athlete?: AthleteProfile) => {
         if (!firestore) return;
         setProcessingId(athleteId);
         try {
@@ -50,6 +51,13 @@ export default function AttributeVerificationPage() {
                     firestore,
                 });
             }
+
+            // SMS — notify athlete immediately
+            smsSend('match-verified', {
+                athletePhone: (athlete as any)?.phone,
+                athleteName: athlete?.firstName || athleteName,
+                clubName: undefined,
+            });
         } catch (e) {
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to verify athlete.' });
         } finally {
@@ -112,7 +120,7 @@ export default function AttributeVerificationPage() {
 
                                         <div className="mt-5 flex flex-wrap gap-2">
                                             <Button
-                                                onClick={() => handleVerify(a.uid, `${a.firstName} ${a.lastName}`)}
+                                                onClick={() => handleVerify(a.uid, `${a.firstName} ${a.lastName}`, a)}
                                                 disabled={processingId === a.uid}
                                                 className="bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest text-[10px] h-11 min-h-[44px] px-5 flex-1 sm:flex-none"
                                             >

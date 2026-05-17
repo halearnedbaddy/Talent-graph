@@ -21,7 +21,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { smsSend } from '@/hooks/useSMS';
 import type { ScoutConnection, AthleteProfile, ClubMember, ScoutProfile } from '@/lib/types';
 import { Loader2, ArrowUpDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -44,11 +45,27 @@ const RecruitmentStageDropdown = ({ connection }: { connection: ScoutConnection 
         if (!firestore) return;
         setIsUpdating(true);
         const connectionRef = doc(firestore, 'scout_connections', connection.id);
-        
+
         await updateDoc(connectionRef, {
             recruitment_stage: newStage,
             updatedAt: new Date().toISOString()
         });
+
+        // SMS for important recruitment milestones
+        if (['shortlisted', 'offer_extended', 'evaluating', 'signed'].includes(newStage)) {
+            try {
+                const athleteSnap = await getDoc(doc(firestore, 'athletes', connection.athleteId));
+                const a = athleteSnap.data() as AthleteProfile | undefined;
+                if (a) {
+                    smsSend('recruitment-stage', {
+                        athletePhone: (a as any).phone,
+                        athleteName: a.firstName,
+                        stage: newStage,
+                        clubName: undefined,
+                    });
+                }
+            } catch {}
+        }
 
         setStage(newStage as any);
         setIsUpdating(false);
