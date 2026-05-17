@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, doc, updateDoc, setDoc, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import {
   Loader2, Play, Square, Pause, CircleSlash, ArrowLeftRight, Clock,
   Flag, AlertTriangle, BarChart3, Zap, Plus, Radio, Shield, Users, User
 } from 'lucide-react';
-import type { ClubMember, ClubMatch, LiveMatch, LiveMatchEvent, LiveMatchStatSnapshot, LiveMatchRefereeDetails } from '@/lib/types';
+import type { ClubMember, ClubMatch, LiveMatch, LiveMatchEvent, LiveMatchStatSnapshot, LiveMatchRefereeDetails, AthleteProfile, ScoutConnection } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
 import { smsSend } from '@/hooks/useSMS';
@@ -76,9 +76,11 @@ export default function LiveMatchPage() {
   const [activeLive, setActiveLive] = useState<LiveMatch | null>(null);
   const [eventDialog, setEventDialog] = useState<'goal' | 'card' | 'sub' | 'stats' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [currentMinute, setCurrentMinute] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+
+  const currentMinute = Math.floor(elapsedSeconds / 60);
 
   const clubMemberQuery = useMemoFirebase(() => (
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
@@ -101,20 +103,70 @@ export default function LiveMatchPage() {
   ), [firestore, activeLive?.id]);
   const { data: events } = useCollection<LiveMatchEvent>(eventsQuery);
 
+  // Fetch all squad athlete phones for SMS broadcasts
+  const connectionsQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'scout_connections'), where('clubId', '==', clubId), where('status', '==', 'accepted')) : null
+  ), [firestore, clubId]);
+  const { data: squadConnections } = useCollection<ScoutConnection>(connectionsQuery);
+
+  const squadAthleteIds = useMemo(() => [...new Set(squadConnections?.map(c => c.athleteId) || [])], [squadConnections]);
+
+  const squadAthletesQuery = useMemoFirebase(() => (
+    firestore && squadAthleteIds.length > 0 ? query(collection(firestore, 'athletes'), where('uid', 'in', squadAthleteIds)) : null
+  ), [firestore, squadAthleteIds.join(',')]);
+  const { data: squadAthletes } = useCollection<AthleteProfile>(squadAthletesQuery);
+
+  const squadPhones = useMemo(() =>
+    (squadAthletes || []).map(a => (a as any).phone).filter(Boolean),
+  [squadAthletes]);
+
   useEffect(() => {
     if (liveMatches && liveMatches.length > 0) {
       setActiveLive(liveMatches[0]);
     }
   }, [liveMatches]);
 
+  // Restore elapsed time from Firestore startedAt on page load / match load
+  useEffect(() => {
+    if (!activeLive) return;
+    if (activeLive.status === 'halftime') {
+      setElapsedSeconds(45 * 60);
+      setIsRunning(false);
+      return;
+    }
+    if (activeLive.status === 'fulltime') {
+      setElapsedSeconds(90 * 60);
+      setIsRunning(false);
+      return;
+    }
+    if (activeLive.status === 'live' && activeLive.startedAt) {
+      const started = new Date(activeLive.startedAt).getTime();
+      const now = Date.now();
+      const secs = Math.floor((now - started) / 1000);
+      setElapsedSeconds(Math.max(0, secs));
+      setIsRunning(true);
+    }
+  }, [activeLive?.id]);
+
+  // Live 1-second tick
   useEffect(() => {
     if (isRunning) {
-      timerRef.current = setInterval(() => setCurrentMinute(m => m + 1), 60000);
+      timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isRunning]);
+
+  // Sync current minute to Firestore every 60 seconds while running
+  useEffect(() => {
+    if (!isRunning || !firestore || !activeLive) return;
+    if (elapsedSeconds > 0 && elapsedSeconds % 60 === 0) {
+      updateDoc(doc(firestore, 'live_matches', activeLive.id), {
+        currentMinute: Math.floor(elapsedSeconds / 60),
+      }).catch(() => {});
+    }
+  }, [elapsedSeconds, isRunning]);
 
   const [newMatch, setNewMatch] = useState({ homeTeam: '', awayTeam: '', clubMatchId: '' });
   const [refereeForm, setRefereeForm] = useState<LiveMatchRefereeDetails>({
@@ -171,8 +223,16 @@ export default function LiveMatchPage() {
       });
       setActiveLive({ id: liveMatchRef.id, ...liveMatchData });
       setIsRunning(true);
-      setCurrentMinute(0);
+      setElapsedSeconds(0);
       toast({ title: 'Match Started', description: 'Live tracking is now active.' });
+
+      // SMS all squad athletes — kickoff alert
+      if (squadPhones.length > 0) {
+        smsSend('match-broadcast', {
+          phones: squadPhones,
+          message: `KICK OFF: ${newMatch.homeTeam} vs ${newMatch.awayTeam} — Match is underway! Follow live on Talent Graph.`,
+        });
+      }
     } catch {
       toast({ variant: 'destructive', title: 'Failed to start match' });
     } finally {
@@ -227,6 +287,15 @@ export default function LiveMatchPage() {
         homeScore: newHomeScore,
         awayScore: newAwayScore,
       });
+
+      // SMS all squad athletes — goal alert
+      if (squadPhones.length > 0) {
+        const assist = goalForm.assistPlayerName ? ` (assist: ${goalForm.assistPlayerName})` : '';
+        smsSend('match-broadcast', {
+          phones: squadPhones,
+          message: `GOAL ${goalForm.minute}' — ${goalForm.playerName}${assist} | ${activeLive.homeTeam} ${newHomeScore}–${newAwayScore} ${activeLive.awayTeam} [Talent Graph Live]`,
+        });
+      }
 
       setEventDialog(null);
       setGoalForm(f => ({ ...f, playerName: '', assistPlayerName: '', goalDistance: 0, offsideFlag: false }));
@@ -295,6 +364,16 @@ export default function LiveMatchPage() {
       setActiveLive({ ...activeLive, status: newStatus });
       if (type === 'fulltime') setIsRunning(false);
       toast({ title: type === 'halftime' ? 'Half Time' : 'Full Time', description: 'Full stats snapshot saved.' });
+
+      // SMS all squad athletes — halftime / fulltime alert
+      if (squadPhones.length > 0) {
+        const label = type === 'halftime' ? 'HALF TIME' : 'FULL TIME';
+        smsSend('match-broadcast', {
+          phones: squadPhones,
+          message: `${label}: ${activeLive.homeTeam} ${activeLive.homeScore}–${activeLive.awayScore} ${activeLive.awayTeam} [Talent Graph]`,
+        });
+      }
+
       setEventDialog(null);
     } catch {
       toast({ variant: 'destructive', title: 'Failed to save stats' });
@@ -419,7 +498,9 @@ export default function LiveMatchPage() {
                 <Badge className={`font-black uppercase text-[9px] tracking-widest ${activeLive.status === 'live' ? 'bg-red-600' : activeLive.status === 'halftime' ? 'bg-yellow-600' : 'bg-neutral-600'}`}>
                   {activeLive.status === 'live' ? 'LIVE' : activeLive.status === 'halftime' ? 'HALF TIME' : activeLive.status.toUpperCase()}
                 </Badge>
-                <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">{currentMinute}'</span>
+                <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest tabular-nums">
+                  {String(currentMinute).padStart(2, '0')}:{String(elapsedSeconds % 60).padStart(2, '0')}
+                </span>
               </div>
               <Button size="sm" variant={isRunning ? 'destructive' : 'secondary'} onClick={() => setIsRunning(!isRunning)} className="h-8 font-black text-[9px] uppercase gap-1">
                 {isRunning ? <><Square className="w-3 h-3" /> Pause Timer</> : <><Play className="w-3 h-3" /> Resume</>}
