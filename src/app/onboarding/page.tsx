@@ -497,41 +497,54 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       const userDocRef = doc(firestore, 'users', user.uid);
       const scoutDocRef = doc(firestore, 'scouts', user.uid);
 
-      const scoutData: ScoutProfile = {
+      const scoutData: Record<string, any> = {
         uid: user.uid,
         name: values.name,
         username: values.username,
         entityType: values.entityType,
-        sports: values.sports.split(',').map(s => s.trim().toLowerCase()),
-        website: values.website,
-        bio: values.bio,
+        sports: values.sports.split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
         profileCompleted: true,
         isVerified: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      if (values.website) scoutData.website = values.website;
+      if (values.bio) scoutData.bio = values.bio;
+      if (values.clubId) scoutData.clubId = values.clubId;
 
-      if (values.clubId) {
-        scoutData.clubId = values.clubId;
-        // Automatically send join request
-        const memberId = `${user.uid}_${values.clubId}`;
-        await setDoc(doc(firestore, 'club_members', memberId), {
-          id: memberId,
-          userId: user.uid,
-          clubId: values.clubId,
-          role: 'scout',
-          status: 'pending',
-          joinedAt: new Date().toISOString()
-        });
-      }
-
+      // 1. Save user role and scout profile first
       await updateDoc(userDocRef, { role: 'scout', profileCompleted: true, onboardingStep: 'scout_completed' });
       await setDoc(scoutDocRef, scoutData);
 
-      toast({ title: 'Profile completed!', description: values.clubId ? 'Welcome! Your join request has been sent to the organization.' : 'Welcome to the Scout Console.' });
+      // 2. Then attempt the club join request (non-blocking — don't fail profile save if this errors)
+      let clubJoined = false;
+      if (values.clubId) {
+        try {
+          const memberId = `${user.uid}_${values.clubId}`;
+          await setDoc(doc(firestore, 'club_members', memberId), {
+            id: memberId,
+            userId: user.uid,
+            clubId: values.clubId,
+            role: 'scout',
+            status: 'pending',
+            joinedAt: new Date().toISOString()
+          });
+          clubJoined = true;
+        } catch (clubErr) {
+          console.error('[onboarding] club_members write failed:', clubErr);
+        }
+      }
+
+      toast({
+        title: 'Profile completed!',
+        description: values.clubId
+          ? (clubJoined ? 'Welcome! Your join request has been sent to the organization.' : 'Profile saved. Club join request could not be sent — you can request again from your dashboard.')
+          : 'Welcome to the Scout Console.',
+      });
       router.push('/scout-dashboard');
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile.' });
+      console.error('[onboarding] scout profile save failed:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile. Please try again.' });
       setIsLoading(false);
     }
   };
