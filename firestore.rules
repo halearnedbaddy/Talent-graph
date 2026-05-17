@@ -245,5 +245,28 @@ service cloud.firestore {
         resource.data.authorId == request.auth.uid || isOwner(athleteId)
       );
     }
+
+    // ----------------------------------------------------------------------
+    // Video Reactions (Likes on highlight videos)
+    // ----------------------------------------------------------------------
+    match /video_reactions/{reactionId} {
+      // Anyone signed in can read reactions (needed for like count + own like state)
+      allow read, list: if isSignedIn();
+      // A user can only create/delete their own reaction
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ----------------------------------------------------------------------
+    // Video Comments (Comments on highlight videos)
+    // ----------------------------------------------------------------------
+    match /video_comments/{videoId}/comments/{commentId} {
+      // Anyone signed in can read comments on a video
+      allow read, list: if isSignedIn();
+      // Any signed-in user can post a comment
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      // Only the comment author can delete their comment
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
   }
 }
