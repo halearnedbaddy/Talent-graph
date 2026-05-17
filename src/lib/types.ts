@@ -88,6 +88,8 @@ export interface AthleteProfile {
   dominantFoot?: 'Left' | 'Right' | 'Both';
   team?: string;
   affiliatedClubId?: string;
+  clubName?: string;
+  clubStatus?: 'pending' | 'active' | 'rejected';
   age: number;
   heightCm: number;
   weightKg: number;

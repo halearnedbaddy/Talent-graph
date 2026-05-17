@@ -7,7 +7,7 @@ import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
-  Plus, Flame
+  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
@@ -374,6 +374,54 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             </div>
           </div>
         </div>
+
+        {/* ── Club Affiliation Status ── */}
+        {athleteProfile?.clubStatus && athleteProfile.clubName && (
+          <div className={`rounded-xl border p-4 flex items-center justify-between gap-4 ${
+            athleteProfile.clubStatus === 'active'
+              ? 'bg-green-500/5 border-green-400/30'
+              : athleteProfile.clubStatus === 'rejected'
+              ? 'bg-destructive/5 border-destructive/20'
+              : 'bg-primary/5 border-primary/20'
+          }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                athleteProfile.clubStatus === 'active'
+                  ? 'bg-green-500/15'
+                  : athleteProfile.clubStatus === 'rejected'
+                  ? 'bg-destructive/10'
+                  : 'bg-primary/10'
+              }`}>
+                {athleteProfile.clubStatus === 'active' && <ShieldCheck className="h-5 w-5 text-green-600" />}
+                {athleteProfile.clubStatus === 'rejected' && <ShieldX className="h-5 w-5 text-destructive" />}
+                {athleteProfile.clubStatus === 'pending' && <Clock className="h-5 w-5 text-primary" />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-black truncate">{athleteProfile.clubName}</span>
+                  <Badge
+                    variant="outline"
+                    className={`text-[9px] font-black uppercase tracking-widest px-1.5 shrink-0 ${
+                      athleteProfile.clubStatus === 'active'
+                        ? 'border-green-400 text-green-600'
+                        : athleteProfile.clubStatus === 'rejected'
+                        ? 'border-destructive/50 text-destructive'
+                        : 'border-primary/40 text-primary'
+                    }`}
+                  >
+                    {athleteProfile.clubStatus}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {athleteProfile.clubStatus === 'active' && `You are an active squad member.`}
+                  {athleteProfile.clubStatus === 'pending' && `Awaiting approval from the club admin.`}
+                  {athleteProfile.clubStatus === 'rejected' && `Your request was not approved. You can apply to another club.`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Streak Card ── */}
         {matchStreak > 0 ? (

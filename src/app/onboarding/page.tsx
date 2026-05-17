@@ -189,7 +189,11 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       if (values.team) athleteData.team = values.team;
       if (values.dominantFoot) athleteData.dominantFoot = values.dominantFoot;
       if (values.phone) athleteData.phone = values.phone;
-      if (values.clubId) athleteData.affiliatedClubId = values.clubId;
+      if (values.clubId) {
+        athleteData.affiliatedClubId = values.clubId;
+        if (values.clubName) athleteData.clubName = values.clubName;
+        athleteData.clubStatus = 'pending';
+      }
 
       batch.update(userDocRef, { 
         role: 'athlete',

@@ -72,6 +72,7 @@ export default function MemberRequestsPage() {
       batch.update(doc(firestore, 'athletes', member.uid), {
         affiliatedClubId: clubId,
         clubName: member.clubName || '',
+        clubStatus: 'active',
         updatedAt: new Date().toISOString(),
       });
 
@@ -107,6 +108,11 @@ export default function MemberRequestsPage() {
 
       batch.update(doc(firestore, 'users', member.uid), {
         status: 'rejected',
+        updatedAt: new Date().toISOString(),
+      });
+
+      batch.update(doc(firestore, 'athletes', member.uid), {
+        clubStatus: 'rejected',
         updatedAt: new Date().toISOString(),
       });
 
