@@ -6,7 +6,8 @@ import Link from 'next/link';
 import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
-  CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2
+  CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
+  Plus
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
@@ -60,6 +61,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [moreOpen, setMoreOpen] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -440,6 +442,66 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         open={activeTab === 'support'}
         onOpenChange={(open) => { if (!open) setActiveTab('home'); }}
       />
+
+      {/* ── Quick-Action FAB ── */}
+      <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2 md:bottom-6">
+        {/* Action items — slide up when open */}
+        <div
+          className={cn(
+            'flex flex-col items-end gap-2 transition-all duration-200 origin-bottom',
+            fabOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
+          )}
+        >
+          {/* Log a Match */}
+          <button
+            onClick={() => { setFabOpen(false); router.push('/dashboard/add-match'); }}
+            className="flex items-center gap-2 rounded-full bg-background border shadow-md px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+          >
+            <Award className="h-4 w-4 text-amber-500" />
+            Log a Match
+          </button>
+
+          {/* Rate Attributes */}
+          <button
+            onClick={() => { setFabOpen(false); router.push('/dashboard/update-attributes'); }}
+            className="flex items-center gap-2 rounded-full bg-background border shadow-md px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+          >
+            <BarChart3 className="h-4 w-4 text-blue-500" />
+            Rate Attributes
+          </button>
+
+          {/* Update Master Index */}
+          <button
+            onClick={() => { setFabOpen(false); router.push('/onboarding/metrics'); }}
+            className="flex items-center gap-2 rounded-full bg-background border shadow-md px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+          >
+            <Zap className="h-4 w-4 text-green-500" />
+            Update Index
+          </button>
+        </div>
+
+        {/* FAB trigger */}
+        <button
+          onClick={() => setFabOpen(v => !v)}
+          className={cn(
+            'h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200',
+            fabOpen
+              ? 'bg-foreground text-background rotate-45'
+              : 'bg-primary text-primary-foreground hover:scale-105 active:scale-95'
+          )}
+          aria-label={fabOpen ? 'Close quick actions' : 'Quick actions'}
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* FAB backdrop — closes on tap outside */}
+      {fabOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setFabOpen(false)}
+        />
+      )}
 
       {/* ── Mobile Bottom Tab Bar ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden h-16 items-stretch border-t bg-background/95 backdrop-blur shadow-[0_-1px_12px_rgba(0,0,0,0.08)]">
