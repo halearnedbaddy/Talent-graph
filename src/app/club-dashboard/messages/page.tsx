@@ -1,7 +1,7 @@
 'use client';
 
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ export default function ClubNetworkingPage() {
     const myClubId = userMemberships?.[0]?.clubId;
 
     const conversationsQuery = useMemoFirebase(() => (
-        firestore && myClubId ? query(collection(firestore, 'club_conversations'), where('participants', 'array-contains', myClubId), orderBy('updatedAt', 'desc')) : null
+        firestore && myClubId ? query(collection(firestore, 'club_conversations'), where('participants', 'array-contains', myClubId)) : null
     ), [firestore, myClubId]);
     const { data: conversations, isLoading: convLoading } = useCollection<ClubConversation>(conversationsQuery);
 

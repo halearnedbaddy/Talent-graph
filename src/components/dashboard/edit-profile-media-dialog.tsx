@@ -2,9 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useFirestore, useAuth } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { compressImage, uploadFileViaProxy, type UploadProgress } from '@/firebase/storage';
-import type { AthleteProfile } from '@/lib/types';
+import type { AthleteProfile, ShowcaseVideo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -30,6 +30,7 @@ import {
   Film,
   Upload,
   X,
+  Plus,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -75,6 +76,15 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
   const [videoDragOver, setVideoDragOver] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
+  // Showcase video state
+  const [showcaseFile, setShowcaseFile] = useState<File | null>(null);
+  const [showcasePreviewUrl, setShowcasePreviewUrl] = useState<string | null>(null);
+  const [showcaseUpload, setShowcaseUpload] = useState<UploadProgress | null>(null);
+  const [pendingShowcaseVideo, setPendingShowcaseVideo] = useState<ShowcaseVideo | null>(null);
+  const [showcaseTitle, setShowcaseTitle] = useState('');
+  const [showcaseDragOver, setShowcaseDragOver] = useState(false);
+  const showcaseInputRef = useRef<HTMLInputElement>(null);
+
   // Bio state
   const [bio, setBio] = useState('');
 
@@ -90,6 +100,12 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setPendingVideoUrl(null);
     setVideoTitle(profile.highlightVideoTitle || '');
     setVideoDragOver(false);
+    setShowcaseFile(null);
+    setShowcasePreviewUrl(null);
+    setShowcaseUpload(null);
+    setPendingShowcaseVideo(null);
+    setShowcaseTitle('');
+    setShowcaseDragOver(false);
     setBio(profile.bio || '');
   }, [profile]);
 
@@ -205,6 +221,61 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setPendingVideoUrl(null);
   };
 
+  const processShowcaseFile = async (file: File) => {
+    if (!file.type.startsWith('video/')) {
+      toast({ variant: 'destructive', title: 'Invalid file', description: 'Please select a video file.' });
+      return;
+    }
+    if (showcasePreviewUrl) URL.revokeObjectURL(showcasePreviewUrl);
+    const localUrl = URL.createObjectURL(file);
+    setShowcaseFile(file);
+    setShowcasePreviewUrl(localUrl);
+    setShowcaseUpload({ progress: 0, state: 'running' });
+    setPendingShowcaseVideo(null);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not signed in');
+      const ts = Date.now();
+      const ext = file.name.split('.').pop() || 'mp4';
+      const downloadUrl = await uploadFileViaProxy(
+        `profile-videos/${profile.uid}/showcase_${ts}.${ext}`,
+        file,
+        idToken,
+        setShowcaseUpload
+      );
+      setPendingShowcaseVideo({
+        id: `${ts}`,
+        url: downloadUrl,
+        title: showcaseTitle.trim() || undefined,
+        uploadedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      setShowcaseUpload({ progress: 0, state: 'error', error: err.message });
+      toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
+    }
+  };
+
+  const handleShowcaseSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processShowcaseFile(file);
+    e.target.value = '';
+  };
+
+  const handleShowcaseDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setShowcaseDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await processShowcaseFile(file);
+  };
+
+  const handleClearShowcase = () => {
+    if (showcasePreviewUrl) URL.revokeObjectURL(showcasePreviewUrl);
+    setShowcaseFile(null);
+    setShowcasePreviewUrl(null);
+    setShowcaseUpload(null);
+    setPendingShowcaseVideo(null);
+  };
+
   const handleSave = async () => {
     if (!firestore) return;
     setIsSaving(true);
@@ -217,10 +288,20 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
       if (pendingPhotoUrl) updates.photoUrl = pendingPhotoUrl;
       if (pendingVideoUrl) updates.highlightVideoUrl = pendingVideoUrl;
 
+      if (pendingShowcaseVideo) {
+        const videoToSave: ShowcaseVideo = {
+          ...pendingShowcaseVideo,
+          title: showcaseTitle.trim() || pendingShowcaseVideo.title,
+        };
+        updates.showcaseVideos = arrayUnion(videoToSave);
+      }
+
       await updateDoc(doc(firestore, 'athletes', profile.uid), updates);
       toast({ title: 'Profile updated', description: 'Your changes have been saved.' });
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-      setOpen(false);
+      if (showcasePreviewUrl) URL.revokeObjectURL(showcasePreviewUrl);
+      if (isControlled) onExternalOpenChange?.(false);
+      else setInternalOpen(false);
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save changes.' });
     } finally {
@@ -228,12 +309,13 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     }
   };
 
-  const isUploading = photoUpload?.state === 'running' || videoUpload?.state === 'running';
+  const isUploading = photoUpload?.state === 'running' || videoUpload?.state === 'running' || showcaseUpload?.state === 'running';
   const canSave = !isSaving && (
     bio.trim() !== (profile.bio || '').trim() ||
     videoTitle.trim() !== (profile.highlightVideoTitle || '').trim() ||
     pendingPhotoUrl !== null ||
-    pendingVideoUrl !== null
+    pendingVideoUrl !== null ||
+    pendingShowcaseVideo !== null
   );
 
   return (
@@ -261,16 +343,20 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
 
           <Tabs defaultValue="photo" className="mt-2">
             <TabsList className="w-full">
-              <TabsTrigger value="photo" className="flex-1 gap-2">
-                <Camera className="w-4 h-4" />
+              <TabsTrigger value="photo" className="flex-1 gap-1 text-xs">
+                <Camera className="w-3.5 h-3.5" />
                 Photo
               </TabsTrigger>
-              <TabsTrigger value="video" className="flex-1 gap-2">
-                <Video className="w-4 h-4" />
+              <TabsTrigger value="video" className="flex-1 gap-1 text-xs">
+                <Video className="w-3.5 h-3.5" />
                 Video
               </TabsTrigger>
-              <TabsTrigger value="bio" className="flex-1 gap-2">
-                <User className="w-4 h-4" />
+              <TabsTrigger value="showcase" className="flex-1 gap-1 text-xs">
+                <Plus className="w-3.5 h-3.5" />
+                Showcase
+              </TabsTrigger>
+              <TabsTrigger value="bio" className="flex-1 gap-1 text-xs">
+                <User className="w-3.5 h-3.5" />
                 Bio
               </TabsTrigger>
             </TabsList>
@@ -515,6 +601,122 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                   </div>
                   {profile.highlightVideoTitle && (
                     <p className="text-xs text-muted-foreground text-center">{profile.highlightVideoTitle}</p>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* SHOWCASE TAB */}
+            <TabsContent value="showcase" className="space-y-5 mt-5">
+              <input
+                ref={showcaseInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                className="hidden"
+                onChange={handleShowcaseSelect}
+              />
+
+              <div className="space-y-1">
+                <p className="text-sm font-bold">Add a Showcase Video</p>
+                <p className="text-xs text-muted-foreground">Each video you add is kept separately — nothing gets replaced.</p>
+              </div>
+
+              {profile.showcaseVideos && profile.showcaseVideos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Showcase ({profile.showcaseVideos.length})</p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {profile.showcaseVideos.map((v) => (
+                      <div key={v.id} className="flex items-center gap-2 p-2.5 bg-muted/40 rounded-lg">
+                        <Film className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-sm font-bold truncate flex-1">{v.title || 'Untitled clip'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="font-bold">Video Title</Label>
+                <Input
+                  placeholder="e.g. Free-kick compilation"
+                  value={showcaseTitle}
+                  onChange={e => setShowcaseTitle(e.target.value)}
+                />
+              </div>
+
+              {!showcaseFile ? (
+                <button
+                  type="button"
+                  onClick={() => showcaseInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setShowcaseDragOver(true); }}
+                  onDragLeave={() => setShowcaseDragOver(false)}
+                  onDrop={handleShowcaseDrop}
+                  className={`w-full border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 transition-all
+                    ${showcaseDragOver ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-border hover:border-primary/50 hover:bg-muted/30'}
+                    cursor-pointer`}
+                >
+                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Film className="w-7 h-7 text-primary" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-sm flex items-center gap-2 justify-center">
+                      <Upload className="w-4 h-4" />
+                      {showcaseDragOver ? 'Drop your video here' : 'Click or drag to add a showcase video'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">MP4, WebM, MOV — up to 500 MB</p>
+                  </div>
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  {showcasePreviewUrl && (
+                    <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+                      <video src={showcasePreviewUrl} controls className="w-full h-full object-contain" preload="metadata" />
+                      {showcaseUpload?.state !== 'running' && (
+                        <button
+                          onClick={handleClearShowcase}
+                          className="absolute top-2 right-2 bg-black/70 text-white rounded-full p-1 hover:bg-black transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                    <Film className="w-5 h-5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate">{showcaseFile.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{(showcaseFile.size / (1024 * 1024)).toFixed(1)} MB</p>
+                    </div>
+                  </div>
+
+                  {showcaseUpload?.state === 'running' && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" />Uploading...</span>
+                        <span>{showcaseUpload.progress}%</span>
+                      </div>
+                      <Progress value={showcaseUpload.progress} className="h-2" />
+                    </div>
+                  )}
+
+                  {showcaseUpload?.state === 'success' && (
+                    <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Video ready — click Save Changes to add it
+                    </div>
+                  )}
+
+                  {showcaseUpload?.state === 'error' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-destructive text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        Upload failed: {showcaseUpload.error}
+                      </div>
+                      <Button variant="outline" size="sm" className="w-full" onClick={() => showcaseFile && processShowcaseFile(showcaseFile)}>
+                        Retry Upload
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}

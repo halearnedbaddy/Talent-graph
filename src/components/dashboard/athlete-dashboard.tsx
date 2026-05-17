@@ -38,6 +38,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { VideoEngagement } from './video-engagement';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -455,7 +456,6 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                       <p className="text-xs font-bold text-neutral-400 mt-0.5">{athleteProfile.highlightVideoTitle}</p>
                     )}
                   </div>
-                  <EditProfileMediaDialog profile={athleteProfile} />
                 </CardHeader>
                 <CardContent className="p-0 bg-black">
                   <div className="aspect-video w-full">
@@ -467,7 +467,48 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                     />
                   </div>
                 </CardContent>
+                <VideoEngagement
+                  videoId={`${athleteProfile.uid}_highlight`}
+                  athleteId={athleteProfile.uid}
+                  athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+                  viewerName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+                  viewerRole="athlete"
+                />
               </Card>
+            )}
+
+            {athleteProfile.showcaseVideos && athleteProfile.showcaseVideos.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-black uppercase tracking-[0.3em] flex items-center gap-2">
+                  <Play className="w-4 h-4 text-primary fill-primary" /> Showcase Videos
+                </h3>
+                {athleteProfile.showcaseVideos.map((vid) => (
+                  <Card key={vid.id} className="shadow-lg border-none overflow-hidden">
+                    <CardHeader className="bg-neutral-950 text-white py-3 px-4">
+                      <CardTitle className="text-sm font-black uppercase tracking-widest">
+                        {vid.title || 'Showcase Clip'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 bg-black">
+                      <div className="aspect-video w-full">
+                        <video
+                          src={vid.url}
+                          controls
+                          className="w-full h-full object-contain"
+                          preload="metadata"
+                        />
+                      </div>
+                    </CardContent>
+                    <VideoEngagement
+                      videoId={`${athleteProfile.uid}_showcase_${vid.id}`}
+                      athleteId={athleteProfile.uid}
+                      athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+                      viewerName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+                      viewerRole="athlete"
+                    />
+                  </Card>
+                ))}
+              </div>
             )}
           </div>
 

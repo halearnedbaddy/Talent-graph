@@ -133,8 +133,16 @@ export interface AthleteProfile {
   bio?: string;
   highlightVideoUrl?: string;
   highlightVideoTitle?: string;
+  showcaseVideos?: ShowcaseVideo[];
   likeCount?: number;
   phone?: string;
+}
+
+export interface ShowcaseVideo {
+  id: string;
+  url: string;
+  title?: string;
+  uploadedAt: string;
 }
 
 export interface ProfileView {
