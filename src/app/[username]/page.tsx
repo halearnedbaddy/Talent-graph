@@ -1,9 +1,9 @@
 'use client';
 import { useParams } from 'next/navigation';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, query, where, doc, addDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import type { AthleteProfile, UserAccount, ScoutConnection, ClubMember, ScoutAthleteData, ScoutProfile } from '@/lib/types';
-import { Loader2, ArrowLeft, ShieldCheck, UserCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, Ruler, Weight, Footprints, MessageSquare } from 'lucide-react';
+import { collection, query, where, doc, addDoc, setDoc } from 'firebase/firestore';
+import type { AthleteProfile, UserAccount, ScoutConnection, ClubMember, ScoutAthleteData, ScoutProfile, ClubProfile } from '@/lib/types';
+import { Loader2, ArrowLeft, ShieldCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, MessageSquare, MapPin, Building2, Trophy, AlertTriangle, Calendar, Users } from 'lucide-react';
 import { PerformanceRadarChart } from '@/components/dashboard/performance-radar-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -61,6 +61,15 @@ export default function UsernamePage() {
     
     const activeMembership = clubMemberships?.find(m => m.status === 'active');
     const clubId = activeMembership?.clubId;
+
+    // Fetch affiliated club profile for location data
+    const affiliatedClubRef = useMemoFirebase(
+        () => (firestore && athlete?.affiliatedClubId && athlete?.clubStatus === 'active'
+            ? doc(firestore, 'clubs', athlete.affiliatedClubId)
+            : null),
+        [firestore, athlete?.affiliatedClubId, athlete?.clubStatus]
+    );
+    const { data: affiliatedClub } = useDoc<ClubProfile>(affiliatedClubRef);
 
     const connectionId = athlete?.uid && authUser?.uid ? `${athlete.uid}_${authUser.uid}` : null;
     const existingConnectionDocRef = useMemoFirebase(() => {
@@ -300,8 +309,77 @@ export default function UsernamePage() {
                                 <div className="flex justify-between border-b pb-2"><span>Age</span><span>{athlete.age}</span></div>
                                 <div className="flex justify-between border-b pb-2"><span>Height</span><span>{athlete.heightCm} cm</span></div>
                                 <div className="flex justify-between border-b pb-2"><span>Weight</span><span>{athlete.weightKg} kg</span></div>
+                                {athlete.country && (
+                                    <div className="flex justify-between border-b pb-2"><span>Nationality</span><span>{athlete.country}</span></div>
+                                )}
                             </CardContent>
                         </Card>
+
+                        {/* ── Club & Location ── */}
+                        {(athlete.clubName || athlete.team) && (
+                            <Card className="bg-background border-none shadow-lg">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-1.5">
+                                        <Building2 className="w-3 h-3" /> Current Club
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3 text-sm">
+                                    {athlete.clubName && (
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                                <Building2 className="w-4 h-4 text-primary" />
+                                            </div>
+                                            <div>
+                                                <p className="font-black">{athlete.clubName}</p>
+                                                {athlete.team && <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">{athlete.team}</p>}
+                                            </div>
+                                            {athlete.clubStatus === 'active' && (
+                                                <Badge className="ml-auto bg-green-500/10 text-green-600 border-none text-[9px] font-black uppercase shrink-0">Active</Badge>
+                                            )}
+                                        </div>
+                                    )}
+                                    {(affiliatedClub?.location || affiliatedClub?.venue) && (
+                                        <div className="flex items-center gap-2 text-muted-foreground">
+                                            <MapPin className="w-3.5 h-3.5 shrink-0 text-primary" />
+                                            <span className="text-xs font-bold">{affiliatedClub.location}{affiliatedClub.venue ? ` · ${affiliatedClub.venue}` : ''}</span>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* ── Career Stats Summary ── */}
+                        {(athlete.matchHistory?.length ?? 0) > 0 && (() => {
+                            const history = athlete.matchHistory!;
+                            const totalApps = history.reduce((s, m) => s + (m.apps || 0), 0);
+                            const totalGoals = history.reduce((s, m) => s + (m.goals || 0), 0);
+                            const totalAssists = history.reduce((s, m) => s + (m.assists || 0), 0);
+                            const motm = history.filter(m => m.manOfTheMatch).length;
+                            const avgRating = history.length ? (history.reduce((s, m) => s + (m.rating || 0), 0) / history.length).toFixed(1) : '--';
+                            return (
+                                <Card className="bg-background border-none shadow-lg">
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-1.5">
+                                            <Trophy className="w-3 h-3" /> Career Stats
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="grid grid-cols-2 gap-3">
+                                        {[
+                                            { label: 'Apps', value: totalApps },
+                                            { label: 'Goals', value: totalGoals },
+                                            { label: 'Assists', value: totalAssists },
+                                            { label: 'MoTM', value: motm },
+                                            { label: 'Avg Rating', value: avgRating },
+                                        ].map(stat => (
+                                            <div key={stat.label} className="text-center rounded-lg bg-muted/40 py-2 px-1">
+                                                <p className="text-xl font-black">{stat.value}</p>
+                                                <p className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest">{stat.label}</p>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })()}
 
                         <Card className="bg-neutral-950 text-white border-none shadow-2xl">
                             <CardHeader className="text-center pb-2">
@@ -312,6 +390,81 @@ export default function UsernamePage() {
                                 <p className="text-[10px] font-bold text-primary mt-4 tracking-widest uppercase">Institutional Grade</p>
                             </CardContent>
                         </Card>
+
+                        {/* ── Previous Teams ── */}
+                        {(athlete.previousTeams?.length ?? 0) > 0 && (
+                            <Card className="bg-background border-none shadow-lg">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-1.5">
+                                        <Users className="w-3 h-3" /> Career History
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    {athlete.previousTeams!.map(pt => (
+                                        <div key={pt.id} className="flex items-start gap-3 border-b last:border-0 pb-3 last:pb-0">
+                                            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                                                <Building2 className="w-4 h-4 text-muted-foreground" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-black text-sm truncate">{pt.teamName}</p>
+                                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                                                    {pt.league || pt.country} &bull; {pt.from}{pt.to ? `–${pt.to}` : '–present'}
+                                                </p>
+                                                {(pt.appearances || pt.goals) && (
+                                                    <div className="flex gap-3 mt-1">
+                                                        {pt.appearances != null && <span className="text-[9px] font-black text-muted-foreground">{pt.appearances} apps</span>}
+                                                        {pt.goals != null && <span className="text-[9px] font-black text-muted-foreground">{pt.goals} goals</span>}
+                                                        {pt.assists != null && <span className="text-[9px] font-black text-muted-foreground">{pt.assists} assists</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <Badge variant="outline" className="text-[8px] font-black uppercase shrink-0">{pt.role}</Badge>
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* ── Injury History ── */}
+                        {(athlete.injuryHistory?.length ?? 0) > 0 && (
+                            <Card className="bg-background border-none shadow-lg">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-1.5">
+                                        <AlertTriangle className="w-3 h-3" /> Injury History
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    {athlete.injuryHistory!.map(inj => (
+                                        <div key={inj.id} className="flex items-start gap-3 border-b last:border-0 pb-3 last:pb-0">
+                                            <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
+                                                inj.severity === 'major' ? 'bg-destructive' :
+                                                inj.severity === 'moderate' ? 'bg-amber-500' :
+                                                'bg-green-500'
+                                            }`} />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-black text-sm capitalize">{inj.type} — {inj.bodyPart}</p>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+                                                    <p className="text-[10px] text-muted-foreground font-bold">
+                                                        {inj.dateOccurred}{inj.recoveryDate ? ` → ${inj.recoveryDate}` : ' (ongoing)'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Badge
+                                                variant="outline"
+                                                className={`text-[8px] font-black uppercase shrink-0 ${
+                                                    inj.severity === 'major' ? 'border-destructive/50 text-destructive' :
+                                                    inj.severity === 'moderate' ? 'border-amber-500/50 text-amber-600' :
+                                                    'border-green-500/50 text-green-600'
+                                                }`}
+                                            >
+                                                {inj.severity}
+                                            </Badge>
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     <div className="md:col-span-2 space-y-8">

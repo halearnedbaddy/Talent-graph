@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc } from 'firebase/firestore';
+import { collection, query, where, addDoc, doc } from 'firebase/firestore';
+import { sendClubNotification } from '@/hooks/usePushNotifications';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,7 +67,28 @@ export default function PracticeManagementPage() {
                 attendance: {},
                 createdAt: new Date().toISOString()
             });
-            toast({ title: 'Session Scheduled', description: 'Players and coaches have been notified.' });
+
+            // Post an announcement to squad chat so all members see it
+            const sessionLine = `📅 Training Session: "${newSession.name}" — ${newSession.date} @ ${newSession.time}, ${newSession.location}. Please confirm your attendance.`;
+            await addDoc(collection(firestore, 'clubs', clubId, 'squad_messages'), {
+                senderId: user?.uid ?? 'system',
+                senderName: '📋 Club Staff',
+                content: sessionLine,
+                timestamp: new Date().toISOString(),
+                type: 'session_announcement',
+            });
+
+            // Push notification to all club members
+            sendClubNotification({
+                clubId,
+                title: `Training Session Scheduled`,
+                body: `${newSession.name} — ${newSession.date} @ ${newSession.time} at ${newSession.location}`,
+                url: '/club-dashboard/squad-chat',
+                tag: 'training-session',
+                firestore,
+            });
+
+            toast({ title: 'Session Scheduled', description: 'Squad has been notified via chat.' });
             setNewSession({...newSession, name: '', location: ''});
         } catch (e) {
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to add practice.' });

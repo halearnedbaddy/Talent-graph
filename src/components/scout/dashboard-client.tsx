@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { signOut } from 'firebase/auth';
 import { useAuth, useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
-import { LogOut, User, Eye, BarChart3, Users, Building2 } from 'lucide-react';
+import { LogOut, User, Eye, BarChart3, Users, Building2, MessageSquare } from 'lucide-react';
 import { ScoutNotificationBell } from './notification-bell';
 import { FilterSidebar } from './filter-sidebar';
 import { ResultsList } from './results-list';
@@ -20,6 +20,7 @@ import { AdvancedAnalytics } from './advanced-analytics';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SupportDialog } from '@/components/support/support-dialog';
 import { ClubAffiliation } from './club-affiliation';
+import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 
 export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const auth = useAuth();
@@ -151,8 +152,17 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
                 </TabsContent>
 
                 <TabsContent value="club">
-                    <div className="max-w-2xl mx-auto">
+                    <div className="max-w-2xl mx-auto space-y-6">
                         <ClubAffiliation currentClubId={activeClubId} />
+                        {activeClubId && (
+                            <div>
+                                <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
+                                    <MessageSquare className="w-4 h-4" />
+                                    Squad Chat
+                                </h2>
+                                <SquadChatWidget clubId={activeClubId} scrollHeight="400px" />
+                            </div>
+                        )}
                     </div>
                 </TabsContent>
             </Tabs>

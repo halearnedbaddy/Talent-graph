@@ -7,7 +7,7 @@ import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
-  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck
+  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck, MessageSquare
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
@@ -54,6 +54,7 @@ import {
 } from '@/components/ui/sheet';
 import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
+import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -70,7 +71,7 @@ interface AthleteDashboardProps {
   athleteProfile?: AthleteProfile;
 }
 
-type ActiveTab = 'home' | 'edit' | 'support' | 'notifications';
+type ActiveTab = 'home' | 'edit' | 'support' | 'notifications' | 'squad-chat';
 
 export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboardProps) {
   const auth = useAuth();
@@ -796,6 +797,23 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         </SheetContent>
       </Sheet>
 
+      {/* ── Squad Chat Sheet (active club members only) ── */}
+      {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
+        <Sheet open={activeTab === 'squad-chat'} onOpenChange={(open) => { if (!open) setActiveTab('home'); }}>
+          <SheetContent side="bottom" className="h-[85dvh] p-0 flex flex-col overflow-hidden rounded-t-2xl">
+            <SheetHeader className="px-5 pt-5 pb-3 border-b shrink-0">
+              <SheetTitle className="flex items-center gap-2 font-black uppercase tracking-widest text-sm">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                Squad Chat
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-hidden p-4">
+              <SquadChatWidget clubId={athleteProfile.affiliatedClubId} scrollHeight="calc(85dvh - 160px)" />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* ── Quick-Action FAB ── */}
       <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2 md:bottom-6">
         {/* Action items — slide up when open */}
@@ -925,6 +943,25 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             Alerts
           </span>
         </button>
+
+        {/* Squad Chat — only for active club members */}
+        {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
+          <button
+            onClick={() => setActiveTab('squad-chat')}
+            className={cn(
+              'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+              activeTab === 'squad-chat' ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
+            {activeTab === 'squad-chat' && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+            )}
+            <MessageSquare className={cn('h-5 w-5 transition-transform', activeTab === 'squad-chat' && 'scale-110')} />
+            <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'squad-chat' && 'font-black')}>
+              Chat
+            </span>
+          </button>
+        )}
 
         {/* Support */}
         <button
