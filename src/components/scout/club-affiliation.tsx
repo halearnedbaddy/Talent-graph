@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
 import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search, Building, Check, Clock, X } from 'lucide-react';
+import { Loader2, Search, Building, Check, Clock, X, AlertCircle } from 'lucide-react';
 import type { ClubProfile, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -24,14 +24,30 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
     ), [firestore, searchQuery]);
     const { data: clubs } = useCollection<ClubProfile>(clubsQuery);
 
-    // 2. Get my memberships
+    // 2. Get ALL my memberships (so we can detect pending even without searching)
     const myMembershipsQuery = useMemoFirebase(() => (
         firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
     ), [firestore, user]);
     const { data: memberships } = useCollection<ClubMember>(myMembershipsQuery);
 
+    // 3. Find any pending membership so we can show a banner
+    const pendingMembership = memberships?.find(m => m.status === 'pending') ?? null;
+    const hasPending = !!pendingMembership;
+
+    // 4. Fetch the pending club's profile to display its name
+    const pendingClubRef = useMemoFirebase(() => (
+        firestore && pendingMembership?.clubId ? doc(firestore, 'clubs', pendingMembership.clubId) : null
+    ), [firestore, pendingMembership?.clubId]);
+    const { data: pendingClub } = useDoc<ClubProfile>(pendingClubRef);
+
+    const myMembershipMap = new Map(memberships?.map(m => [m.clubId, m]));
+
     const handleJoinRequest = async (clubId: string) => {
         if (!user || !firestore) return;
+        if (hasPending) {
+            toast({ variant: 'destructive', title: 'Request already pending', description: 'Cancel your current request before joining a different club.' });
+            return;
+        }
         setLoadingId(clubId);
         try {
             const memberId = `${user.uid}_${clubId}`;
@@ -67,83 +83,109 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
         }
     };
 
-    const myMembershipMap = new Map(memberships?.map(m => [m.clubId, m]));
-
     return (
         <Card className="border-none shadow-sm bg-background">
             <CardHeader>
                 <CardTitle className="text-lg font-bold">Institutional Affiliation</CardTitle>
                 <CardDescription>Connect with a club to access their squad data and internal network.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search for an organization..."
-                        className="pl-9"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
+            <CardContent className="space-y-5">
 
-                <div className="space-y-2">
-                    {clubs?.filter(c => c.uid !== currentClubId).map(club => {
-                        const membership = myMembershipMap.get(club.uid);
-                        const status = membership?.status;
-                        const isLoading = loadingId === club.uid;
-
-                        return (
-                            <div key={club.uid} className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/30 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                                        <Building className="w-5 h-5 text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <p className="font-bold">{club.clubName}</p>
-                                        <p className="text-xs text-muted-foreground">{club.location}</p>
-                                    </div>
-                                </div>
-
-                                {status === 'active' ? (
-                                    <Badge className="bg-green-500/10 text-green-600 border-none font-black text-[10px] h-7 px-3">
-                                        <Check className="w-3 h-3 mr-1" /> ACTIVE
-                                    </Badge>
-                                ) : status === 'pending' ? (
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-orange-500 border-orange-200 font-black text-[10px] h-7 px-3">
-                                            <Clock className="w-3 h-3 mr-1" /> PENDING
-                                        </Badge>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => handleCancelRequest(club.uid)}
-                                            disabled={isLoading}
-                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                            title="Cancel request"
-                                        >
-                                            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <Button
-                                        size="sm"
-                                        onClick={() => handleJoinRequest(club.uid)}
-                                        disabled={isLoading}
-                                        className="font-black text-[10px] uppercase tracking-widest h-8"
-                                    >
-                                        {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Join Club'}
-                                    </Button>
-                                )}
+                {/* Pending Request Banner — always visible regardless of search */}
+                {pendingMembership && (
+                    <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-orange-200 bg-orange-50/40 dark:bg-orange-950/20 dark:border-orange-800/40">
+                        <div className="flex items-start gap-3 min-w-0">
+                            <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+                                <Clock className="w-4 h-4 text-orange-500" />
                             </div>
-                        );
-                    })}
-                    {searchQuery.length > 2 && clubs?.length === 0 && (
-                        <p className="text-center py-8 text-sm text-muted-foreground">No clubs found matching "{searchQuery}"</p>
-                    )}
-                    {searchQuery.length > 0 && searchQuery.length <= 2 && (
-                        <p className="text-center py-4 text-xs text-muted-foreground">Type at least 3 characters to search</p>
-                    )}
-                </div>
+                            <div className="min-w-0">
+                                <p className="text-sm font-black text-orange-700 dark:text-orange-400">Request Pending</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    You applied to join{' '}
+                                    <span className="font-bold text-foreground">
+                                        {pendingClub?.clubName ?? 'a club'}
+                                    </span>
+                                    . Cancel to request a different club.
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCancelRequest(pendingMembership.clubId)}
+                            disabled={loadingId === pendingMembership.clubId}
+                            className="shrink-0 h-8 border-orange-300 text-orange-600 hover:bg-orange-100 hover:text-orange-700 dark:border-orange-700 dark:text-orange-400"
+                        >
+                            {loadingId === pendingMembership.clubId
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <><X className="w-3 h-3 mr-1" />Cancel</>
+                            }
+                        </Button>
+                    </div>
+                )}
+
+                {/* Block searching for another club while one is pending */}
+                {hasPending ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-muted-foreground text-xs">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        Cancel your current request above before searching for a different club.
+                    </div>
+                ) : (
+                    <>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search for an organization..."
+                                className="pl-9"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            {clubs?.filter(c => c.uid !== currentClubId).map(club => {
+                                const membership = myMembershipMap.get(club.uid);
+                                const status = membership?.status;
+                                const isLoading = loadingId === club.uid;
+
+                                return (
+                                    <div key={club.uid} className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/30 transition-colors">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                                                <Building className="w-5 h-5 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold">{club.clubName}</p>
+                                                <p className="text-xs text-muted-foreground">{club.location}</p>
+                                            </div>
+                                        </div>
+
+                                        {status === 'active' ? (
+                                            <Badge className="bg-green-500/10 text-green-600 border-none font-black text-[10px] h-7 px-3">
+                                                <Check className="w-3 h-3 mr-1" /> ACTIVE
+                                            </Badge>
+                                        ) : (
+                                            <Button
+                                                size="sm"
+                                                onClick={() => handleJoinRequest(club.uid)}
+                                                disabled={isLoading}
+                                                className="font-black text-[10px] uppercase tracking-widest h-8"
+                                            >
+                                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Join Club'}
+                                            </Button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {searchQuery.length > 2 && clubs?.length === 0 && (
+                                <p className="text-center py-8 text-sm text-muted-foreground">No clubs found matching "{searchQuery}"</p>
+                            )}
+                            {searchQuery.length > 0 && searchQuery.length <= 2 && (
+                                <p className="text-center py-4 text-xs text-muted-foreground">Type at least 3 characters to search</p>
+                            )}
+                        </div>
+                    </>
+                )}
             </CardContent>
         </Card>
     );

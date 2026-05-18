@@ -91,7 +91,7 @@ export default function ScoutProfilePage() {
             toast({ variant: 'destructive', title: 'File too large', description: 'Please choose an image under 15 MB.' });
             return;
         }
-        if (!user?.uid) return;
+        if (!user?.uid || !firestore) return;
         const previewUrl = URL.createObjectURL(file);
         setPhotoPreview(previewUrl);
         setIsCompressingPhoto(true);
@@ -108,8 +108,15 @@ export default function ScoutProfilePage() {
                 photoBlob,
                 (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
             );
+            // Auto-save to Firestore immediately — no separate form submit needed
+            const { doc: firestoreDoc, updateDoc } = await import('firebase/firestore');
+            await updateDoc(firestoreDoc(firestore, 'scouts', user.uid), {
+                photoUrl: downloadUrl,
+                updatedAt: new Date().toISOString(),
+            });
             setPendingPhotoUrl(downloadUrl);
             setPhotoPreview(downloadUrl);
+            toast({ title: 'Photo saved!', description: 'Your profile photo has been updated.' });
         } catch (err: any) {
             setIsCompressingPhoto(false);
             setPhotoUpload({ progress: 0, state: 'error', error: err.message });
@@ -248,7 +255,7 @@ export default function ScoutProfilePage() {
                                 {photoUpload?.state === 'success' && (
                                     <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
                                         <CheckCircle2 className="w-3.5 h-3.5" />
-                                        Photo ready — click Save Profile to apply
+                                        Photo saved to your profile!
                                     </p>
                                 )}
                                 {photoUpload?.state === 'error' && (
