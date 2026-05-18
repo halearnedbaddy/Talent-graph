@@ -2,22 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, orderBy, limit, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { collection as col, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, addDoc, doc, updateDoc, where } from 'firebase/firestore';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, MessageSquare, Lock, CheckCircle2, XCircle, MapPin, Calendar, Clock } from 'lucide-react';
+import { Loader2, Send, MessageSquare, Lock, CheckCircle2, XCircle, MapPin, Calendar, Clock, Bell, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { ClubMember, ClubProfile, PracticeSession } from '@/lib/types';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
 import { smsSend } from '@/hooks/useSMS';
 
-// ── Inline RSVP card rendered for session_announcement messages ──────────────
+// ── Inline RSVP card for session_announcement messages ───────────────────────
 
 interface RsvpCardProps {
   sessionId: string;
@@ -46,8 +44,7 @@ function RsvpCard({ sessionId, sessionName, sessionDate, sessionTime, sessionLoc
   const absentCount = Object.values(attendance).filter(s => s === 'absent').length;
 
   const handleRsvp = async (status: 'present' | 'absent') => {
-    if (!firestore || !user || !sessionId) return;
-    if (saving) return;
+    if (!firestore || !user || !sessionId || saving) return;
     setSaving(true);
     try {
       await updateDoc(doc(firestore, 'practices', sessionId), {
@@ -61,13 +58,11 @@ function RsvpCard({ sessionId, sessionName, sessionDate, sessionTime, sessionLoc
 
   return (
     <div className="w-full max-w-sm rounded-2xl border bg-background shadow-md overflow-hidden">
-      {/* Header strip */}
       <div className="bg-neutral-900 px-4 py-2.5 flex items-center justify-between">
         <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">{senderName}</span>
         <span className="text-[8px] text-neutral-500">{format(new Date(timestamp), 'p')}</span>
       </div>
 
-      {/* Session details */}
       <div className="px-4 pt-3 pb-2 space-y-1.5">
         <p className="text-sm font-black uppercase tracking-tight">{sessionName}</p>
         <div className="flex flex-wrap gap-3 text-[10px] font-bold text-muted-foreground">
@@ -77,7 +72,6 @@ function RsvpCard({ sessionId, sessionName, sessionDate, sessionTime, sessionLoc
         </div>
       </div>
 
-      {/* RSVP buttons */}
       <div className="px-4 pb-3 pt-1 flex gap-2">
         <Button
           size="sm"
@@ -89,44 +83,31 @@ function RsvpCard({ sessionId, sessionName, sessionDate, sessionTime, sessionLoc
           onClick={() => handleRsvp('present')}
           disabled={saving}
         >
-          {saving && myStatus !== 'present' ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <CheckCircle2 className="w-3.5 h-3.5" />
-          )}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
           Attending
         </Button>
         <Button
           size="sm"
           variant={myStatus === 'absent' ? 'destructive' : 'outline'}
-          className={cn(
-            'flex-1 h-9 text-[10px] font-black uppercase tracking-wider gap-1.5 transition-all',
-          )}
+          className="flex-1 h-9 text-[10px] font-black uppercase tracking-wider gap-1.5 transition-all"
           onClick={() => handleRsvp('absent')}
           disabled={saving}
         >
-          {saving && myStatus !== 'absent' ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <XCircle className="w-3.5 h-3.5" />
-          )}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
           Not Attending
         </Button>
       </div>
 
-      {/* Live attendance tally */}
       {(attendingCount > 0 || absentCount > 0) && (
-        <div className="px-4 pb-3 flex items-center gap-3">
+        <div className="px-4 pb-3 flex items-center gap-3 border-t pt-2">
           {attendingCount > 0 && (
             <span className="flex items-center gap-1 text-[9px] font-black text-green-600 uppercase tracking-widest">
-              <CheckCircle2 className="w-3 h-3" />
-              {attendingCount} attending
+              <CheckCircle2 className="w-3 h-3" />{attendingCount} attending
             </span>
           )}
           {absentCount > 0 && (
             <span className="flex items-center gap-1 text-[9px] font-black text-destructive uppercase tracking-widest">
-              <XCircle className="w-3 h-3" />
-              {absentCount} not attending
+              <XCircle className="w-3 h-3" />{absentCount} not attending
             </span>
           )}
         </div>
@@ -135,7 +116,78 @@ function RsvpCard({ sessionId, sessionName, sessionDate, sessionTime, sessionLoc
   );
 }
 
-// ── Main widget ──────────────────────────────────────────────────────────────
+// ── Reminder banner: sessions in next 24h without RSVP ───────────────────────
+
+interface RsvpReminderBannerProps {
+  clubId: string;
+  userId: string;
+}
+
+function RsvpReminderBanner({ clubId, userId }: RsvpReminderBannerProps) {
+  const firestore = useFirestore();
+  const [dismissed, setDismissed] = useState(false);
+
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().split('T')[0];
+
+  const upcomingQuery = useMemoFirebase(() => (
+    firestore && clubId
+      ? query(
+          collection(firestore, 'practices'),
+          where('clubId', '==', clubId),
+          where('date', '>=', today),
+          where('date', '<=', tomorrow)
+        )
+      : null
+  ), [firestore, clubId, today, tomorrow]);
+  const { data: sessions } = useCollection<PracticeSession>(upcomingQuery);
+
+  // Sessions where this user has NOT responded yet
+  const pending = sessions?.filter(s => !s.attendance?.[userId]) ?? [];
+
+  // Also check for sessions starting within 1 hour
+  const now = new Date();
+  const soonSessions = pending.filter(s => {
+    if (s.date !== today) return false;
+    const [h, m] = (s.time ?? '00:00').split(':').map(Number);
+    const sessionStart = new Date(s.date);
+    sessionStart.setHours(h, m, 0, 0);
+    const diffMins = (sessionStart.getTime() - now.getTime()) / 60_000;
+    return diffMins > 0 && diffMins <= 90; // starting within 90 minutes
+  });
+
+  if (dismissed || pending.length === 0) return null;
+
+  const isUrgent = soonSessions.length > 0;
+  const label = isUrgent
+    ? `⏰ Training starts soon — have you responded?`
+    : `📋 ${pending.length} upcoming session${pending.length > 1 ? 's' : ''} need${pending.length === 1 ? 's' : ''} your RSVP`;
+
+  return (
+    <div className={cn(
+      'mx-4 mt-3 mb-1 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shrink-0',
+      isUrgent
+        ? 'bg-amber-500/10 border border-amber-500/30'
+        : 'bg-primary/5 border border-primary/20'
+    )}>
+      <div className="flex items-center gap-2 min-w-0">
+        <Bell className={cn('w-3.5 h-3.5 shrink-0', isUrgent ? 'text-amber-500' : 'text-primary')} />
+        <p className={cn('text-[10px] font-black uppercase tracking-widest truncate', isUrgent ? 'text-amber-700 dark:text-amber-400' : 'text-primary')}>
+          {label}
+        </p>
+      </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-muted-foreground hover:text-foreground shrink-0"
+        aria-label="Dismiss"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ── Main widget ───────────────────────────────────────────────────────────────
 
 interface SquadChatWidgetProps {
   clubId?: string;
@@ -150,7 +202,7 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
 
   const clubMemberQuery = useMemoFirebase(() => (
     firestore && user && !propClubId
-      ? query(col(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
+      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
       : null
   ), [firestore, user, propClubId]);
   const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
@@ -164,7 +216,7 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
 
   const messagesQuery = useMemoFirebase(() => (
     firestore && resolvedClubId
-      ? query(col(firestore, 'clubs', resolvedClubId, 'squad_messages'), orderBy('timestamp', 'asc'), limit(60))
+      ? query(collection(firestore, 'clubs', resolvedClubId, 'squad_messages'), orderBy('timestamp', 'asc'), limit(60))
       : null
   ), [firestore, resolvedClubId]);
   const { data: messages, isLoading: msgsLoading } = useCollection<any>(messagesQuery);
@@ -181,7 +233,7 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
 
     const senderName = user.displayName || 'Squad Member';
     const body = newMessage.trim();
-    await addDoc(col(firestore, 'clubs', resolvedClubId, 'squad_messages'), {
+    await addDoc(collection(firestore, 'clubs', resolvedClubId, 'squad_messages'), {
       senderId: user.uid,
       senderName,
       content: body,
@@ -235,6 +287,11 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
           </div>
         </CardHeader>
 
+        {/* Reminder banner — shows outside the scroll area so it's always visible */}
+        {user && resolvedClubId && (
+          <RsvpReminderBanner clubId={resolvedClubId} userId={user.uid} />
+        )}
+
         <ScrollArea style={{ height: scrollHeight }} ref={scrollRef as any}>
           <div className="space-y-4 px-4 py-4">
             {msgsLoading && (
@@ -245,7 +302,6 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
             {messages?.map((msg: any) => {
               const isSessionAnnouncement = msg.type === 'session_announcement' && msg.sessionId;
 
-              // ── Session announcement with inline RSVP ──
               if (isSessionAnnouncement) {
                 return (
                   <div key={msg.id} className="flex flex-col items-start">
@@ -262,7 +318,6 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
                 );
               }
 
-              // ── Regular chat bubble ──
               const isMine = msg.senderId === user?.uid;
               const initials = (msg.senderName as string)
                 .split(' ')

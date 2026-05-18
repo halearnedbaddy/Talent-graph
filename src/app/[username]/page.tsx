@@ -3,7 +3,7 @@ import { useParams } from 'next/navigation';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
 import { collection, query, where, doc, addDoc, setDoc } from 'firebase/firestore';
 import type { AthleteProfile, UserAccount, ScoutConnection, ClubMember, ScoutAthleteData, ScoutProfile, ClubProfile } from '@/lib/types';
-import { Loader2, ArrowLeft, ShieldCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, MessageSquare, MapPin, Building2, Trophy, AlertTriangle, Calendar, Users } from 'lucide-react';
+import { Loader2, ArrowLeft, ShieldCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, MessageSquare, MapPin, Building2, Trophy, AlertTriangle, Calendar, Users, Lock, Zap } from 'lucide-react';
 import { PerformanceRadarChart } from '@/components/dashboard/performance-radar-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { smsSend } from '@/hooks/useSMS';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Separator } from '@/components/ui/separator';
 
 import { AiSummary } from '@/components/scout/ai-summary';
@@ -50,6 +50,27 @@ export default function UsernamePage() {
     const athlete = athletes?.[0];
     const isScout = currentUserProfile?.role === 'scout';
     const isOwner = authUser?.uid === athlete?.uid;
+
+    // ── Growth gate: 1 free profile view for unauthenticated visitors ──
+    const [isGated, setIsGated] = useState(false);
+    const GUEST_VIEWS_KEY = 'tg_guest_views';
+
+    useEffect(() => {
+        if (!athlete || authUser) return; // authenticated users always get full access
+        try {
+            const raw = localStorage.getItem(GUEST_VIEWS_KEY);
+            const seen: string[] = raw ? JSON.parse(raw) : [];
+            if (seen.includes(username)) return; // returning to same profile — no gate
+            if (seen.length >= 1) {
+                setIsGated(true); // already used free view on a different profile
+                return;
+            }
+            // First free view — record this profile
+            localStorage.setItem(GUEST_VIEWS_KEY, JSON.stringify([...seen, username]));
+        } catch {
+            // localStorage unavailable (private mode) — show profile anyway
+        }
+    }, [athlete?.uid, authUser, username]);
 
     const scoutDocRef = useMemoFirebase(() => (firestore && authUser?.uid && isScout ? doc(firestore, 'scouts', authUser.uid) : null), [firestore, authUser?.uid, isScout]);
     const { data: scoutProfile } = useDoc<ScoutProfile>(scoutDocRef);
@@ -268,6 +289,51 @@ export default function UsernamePage() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Growth gate wraps everything below the hero */}
+                <div className="relative">
+
+                {/* Gate overlay — shown to guests who've already used their free view */}
+                {isGated && (
+                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-start pt-8 px-4"
+                        style={{ background: 'linear-gradient(to bottom, rgba(var(--background-rgb,255,255,255),0.1) 0%, hsl(var(--background)/0.97) 18%)' }}
+                    >
+                        <Card className="max-w-lg w-full border-none shadow-2xl overflow-hidden bg-background">
+                            <div className="h-1.5 w-full bg-gradient-to-r from-primary via-primary/70 to-primary/40" />
+                            <CardContent className="p-8 text-center space-y-5">
+                                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                                    <Lock className="w-7 h-7 text-primary" />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black tracking-tight mb-2">
+                                        You&apos;ve used your free profile view
+                                    </h2>
+                                    <p className="text-muted-foreground text-sm leading-relaxed">
+                                        Join Talent Graph Kenya to unlock full career stats, performance radar,
+                                        match history, and direct scouting tools for every athlete on the platform.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                    <Button asChild className="flex-1 h-12 font-black text-sm uppercase tracking-widest gap-2">
+                                        <Link href="/signup">
+                                            <Zap className="w-4 h-4" />
+                                            Create Free Account
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="outline" className="flex-1 h-12 font-black text-sm uppercase tracking-widest">
+                                        <Link href="/login">Log In</Link>
+                                    </Button>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                                    Free for athletes · Scouts unlock advanced tools
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                {/* Content below gate (blurred for guests) */}
+                <div className={isGated ? 'space-y-8 pointer-events-none select-none blur-sm opacity-50' : 'space-y-8'}>
 
                 {/* Social Engagement */}
                 <ProfileEngagement
@@ -505,6 +571,8 @@ export default function UsernamePage() {
                         </Card>
                     </div>
                 </div>
+                </div> {/* end blurred content wrapper */}
+                </div> {/* end relative gate wrapper */}
             </div>
         </div>
     );
