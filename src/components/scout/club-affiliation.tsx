@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc, deleteDoc, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc, getDocs, getDoc, addDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,18 +77,28 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
 
             // Notify the club admin that the scout withdrew their request
             try {
-                const adminQuery = query(
-                    collection(firestore, 'club_members'),
-                    where('clubId', '==', clubId),
-                    where('role', '==', 'admin')
-                );
-                const adminSnap = await getDocs(adminQuery);
+                const [adminSnap, scoutSnap] = await Promise.all([
+                    getDocs(query(
+                        collection(firestore, 'club_members'),
+                        where('clubId', '==', clubId),
+                        where('role', '==', 'admin')
+                    )),
+                    getDoc(doc(firestore, 'scouts', user.uid)),
+                ]);
+
                 if (!adminSnap.empty) {
                     const adminUserId = adminSnap.docs[0].data().userId as string;
+                    const scoutName: string = scoutSnap.exists()
+                        ? (scoutSnap.data().name ?? 'A scout')
+                        : 'A scout';
+                    const scoutUsername: string = scoutSnap.exists()
+                        ? (scoutSnap.data().username ? ` (@${scoutSnap.data().username})` : '')
+                        : '';
+
                     await addDoc(collection(firestore, 'notifications', adminUserId, 'items'), {
                         type: 'scout_request_cancelled',
                         title: 'Join Request Withdrawn',
-                        body: `A scout has cancelled their pending request to join your club.`,
+                        body: `${scoutName}${scoutUsername} has withdrawn their request to join your club. The slot is now available.`,
                         isRead: false,
                         createdAt: new Date().toISOString(),
                     });
