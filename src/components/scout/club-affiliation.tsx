@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc, getDocs, addDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +74,29 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
         try {
             const memberId = `${user.uid}_${clubId}`;
             await deleteDoc(doc(firestore, 'club_members', memberId));
+
+            // Notify the club admin that the scout withdrew their request
+            try {
+                const adminQuery = query(
+                    collection(firestore, 'club_members'),
+                    where('clubId', '==', clubId),
+                    where('role', '==', 'admin')
+                );
+                const adminSnap = await getDocs(adminQuery);
+                if (!adminSnap.empty) {
+                    const adminUserId = adminSnap.docs[0].data().userId as string;
+                    await addDoc(collection(firestore, 'notifications', adminUserId, 'items'), {
+                        type: 'scout_request_cancelled',
+                        title: 'Join Request Withdrawn',
+                        body: `A scout has cancelled their pending request to join your club.`,
+                        isRead: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+            } catch (notifErr) {
+                console.warn('[ClubAffiliation] admin notification failed:', notifErr);
+            }
+
             toast({ title: 'Request Cancelled', description: 'Your join request has been withdrawn.' });
         } catch (e: any) {
             console.error('[ClubAffiliation] cancel error:', e);
