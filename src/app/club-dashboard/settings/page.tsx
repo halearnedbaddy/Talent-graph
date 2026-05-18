@@ -92,8 +92,14 @@ export default function ClubSettingsPage() {
                 logoBlob,
                 (p) => setLogoUpload({ ...p, progress: Math.max(5, p.progress) })
             );
+            // Auto-save logoUrl to Firestore immediately — no "Save Changes" click needed
+            await updateDoc(doc(firestore, 'clubs', clubId), {
+                logoUrl: downloadUrl,
+                updatedAt: new Date().toISOString(),
+            });
             setPendingLogoUrl(downloadUrl);
             setLogoPreview(downloadUrl);
+            toast({ title: 'Logo saved!', description: 'Your club logo has been updated.' });
         } catch (err: any) {
             setIsCompressingLogo(false);
             setLogoUpload({ progress: 0, state: 'error', error: err.message });
@@ -216,7 +222,7 @@ export default function ClubSettingsPage() {
                             {logoUpload?.state === 'success' && (
                                 <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    Logo ready — click Save Changes to apply
+                                    Logo saved to your club profile!
                                 </p>
                             )}
                             {logoUpload?.state === 'error' && (
