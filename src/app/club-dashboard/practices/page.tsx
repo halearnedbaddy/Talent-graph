@@ -60,7 +60,7 @@ export default function PracticeManagementPage() {
         if (!firestore || !clubId) return;
         setIsAdding(true);
         try {
-            await addDoc(collection(firestore, 'practices'), {
+            const sessionRef = await addDoc(collection(firestore, 'practices'), {
                 ...newSession,
                 clubId,
                 drills: [],
@@ -68,14 +68,19 @@ export default function PracticeManagementPage() {
                 createdAt: new Date().toISOString()
             });
 
-            // Post an announcement to squad chat so all members see it
-            const sessionLine = `📅 Training Session: "${newSession.name}" — ${newSession.date} @ ${newSession.time}, ${newSession.location}. Please confirm your attendance.`;
+            // Post an announcement to squad chat — include sessionId so members can RSVP inline
+            const sessionLine = `📅 Training Session: "${newSession.name}" — ${newSession.date} @ ${newSession.time}, ${newSession.location}. Tap to confirm your attendance.`;
             await addDoc(collection(firestore, 'clubs', clubId, 'squad_messages'), {
                 senderId: user?.uid ?? 'system',
                 senderName: '📋 Club Staff',
                 content: sessionLine,
                 timestamp: new Date().toISOString(),
                 type: 'session_announcement',
+                sessionId: sessionRef.id,
+                sessionName: newSession.name,
+                sessionDate: newSession.date,
+                sessionTime: newSession.time,
+                sessionLocation: newSession.location,
             });
 
             // Push notification to all club members
