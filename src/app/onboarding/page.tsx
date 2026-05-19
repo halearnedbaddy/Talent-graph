@@ -577,7 +577,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
                 <FormItem><FormLabel>Full Name / Org Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="username" render={({ field }) => (
-                <FormItem><FormLabel>Username</FormLabel><FormControl><Input placeholder="scout_pro" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Username</FormLabel><FormControl><Input placeholder="coach_pro" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
             </div>
             
@@ -644,6 +644,38 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             <Button type="submit" className="w-full" disabled={isLoading}>{isLoading && <Loader2 className="animate-spin mr-2 h-4 w-4" />} Finish Setup</Button>
           </form>
         </Form>
+      </CardContent>
+    </Card>
+  );
+};
+
+const CoachProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
+  return (
+    <Card className="w-full max-w-2xl shadow-xl">
+      <CardHeader>
+        <CardTitle>Professional Coach Profile</CardTitle>
+        <CardDescription>Define your coaching identity and institutional affiliation.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Full Name / Org Name</Label>
+              <Input defaultValue={`${userAccount.firstName} ${userAccount.lastName}`.trim()} />
+            </div>
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input placeholder="coach_pro" />
+            </div>
+          </div>
+          <div className="space-y-4">
+            <Label>Institutional Affiliation</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Search for your club or agency..." className="pl-9" />
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -871,7 +903,7 @@ export default function OnboardingPage() {
       case 'scout':
         return <ScoutProfileForm userAccount={userAccount!} />;
       case 'coach':
-        return <ScoutProfileForm userAccount={userAccount!} />;
+        return <CoachProfileForm userAccount={userAccount!} />;
       case 'club':
         return <ClubProfileForm userAccount={userAccount!} />;
       default:
