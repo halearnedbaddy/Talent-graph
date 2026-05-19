@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  transpilePackages: ['recharts'],
   /**
    * Allow Replit preview origins to prevent cross-origin errors during development.
    * Includes the specific Replit dev domain from the environment variable.
