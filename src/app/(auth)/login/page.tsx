@@ -71,12 +71,12 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isUserLoading && user) {
       if (user.emailVerified) {
-        router.push('/');
+        router.push(userAccount?.role === 'coach' ? '/coach-dashboard' : userAccount?.role === 'scout' ? '/scout-dashboard' : '/');
       } else {
         router.push('/verify-email');
       }
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, userAccount]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);

@@ -28,8 +28,9 @@ export function AppRouter() {
     const { data: userAccount, isLoading: isUserAccountLoading } = useDoc<UserAccount>(userDocRef);
     
     const isAthlete = userAccount?.role === 'athlete';
+    const isCoach = userAccount?.role === 'coach';
     const athleteDocRef = useMemoFirebase(() => (isAthlete && user?.uid ? doc(firestore, 'athletes', user.uid) : null), [isAthlete, user?.uid, firestore]);
-    const { data: athleteProfile, isLoading: isAthleteProfileLoading } = useDoc<AthleteProfile>(athleteDocRef);
+    const { data: athleteProfile } = useDoc<AthleteProfile>(athleteDocRef);
 
     useEffect(() => {
         const isDataLoading = isUserLoading || isUserAccountLoading;
@@ -52,6 +53,9 @@ export function AppRouter() {
         if (userAccount?.profileCompleted) {
             if (userAccount.role === 'athlete') {
                 setDestination('dashboard');
+            } else if (userAccount.role === 'coach') {
+                router.push('/coach-dashboard');
+                setDestination('redirect');
             } else if (userAccount.role === 'scout') {
                 router.push('/scout-dashboard');
                 setDestination('redirect');
@@ -83,14 +87,14 @@ export function AppRouter() {
 
     if (destination === 'loading' || destination === 'redirect') {
         // Only show the Skeleton if we suspect we are going to the dashboard
-        if (user && userAccount?.role === 'athlete') {
+        if (user && (userAccount?.role === 'athlete' || userAccount?.role === 'coach')) {
             return <DashboardSkeleton />;
         }
         return <div className="flex h-screen items-center justify-center bg-background" suppressHydrationWarning><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
     if (destination === 'dashboard' && userAccount) {
-        return <AthleteDashboard userAccount={userAccount} athleteProfile={athleteProfile} />;
+        return <AthleteDashboard userAccount={userAccount} athleteProfile={athleteProfile ?? undefined} />;
     }
 
     return <LandingPage />;

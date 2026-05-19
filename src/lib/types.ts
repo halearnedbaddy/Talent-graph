@@ -5,7 +5,7 @@ export interface UserAccount {
   lastName: string;
   creationTimestamp: string;
   isEmailVerified: boolean;
-  role?: 'athlete' | 'scout' | 'club' | 'admin';
+  role?: 'athlete' | 'scout' | 'coach' | 'club' | 'admin';
   profileCompleted?: boolean;
   onboardingStep?: string;
   updatedAt?: string;
