@@ -4,7 +4,7 @@ import { AthleteProfile } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ShieldCheck, Clock, User, Ruler, Weight, Footprints, MapPin, Play, Globe, Star } from 'lucide-react';
+import { ShieldCheck, Clock, User, Ruler, Weight, Footprints, MapPin, Play, Globe, Star, Building2 } from 'lucide-react';
 
 function getInitials(name: string) {
   if (!name) return '??';
@@ -75,6 +75,7 @@ export function ProfileHeader({ profile }: { profile: AthleteProfile }) {
 
             <div className="flex flex-wrap items-center gap-4 text-sm font-bold uppercase tracking-widest text-muted-foreground">
               <div className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{profile.team || 'Unattached'}</div>
+              <div className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" />{profile.clubName || 'No club'}</div>
               <div className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{profile.age} YRS</div>
               {profile.country && (
                 <div className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />{profile.country}</div>

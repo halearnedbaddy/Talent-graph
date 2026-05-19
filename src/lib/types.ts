@@ -171,7 +171,7 @@ export interface ProfileReaction {
 
 export interface AthleteNotification {
   id: string;
-  type: 'profile_view' | 'like' | 'comment';
+  type: 'profile_view' | 'like' | 'comment' | 'club_approved' | 'club_rejected';
   actorName: string;
   actorRole: string;
   message: string;

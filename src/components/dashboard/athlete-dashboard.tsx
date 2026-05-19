@@ -55,6 +55,7 @@ import {
 import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
+import { Progress } from '@/components/ui/progress';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -187,6 +188,26 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   ];
   const profileScore = completionItems.reduce((s, i) => s + (i.achieved ? i.weight : 0), 0);
   const isComplete = profileScore === 100;
+  const readiness = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        ((athleteProfile.readinessTier === 'Elite' || athleteProfile.readinessTier === 'Pro') ? 90 : athleteProfile.readinessTier === 'Advanced' ? 80 : athleteProfile.readinessTier === 'Semi-Pro' ? 70 : athleteProfile.readinessTier === 'Developing' ? 55 : 45) -
+          Math.min(athleteProfile.riskIndex || 0, 40) +
+          (athleteProfile.isVerified ? 10 : 0)
+      )
+    )
+  );
+  const availabilityLabel = readiness >= 80 ? 'Available' : readiness >= 65 ? 'Doubtful' : readiness >= 45 ? 'Injured' : 'Suspended';
+  const availabilityTone =
+    availabilityLabel === 'Available'
+      ? 'bg-green-500/10 border-green-400/30 text-green-700'
+      : availabilityLabel === 'Doubtful'
+      ? 'bg-amber-500/10 border-amber-400/30 text-amber-700'
+      : availabilityLabel === 'Injured'
+      ? 'bg-orange-500/10 border-orange-400/30 text-orange-700'
+      : 'bg-red-500/10 border-red-400/30 text-red-700';
 
   // ── Streak: consecutive weeks (Mon–Sun) with ≥1 match logged ──
   const matchStreak = (() => {
@@ -439,6 +460,23 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   </Link>
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`rounded-xl border p-4 ${availabilityTone}`}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Squad Readiness</p>
+              <h2 className="text-sm font-black uppercase tracking-widest">{availabilityLabel}</h2>
+              <p className="text-xs mt-1 opacity-80">Match readiness for the next fixture.</p>
+            </div>
+            <div className="min-w-[180px] w-full max-w-xs">
+              <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest mb-1">
+                <span>Readiness</span>
+                <span>{readiness}%</span>
+              </div>
+              <Progress value={readiness} className="h-2" />
             </div>
           </div>
         </div>

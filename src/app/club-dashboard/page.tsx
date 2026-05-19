@@ -3,7 +3,7 @@
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, ShieldCheck, Clock, Trophy, Target, BookOpen, TrendingUp } from 'lucide-react';
+import { Loader2, ShieldCheck, Clock, Trophy, Target, BookOpen, TrendingUp, CheckCircle2, AlertTriangle, ShieldAlert } from 'lucide-react';
 import type { ClubMember, ScoutConnection, AthleteProfile, ClubProfile, ClubMatch } from '@/lib/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import React, { useState } from 'react';
@@ -102,6 +102,36 @@ export default function ClubOverviewPage() {
     };
   }, [athletes, posFilter, tierFilter]);
 
+  const readinessCounts = React.useMemo(() => {
+    if (!athletes) return { available: 0, doubtful: 0, injured: 0, suspended: 0 };
+    const filtered = athletes.filter(a => {
+      const matchesPos = posFilter === 'all' || a.position?.toLowerCase() === posFilter.toLowerCase();
+      const matchesTier = tierFilter === 'all' || a.readinessTier?.toLowerCase() === tierFilter.toLowerCase();
+      return matchesPos && matchesTier;
+    });
+    const getStatus = (a: AthleteProfile): 'available' | 'doubtful' | 'injured' | 'suspended' => {
+      const readiness = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            ((a.readinessTier === 'Elite' || a.readinessTier === 'Pro') ? 90 : a.readinessTier === 'Advanced' ? 80 : a.readinessTier === 'Semi-Pro' ? 70 : a.readinessTier === 'Developing' ? 55 : 45) -
+              Math.min(a.riskIndex || 0, 40) +
+              (a.isVerified ? 10 : 0)
+          )
+        )
+      );
+      return readiness >= 80 ? 'available' : readiness >= 65 ? 'doubtful' : readiness >= 45 ? 'injured' : 'suspended';
+    };
+    return filtered.reduce(
+      (acc, athlete) => {
+        acc[getStatus(athlete)] += 1;
+        return acc;
+      },
+      { available: 0, doubtful: 0, injured: 0, suspended: 0 }
+    );
+  }, [athletes, posFilter, tierFilter]);
+
   if (isMembershipLoading || isConnectionsLoading || (athleteIds.length > 0 && isAthletesLoading)) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
   }
@@ -198,6 +228,31 @@ export default function ClubOverviewPage() {
         </Card>
       </div>
 
+      <Card className="border-none shadow-xl bg-background overflow-hidden">
+        <CardHeader className="bg-muted/50 border-b p-4">
+          <CardTitle className="text-sm font-black uppercase tracking-widest">Squad Readiness Board</CardTitle>
+          <CardDescription className="text-[10px] font-bold uppercase tracking-tight">Coach availability tracker</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+      { label: 'Available', value: readinessCounts.available, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-500/5 border-green-400/30' },
+      { label: 'Doubtful', value: readinessCounts.doubtful, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-500/5 border-amber-400/30' },
+      { label: 'Injured', value: readinessCounts.injured, icon: ShieldAlert, color: 'text-orange-600', bg: 'bg-orange-500/5 border-orange-400/30' },
+      { label: 'Suspended', value: readinessCounts.suspended, icon: ShieldAlert, color: 'text-red-600', bg: 'bg-red-500/5 border-red-400/30' },
+            ].map((item) => (
+              <div key={item.label} className={`rounded-xl border p-4 ${item.bg}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest">{item.label}</p>
+                  <item.icon className={`h-4 w-4 ${item.color}`} />
+                </div>
+                <div className={`mt-2 text-3xl font-black ${item.color}`}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Season Record + Leaderboards */}
       {seasonStats && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -254,7 +309,7 @@ export default function ClubOverviewPage() {
                 { label: 'Top Scorer', icon: '⚽', leader: leaderboards.topScorer, unit: 'goals', color: 'text-green-600' },
                 { label: 'Most Assists', icon: '🎯', leader: leaderboards.topAssister, unit: 'assists', color: 'text-blue-600' },
                 { label: 'Most Booked', icon: '🟨', leader: leaderboards.mostBooked, unit: 'cards', color: 'text-yellow-600' },
-              ].map(({ label, icon, leader, unit, color }) => (
+              ] as Array<{ label: string; icon: string; leader: { name: string; value: number; photo?: string; position?: string } | null; unit: string; color: string }>.map(({ label, icon, leader, unit, color }) => (
                 <div key={label} className="flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xl shrink-0">{icon}</span>
