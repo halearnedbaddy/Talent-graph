@@ -79,7 +79,7 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
     }
     setIsSending(true);
     try {
-      const connId = `${scoutProfile.uid}_${selectedAthlete.uid}`;
+      const connId = `${selectedAthlete.uid}_${scoutProfile.uid}`;
       await setDoc(doc(firestore, 'scout_connections', connId), {
         id: connId,
         scoutId: scoutProfile.uid,

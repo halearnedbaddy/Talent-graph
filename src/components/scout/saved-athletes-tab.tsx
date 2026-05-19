@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Bookmark, FileText, Trash2, Loader2, StickyNote } from 'lucide-react';
+import { Bookmark, FileText, Trash2, Loader2, StickyNote, ClipboardList } from 'lucide-react';
+import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
@@ -121,6 +122,17 @@ export function SavedAthletesTab({ scoutProfile, compareList, onCompare, savedId
                 >
                   <StickyNote className="w-3 h-3 mr-1.5" />
                   {notesMap[a.uid] ? 'Edit notes' : 'Add notes'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1 text-xs h-7 text-muted-foreground"
+                  asChild
+                >
+                  <Link href={`/scout-dashboard/report/${a.uid}`}>
+                    <ClipboardList className="w-3 h-3 mr-1.5" />
+                    Report
+                  </Link>
                 </Button>
               </div>
               {notesMap[a.uid] && (

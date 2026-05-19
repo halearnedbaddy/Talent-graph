@@ -3,7 +3,7 @@ import { useParams } from 'next/navigation';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
 import { collection, query, where, doc, addDoc, setDoc } from 'firebase/firestore';
 import type { AthleteProfile, UserAccount, ScoutConnection, ClubMember, ScoutAthleteData, ScoutProfile, ClubProfile } from '@/lib/types';
-import { Loader2, ArrowLeft, ShieldCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, MessageSquare, MapPin, Building2, Trophy, AlertTriangle, Calendar, Users, Lock, Zap } from 'lucide-react';
+import { Loader2, ArrowLeft, ShieldCheck, BarChart3, Target, TrendingUp, ShieldAlert, Award, FileText, MessageSquare, MapPin, Building2, Trophy, AlertTriangle, Calendar, Users, Lock, Zap, Printer } from 'lucide-react';
 import { PerformanceRadarChart } from '@/components/dashboard/performance-radar-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -226,6 +226,14 @@ export default function UsernamePage() {
                     </Link>
                 </Button>
                 <div className="flex items-center gap-2">
+                    {isScout && athlete.uid && (
+                        <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs font-bold" asChild>
+                            <Link href={`/scout-dashboard/report/${athlete.uid}`}>
+                                <Printer className="w-3.5 h-3.5" />
+                                Export Report
+                            </Link>
+                        </Button>
+                    )}
                     {athlete.isVerified ? (
                         <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20 flex items-center gap-1.5 px-3 py-1">
                             <ShieldCheck className="w-4 h-4" />

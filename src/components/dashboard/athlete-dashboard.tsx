@@ -56,6 +56,7 @@ import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import { Progress } from '@/components/ui/progress';
+import { MarketplaceSettings } from './marketplace-settings';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -801,6 +802,8 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 </Button>
               </CardContent>
             </Card>
+
+            <MarketplaceSettings profile={athleteProfile} />
           </div>
         </div>
       </main>
