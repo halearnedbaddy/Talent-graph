@@ -112,7 +112,7 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-4">
                   <SidebarTrigger className="md:hidden"/>
-                  <h1 className="text-xl font-bold tracking-tight">Scout Console</h1>
+                  <h1 className="text-xl font-bold tracking-tight">Coach Console</h1>
               </div>
               <div className="flex items-center gap-1">
                 <ScoutNotificationBell />

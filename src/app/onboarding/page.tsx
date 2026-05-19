@@ -23,8 +23,8 @@ import { useAuth } from '@/firebase';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 
-const RoleSelection = ({ onRoleSelect, isLoading }: { onRoleSelect: (role: 'athlete' | 'scout' | 'club') => void, isLoading: boolean }) => {
-  const [selectedRole, setSelectedRole] = useState<'athlete' | 'scout' | 'club' | null>(null);
+const RoleSelection = ({ onRoleSelect, isLoading }: { onRoleSelect: (role: 'athlete' | 'scout' | 'coach' | 'club') => void, isLoading: boolean }) => {
+  const [selectedRole, setSelectedRole] = useState<'athlete' | 'scout' | 'coach' | 'club' | null>(null);
 
   return (
     <div className="w-full max-w-4xl">
@@ -56,10 +56,24 @@ const RoleSelection = ({ onRoleSelect, isLoading }: { onRoleSelect: (role: 'athl
             <div className={cn("flex items-center justify-center h-16 w-16 rounded-full bg-secondary mb-4 transition-colors", selectedRole === 'scout' && "bg-primary text-primary-foreground")}>
               <UserIcon className="h-8 w-8" />
             </div>
-            <CardTitle>Scout / Coach</CardTitle>
+            <CardTitle>Scout</CardTitle>
           </CardHeader>
           <CardContent className="text-center text-sm text-muted-foreground px-6 pb-6">
             <p>Discover and evaluate athletes, track talent progression, and build shortlists and reports.</p>
+          </CardContent>
+        </Card>
+        <Card
+          onClick={() => setSelectedRole('coach')}
+          className={cn("cursor-pointer transition-all duration-200 hover:shadow-lg", selectedRole === 'coach' ? "ring-2 ring-primary shadow-lg" : "ring-1 ring-border")}
+        >
+          <CardHeader className="items-center text-center">
+            <div className={cn("flex items-center justify-center h-16 w-16 rounded-full bg-secondary mb-4 transition-colors", selectedRole === 'coach' && "bg-primary text-primary-foreground")}>
+              <UserIcon className="h-8 w-8" />
+            </div>
+            <CardTitle>Coach</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center text-sm text-muted-foreground px-6 pb-6">
+            <p>Manage team performance, guide athletes, and oversee training and match preparation.</p>
           </CardContent>
         </Card>
         <Card
@@ -103,7 +117,7 @@ const athleteFormSchema = z.object({
   leagueLevel: z.string().min(1, "League level is required"),
   username: z.string().min(3, 'Username must be at least 3 characters.').max(30, 'Username must be 30 characters or less.').regex(/^[a-z0-9_]+$/, 'Username can only contain lowercase letters, numbers, and underscores.'),
   phone: z.string().regex(/^[0-9+\s\-()]{7,15}$/, 'Enter a valid phone number').optional().or(z.literal('')),
-  clubId: z.string().optional(),
+  clubId: z.string().min(1, 'Club selection is required.'),
   clubName: z.string().optional(),
 }).refine(data => {
   if (data.sport === 'football' || data.sport === 'basketball') {
@@ -392,7 +406,7 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground border-b pb-2">Club Affiliation (Optional)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground border-b pb-2">Club Affiliation</h3>
               <p className="text-xs text-muted-foreground">Already part of a club? Link yourself now — they'll approve your request instantly.</p>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -466,7 +480,7 @@ const scoutFormSchema = z.object({
   sports: z.string().min(3, 'Please list at least one sport.'),
   website: z.string().url().optional().or(z.literal('')),
   bio: z.string().max(500).optional(),
-  clubId: z.string().optional(),
+  clubId: z.string().min(1, 'Club selection is required.'),
 });
 
 const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
@@ -513,7 +527,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       if (values.clubId) scoutData.clubId = values.clubId;
 
       // 1. Save user role and scout profile first
-      await updateDoc(userDocRef, { role: 'scout', profileCompleted: true, onboardingStep: 'scout_completed' });
+      await updateDoc(userDocRef, { role: 'coach', profileCompleted: true, onboardingStep: 'coach_completed' });
       await setDoc(scoutDocRef, scoutData);
 
       // 2. Then attempt the club join request (non-blocking — don't fail profile save if this errors)
@@ -525,7 +539,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             id: memberId,
             userId: user.uid,
             clubId: values.clubId,
-            role: 'scout',
+            role: 'coach',
             status: 'pending',
             joinedAt: new Date().toISOString()
           });
@@ -539,9 +553,9 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
         title: 'Profile completed!',
         description: values.clubId
           ? (clubJoined ? 'Welcome! Your join request has been sent to the organization.' : 'Profile saved. Club join request could not be sent — you can request again from your dashboard.')
-          : 'Welcome to the Scout Console.',
+          : 'Welcome to the Coach Console.',
       });
-      router.push('/scout-dashboard');
+      router.push('/coach-dashboard');
     } catch (error) {
       console.error('[onboarding] scout profile save failed:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile. Please try again.' });
@@ -552,8 +566,8 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
   return (
     <Card className="w-full max-w-2xl shadow-xl">
       <CardHeader>
-        <CardTitle>Professional Scout Profile</CardTitle>
-        <CardDescription>Define your scouting identity and institutional affiliation.</CardDescription>
+        <CardTitle>Professional Coach Profile</CardTitle>
+        <CardDescription>Define your coaching identity and institutional affiliation.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -568,7 +582,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             </div>
             
             <div className="space-y-4">
-                <Label>Institutional Affiliation (Optional)</Label>
+                <Label>Institutional Affiliation</Label>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input 
@@ -766,7 +780,7 @@ const ClubProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
 
 // --- MAIN COMPONENT ---
 
-type OnboardingStep = 'role' | 'athlete' | 'scout' | 'club';
+type OnboardingStep = 'role' | 'athlete' | 'scout' | 'coach' | 'club';
 
 export default function OnboardingPage() {
   const { user, isUserLoading } = useUser();
@@ -806,6 +820,7 @@ export default function OnboardingPage() {
     if (userAccount?.profileCompleted) {
         if(userAccount.role === 'athlete') router.push('/');
         if(userAccount.role === 'scout') router.push('/scout-dashboard');
+        if(userAccount.role === 'coach') router.push('/coach-dashboard');
         if(userAccount.role === 'club') router.push('/club-dashboard/athletes');
         return;
     }
@@ -818,7 +833,7 @@ export default function OnboardingPage() {
 
   }, [user, userAccount, isUserLoading, isProfileLoading, isSavingRole, router]);
 
-  const handleRoleSelect = async (role: 'athlete' | 'scout' | 'club') => {
+  const handleRoleSelect = async (role: 'athlete' | 'scout' | 'coach' | 'club') => {
     if (!user || !firestore) return;
     
     setIsSavingRole(true);
@@ -854,6 +869,8 @@ export default function OnboardingPage() {
       case 'athlete':
         return <AthleteProfileForm userAccount={userAccount!} />;
       case 'scout':
+        return <ScoutProfileForm userAccount={userAccount!} />;
+      case 'coach':
         return <ScoutProfileForm userAccount={userAccount!} />;
       case 'club':
         return <ClubProfileForm userAccount={userAccount!} />;
