@@ -1,173 +1,216 @@
 'use client';
 
-import { useState } from 'react';
-import type { ScoutProfile, AthleteProfile, ScoutConnection, ClubMember } from '@/lib/types';
-import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, SidebarFooter } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
+import { useState, useCallback } from 'react';
+import type { ScoutProfile, AthleteProfile, SavedAthlete } from '@/lib/types';
 import { signOut } from 'firebase/auth';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { LogOut, User, Eye, BarChart3, Users, Building2, MessageSquare } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { ScoutNotificationBell } from './notification-bell';
-import { FilterSidebar } from './filter-sidebar';
-import { ResultsList } from './results-list';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
-import Link from 'next/link';
-import { ConnectionsList } from './connections-list';
-import { Separator } from '../ui/separator';
-import { AdvancedAnalytics } from './advanced-analytics';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SupportDialog } from '@/components/support/support-dialog';
-import { ClubAffiliation } from './club-affiliation';
-import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
+import { CompareBar } from './compare-bar';
+import { SearchTab } from './search-tab';
+import { MarketplaceTab } from './marketplace-tab';
+import { CompareTab } from './compare-tab';
+import { SavedAthletesTab } from './saved-athletes-tab';
+import { MessagesTab } from './messages-tab';
+import { ProfileTab } from './profile-tab';
+import { Search, Store, BarChart2, Bookmark, MessageSquare, User } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+const TABS = [
+  { id: 'search',    label: 'Search',    Icon: Search },
+  { id: 'market',    label: 'Market',    Icon: Store },
+  { id: 'compare',   label: 'Compare',   Icon: BarChart2 },
+  { id: 'saved',     label: 'Saved',     Icon: Bookmark },
+  { id: 'messages',  label: 'Messages',  Icon: MessageSquare },
+  { id: 'profile',   label: 'Profile',   Icon: User },
+] as const;
+
+type TabId = typeof TABS[number]['id'];
 
 export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const auth = useAuth();
-  const { user } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
-  const [activeTab, setActiveTab] = useState('discovery');
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<TabId>('search');
+  const [compareList, setCompareList] = useState<AthleteProfile[]>([]);
+  const [messageTarget, setMessageTarget] = useState<AthleteProfile | null>(null);
 
-  const [activeFilters, setActiveFilters] = useState({
-    sports: scoutProfile.sports || [],
-  });
-
-  const athletesQuery = useMemoFirebase(() => {
-    if (!firestore || !activeFilters.sports || activeFilters.sports.length === 0) return null;
-    return query(
-      collection(firestore, 'athletes'), 
-      where('sport', 'in', activeFilters.sports)
-    );
-  }, [firestore, activeFilters.sports]);
-
-  const { data: athletes, isLoading: athletesLoading } = useCollection<AthleteProfile>(athletesQuery);
-
-  const scoutConnectionsQuery = useMemoFirebase(() => (
-    firestore ? query(collection(firestore, 'scout_connections'), where('scoutId', '==', scoutProfile.uid), where('status', '==', 'accepted')) : null
+  const savedAthletesQuery = useMemoFirebase(() => (
+    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes') : null
   ), [firestore, scoutProfile.uid]);
-  const { data: myConnections } = useCollection<ScoutConnection>(scoutConnectionsQuery);
-  const myScoutedIds = new Set(myConnections?.map(c => c.athleteId) || []);
-  const scoutedAthletes = athletes?.filter(a => myScoutedIds.has(a.uid)) || [];
+  const { data: savedRecords } = useCollection<SavedAthlete>(savedAthletesQuery);
+  const savedIds = new Set(savedRecords?.map(r => r.athleteId) || []);
 
-  const myMembershipsQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
-  ), [firestore, user]);
-  const { data: myMemberships } = useCollection<ClubMember>(myMembershipsQuery);
-  const activeClubId = myMemberships?.[0]?.clubId;
+  const handleCompare = useCallback((athlete: AthleteProfile) => {
+    setCompareList(prev => {
+      const exists = prev.find(a => a.uid === athlete.uid);
+      if (exists) return prev.filter(a => a.uid !== athlete.uid);
+      if (prev.length >= 5) return prev;
+      return [...prev, athlete];
+    });
+  }, []);
+
+  const handleSave = useCallback(async (athlete: AthleteProfile) => {
+    if (!firestore) return;
+    const ref = doc(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes', athlete.uid);
+    if (savedIds.has(athlete.uid)) {
+      await deleteDoc(ref);
+      toast({ title: 'Removed', description: `${athlete.firstName} removed from saved athletes.` });
+    } else {
+      await setDoc(ref, { id: athlete.uid, athleteId: athlete.uid, savedAt: new Date().toISOString() });
+      toast({ title: 'Saved', description: `${athlete.firstName} ${athlete.lastName} added to your saved list.` });
+    }
+  }, [firestore, scoutProfile.uid, savedIds, toast]);
+
+  const handleUnsave = useCallback(async (athleteId: string) => {
+    if (!firestore) return;
+    await deleteDoc(doc(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes', athleteId));
+    toast({ title: 'Removed from saved athletes.' });
+  }, [firestore, scoutProfile.uid, toast]);
+
+  const handleSendMessage = useCallback((athlete: AthleteProfile) => {
+    setMessageTarget(athlete);
+    setActiveTab('messages');
+  }, []);
 
   const handleSignOut = async () => {
     await signOut(auth);
     router.push('/login');
   };
 
+  const hasCompareBar = compareList.length > 0;
+  const bottomNavHeight = 64;
+  const compareBarHeight = hasCompareBar ? 60 : 0;
+  const contentPaddingBottom = bottomNavHeight + compareBarHeight + 16;
+
   return (
-    <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader>
-            <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold px-2">Talent Graph</h2>
-                <SidebarTrigger />
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
+        <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
+              <span className="text-primary-foreground text-xs font-black">TG</span>
             </div>
-        </SidebarHeader>
-        <SidebarContent className="flex flex-col">
-           <div className="p-2 space-y-2">
-                <Button variant="outline" className="w-full justify-start text-xs h-8" asChild>
-                    <Link href={`/scout/${scoutProfile.username}`}>
-                        <Eye className="mr-2 h-3 w-3" />
-                        View Public Profile
-                    </Link>
-                </Button>
-                <Separator className="bg-sidebar-border" />
-                <FilterSidebar 
-                    scoutProfile={scoutProfile}
-                    activeFilters={activeFilters}
-                    onFilterChange={setActiveFilters}
-                />
-            </div>
-            <Separator className="my-2 bg-sidebar-border" />
-            <div className="flex-grow p-2">
-                <ConnectionsList scoutId={scoutProfile.uid} />
-            </div>
-        </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-               <SupportDialog />
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Profile Settings" asChild>
-                <Link href="/scout-dashboard/profile">
-                  <User />
-                  <span>My Profile</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="bg-background border-b sticky top-0 z-10">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-4">
-                  <SidebarTrigger className="md:hidden"/>
-                  <h1 className="text-xl font-bold tracking-tight">Coach Console</h1>
-              </div>
-              <div className="flex items-center gap-1">
-                <ScoutNotificationBell />
-                <Button onClick={handleSignOut} variant="ghost" size="sm">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </Button>
-              </div>
-            </div>
+            <span className="font-bold text-sm">Scout Console</span>
           </div>
-        </header>
-        <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="flex items-center justify-between mb-8">
-                    <TabsList>
-                        <TabsTrigger value="discovery" className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            Discovery
-                        </TabsTrigger>
-                        <TabsTrigger value="analytics" className="flex items-center gap-2">
-                            <BarChart3 className="w-4 h-4" />
-                            Analytics
-                        </TabsTrigger>
-                        <TabsTrigger value="club" className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4" />
-                            Club
-                        </TabsTrigger>
-                    </TabsList>
-                </div>
+          <div className="flex items-center gap-1">
+            <ScoutNotificationBell />
+          </div>
+        </div>
 
-                <TabsContent value="discovery">
-                    <ResultsList athletes={athletes} isLoading={athletesLoading} />
-                </TabsContent>
+        <div className="hidden md:flex max-w-screen-xl mx-auto px-4 gap-0 border-t">
+          {TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+                activeTab === id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+              {id === 'compare' && compareList.length > 0 && (
+                <span className="ml-1 text-xs bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center">{compareList.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </header>
 
-                <TabsContent value="analytics">
-                    <AdvancedAnalytics scoutedAthletes={scoutedAthletes} />
-                </TabsContent>
+      <main
+        className="flex-1 max-w-screen-xl mx-auto w-full px-4 py-4"
+        style={{ paddingBottom: contentPaddingBottom }}
+      >
+        {activeTab === 'search' && (
+          <SearchTab
+            scoutProfile={scoutProfile}
+            compareList={compareList}
+            onCompare={handleCompare}
+            savedIds={savedIds}
+            onSave={handleSave}
+            onSendMessage={handleSendMessage}
+          />
+        )}
+        {activeTab === 'market' && (
+          <MarketplaceTab
+            scoutProfile={scoutProfile}
+            compareList={compareList}
+            onCompare={handleCompare}
+            savedIds={savedIds}
+            onSave={handleSave}
+            onSendMessage={handleSendMessage}
+          />
+        )}
+        {activeTab === 'compare' && (
+          <CompareTab
+            compareList={compareList}
+            onRemove={uid => setCompareList(p => p.filter(a => a.uid !== uid))}
+            onClear={() => setCompareList([])}
+          />
+        )}
+        {activeTab === 'saved' && (
+          <SavedAthletesTab
+            scoutProfile={scoutProfile}
+            compareList={compareList}
+            onCompare={handleCompare}
+            savedIds={savedIds}
+            onUnsave={handleUnsave}
+            onSendMessage={handleSendMessage}
+          />
+        )}
+        {activeTab === 'messages' && (
+          <MessagesTab
+            scoutProfile={scoutProfile}
+            composeTarget={messageTarget}
+            onComposeClose={() => setMessageTarget(null)}
+          />
+        )}
+        {activeTab === 'profile' && (
+          <ProfileTab scoutProfile={scoutProfile} onSignOut={handleSignOut} />
+        )}
+      </main>
 
-                <TabsContent value="club">
-                    <div className="max-w-2xl mx-auto space-y-6">
-                        <ClubAffiliation currentClubId={activeClubId} />
-                        {activeClubId && (
-                            <div>
-                                <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
-                                    <MessageSquare className="w-4 h-4" />
-                                    Squad Chat
-                                </h2>
-                                <SquadChatWidget clubId={activeClubId} scrollHeight="400px" />
-                            </div>
-                        )}
-                    </div>
-                </TabsContent>
-            </Tabs>
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+      <CompareBar
+        compareList={compareList}
+        onRemove={uid => setCompareList(p => p.filter(a => a.uid !== uid))}
+        onCompare={() => setActiveTab('compare')}
+        onClear={() => setCompareList([])}
+        bottomOffset={bottomNavHeight}
+      />
+
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-t">
+        <div className="grid grid-cols-6 h-16">
+          {TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex flex-col items-center justify-center gap-0.5 transition-colors relative',
+                activeTab === id ? 'text-primary' : 'text-muted-foreground'
+              )}
+            >
+              <div className="relative">
+                <Icon className={cn('w-5 h-5 transition-transform', activeTab === id && 'scale-110')} />
+                {id === 'compare' && compareList.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 text-[9px] bg-primary text-primary-foreground rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">{compareList.length}</span>
+                )}
+              </div>
+              <span className={cn('text-[9px] leading-tight font-medium', activeTab === id ? 'text-primary' : 'text-muted-foreground')}>
+                {label}
+              </span>
+              {activeTab === id && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-primary rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
   );
 }

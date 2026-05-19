@@ -527,7 +527,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       if (values.clubId) scoutData.clubId = values.clubId;
 
       // 1. Save user role and scout profile first
-      await updateDoc(userDocRef, { role: 'coach', profileCompleted: true, onboardingStep: 'coach_completed' });
+      await updateDoc(userDocRef, { role: 'scout', profileCompleted: true, onboardingStep: 'scout_completed' });
       await setDoc(scoutDocRef, scoutData);
 
       // 2. Then attempt the club join request (non-blocking — don't fail profile save if this errors)
@@ -553,9 +553,9 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
         title: 'Profile completed!',
         description: values.clubId
           ? (clubJoined ? 'Welcome! Your join request has been sent to the organization.' : 'Profile saved. Club join request could not be sent — you can request again from your dashboard.')
-          : 'Welcome to the Coach Console.',
+          : 'Welcome to the Scout Console.',
       });
-      router.push('/coach-dashboard');
+      router.push('/scout-dashboard');
     } catch (error) {
       console.error('[onboarding] scout profile save failed:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile. Please try again.' });
@@ -566,8 +566,8 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
   return (
     <Card className="w-full max-w-2xl shadow-xl">
       <CardHeader>
-        <CardTitle>Professional Coach Profile</CardTitle>
-        <CardDescription>Define your coaching identity and institutional affiliation.</CardDescription>
+        <CardTitle>Professional Scout Profile</CardTitle>
+        <CardDescription>Define your scouting identity and institutional affiliation.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>

@@ -1,0 +1,505 @@
+Got it. Here are all 6 scout features in one complete engineering prompt:
+
+---
+
+## Talent Graph — Full Scout Dashboard Engineering Prompt
+
+---
+
+## Feature 1 — Advanced Athlete Search
+
+### What This Feature Does
+A scout opens the search page and can find any athlete on the platform using a combination of text search and filters. The results update as filters are applied.
+
+---
+
+### Search Input
+- Single search bar at the top — searches by athlete name or club name
+- Results begin filtering as the scout types (debounced, 300ms delay)
+- Filter panel always visible below the search bar, not hidden behind a button
+
+---
+
+### Filters
+
+| Filter | Type | Options |
+|---|---|---|
+| Position | Multi-select | GK, CB, LB, RB, CDM, CM, CAM, LW, RW, ST |
+| Location | Dropdown | All 47 Kenya counties |
+| Age Range | Slider | 15 — 35 |
+| Composite Score | Range slider | 0 — 100 |
+| Risk Band | Dropdown | Low / Medium / High |
+| Consistency Rating | Dropdown | Poor / Average / Good / Excellent |
+| Verification Status | Toggle | Verified only / All |
+| Actively Looking | Toggle | Yes / All |
+| Club Affiliation | Toggle | Has club / No club / All |
+
+---
+
+### Search Results
+
+Display as athlete cards in a responsive grid (3 columns desktop, 2 tablet, 1 mobile).
+
+Each card shows:
+- Athlete photo (or placeholder avatar with initials)
+- Full name
+- Primary position + secondary position
+- Age
+- County/location
+- Club name (or "Unattached")
+- Composite score — color banded (0–49 red, 50–74 amber, 75–100 green)
+- Verified badge if applicable
+- "Actively Looking" badge if applicable
+- View Profile button
+
+---
+
+### Results Behavior
+- Default sort: Composite Score highest first
+- Scout can re-sort by: Most Recent, Alphabetical, Age (youngest first)
+- Show total count at top: *"247 athletes found"*
+- 24 cards per page
+- No results state: *"No athletes match your search. Try adjusting your filters."*
+- All filter state lives in the URL as query params so searches are shareable and bookmarkable
+
+---
+
+### Profile View Gate
+Track monthly profile views per scout in the database. Reset on billing cycle date. When limit is reached show upgrade prompt — do not hide the button, disable it with a message.
+
+---
+
+### API Endpoint
+
+```
+GET /api/scouts/search
+
+Query params:
+  q           — text search (name or club)
+  positions   — comma separated: GK,ST,CAM
+  county      — string
+  age_min     — integer
+  age_max     — integer
+  score_min   — integer
+  score_max   — integer
+  risk_band   — low | medium | high
+  consistency — poor | average | good | excellent
+  verified    — boolean
+  looking     — boolean
+  sort        — score | recent | alpha | age
+  page        — integer (default 0)
+
+Response:
+  { total, page, results: [AthleteCard] }
+```
+
+Rate limit: 60 requests/minute per scout.
+
+---
+
+### Database Indexes Required
+`position_primary`, `county`, `age`, `composite_score`, `is_verified`, `actively_looking`
+
+---
+
+## Feature 2 — Saved Search Alerts
+
+### What This Feature Does
+A scout saves any search query they have built. When a new athlete joins the platform or updates their profile and matches that saved search criteria, the scout is notified automatically via in-app notification and SMS.
+
+---
+
+### Saving a Search
+- On the search results page, a persistent **"Save This Search"** button sits at the top
+- Clicking it opens a modal with two fields:
+  - Search name (e.g. "Left backs Kisumu U21")
+  - Notifications on/off toggle (default on)
+- On save, the exact filter state is serialized and stored against the scout's account
+
+---
+
+### Saved Searches Page
+- Lists all saved searches in a table
+- Columns: Search Name, Filters Summary, Date Saved, Notifications, Last Match, Actions
+- Actions per row: Run Search, Edit Name, Toggle Notifications, Delete
+- "Last Match" shows the date a new athlete last matched this search
+
+---
+
+### Alert Trigger Logic
+
+Alerts fire in two scenarios:
+
+**Scenario A — New athlete registers**
+- On athlete profile creation, run their attributes against all active saved searches across all scouts
+- For every saved search that matches, queue a notification for that scout
+
+**Scenario B — Athlete updates profile**
+- On any profile update (position change, score update, location change, actively looking toggled on), re-run matching logic
+- Only notify if the athlete did not previously match this search (avoid repeat alerts)
+
+---
+
+### Notification Delivery
+
+**In-app:**
+- Bell icon in nav shows unread count
+- Notification reads: *"New match: James Otieno (ST, Kisumu) matches your saved search 'Left backs Kisumu U21'"*
+- Clicking it runs the saved search with the new athlete highlighted
+
+**SMS via Africa's Talking:**
+```
+TalentGraph: New athlete match.
+James Otieno (ST, 19, Kisumu) matches 
+your saved search "Strikers Kisumu U21".
+View: talentgraph.co.ke/scout/search?saved=123
+```
+
+---
+
+### Database Schema
+
+```sql
+CREATE TABLE saved_searches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scout_id UUID REFERENCES users(id),
+  name TEXT NOT NULL,
+  filters JSONB NOT NULL,
+  notifications_enabled BOOLEAN DEFAULT TRUE,
+  last_match_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE search_alert_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  saved_search_id UUID REFERENCES saved_searches(id),
+  athlete_id UUID REFERENCES athletes(id),
+  triggered_at TIMESTAMPTZ DEFAULT NOW(),
+  delivered_inapp BOOLEAN DEFAULT FALSE,
+  delivered_sms BOOLEAN DEFAULT FALSE
+);
+```
+
+---
+
+### API Endpoints
+
+```
+GET    /api/scouts/saved-searches         — list all saved searches
+POST   /api/scouts/saved-searches         — save a new search
+PATCH  /api/scouts/saved-searches/:id     — edit name or toggle notifications
+DELETE /api/scouts/saved-searches/:id     — delete saved search
+GET    /api/scouts/notifications          — list unread notifications
+PATCH  /api/scouts/notifications/:id/read — mark as read
+```
+
+---
+
+## Feature 3 — Talent Marketplace
+
+### What This Feature Does
+A dedicated feed of athletes who have explicitly opted in as "Actively Looking" for a club or trial opportunity. Different from search — this is athletes raising their hand. Scouts browse it like a feed, not a search.
+
+---
+
+### Athlete Side (how athletes appear here)
+- Athletes set "Actively Looking" toggle on their profile
+- They optionally add: preferred position, preferred location, availability date, short bio/statement (max 150 characters)
+- This opts them into the Talent Marketplace feed
+
+---
+
+### Marketplace Feed Layout
+- Card-based feed, newest first by default
+- Each card shows:
+  - Athlete photo, name, age, county
+  - Primary position
+  - Composite score (color banded)
+  - Verified badge if applicable
+  - Current club or "Unattached"
+  - Availability date
+  - Short bio/statement if provided
+  - View Profile button
+  - Save Athlete button (bookmarks to scout's saved athletes list)
+
+---
+
+### Marketplace Filters
+- Position (multi-select)
+- County (dropdown)
+- Age range (slider)
+- Composite score range (slider)
+- Verified only (toggle)
+- Unattached only (toggle)
+
+---
+
+### Sorting Options
+- Newest first (default)
+- Composite score (highest first)
+- Closest to scout's saved location
+
+---
+
+### Saved Athletes
+- Scout can bookmark any athlete from marketplace or search
+- Saved athletes appear in a separate **Saved Athletes** tab
+- Scout can add private notes per saved athlete (not visible to athlete)
+- Notes field: plain text, max 500 characters
+
+---
+
+### API Endpoints
+
+```
+GET  /api/marketplace
+     Query params: position, county, age_min, age_max,
+                   score_min, score_max, verified, unattached,
+                   sort, page
+
+GET  /api/scouts/saved-athletes          — list saved athletes
+POST /api/scouts/saved-athletes          — save an athlete
+DELETE /api/scouts/saved-athletes/:id   — remove saved athlete
+PATCH /api/scouts/saved-athletes/:id    — update private notes
+```
+
+---
+
+## Feature 4 — Athlete Comparison Tool
+
+### What This Feature Does
+A scout selects up to 5 athletes and views them side by side in a comparison table. Used when shortlisting — helps a scout decide between athletes for the same position or trial slot.
+
+---
+
+### How a Scout Adds Athletes to Compare
+- On any athlete card (search results, marketplace, saved athletes) there is an **"Add to Compare"** button
+- A persistent comparison bar appears at the bottom of the screen showing thumbnails of added athletes (like an e-commerce compare bar)
+- When 2 or more athletes are in the bar, **"Compare Now"** button activates
+- Maximum 5 athletes at once. When 5 are added, "Add to Compare" buttons on all other cards become disabled with tooltip: *"Remove an athlete to add another"*
+
+---
+
+### Comparison Table Layout
+- Full screen view
+- Athlete photos and names across the top as column headers
+- Rows are the attributes being compared
+- Highlight the best value per row in green automatically
+
+---
+
+### Attributes Compared
+
+| Category | Attributes |
+|---|---|
+| Basic Info | Age, Position, County, Club, Nationality |
+| Physical | Height, Weight, Preferred Foot |
+| Performance | Composite Score, Goals, Assists, Appearances |
+| Discipline | Yellow Cards, Red Cards, Consistency Rating |
+| Risk | Risk Band, Risk Score |
+| Status | Verified, Actively Looking, Coach Name |
+
+---
+
+### Comparison Behavior
+- Scout can remove any athlete from the comparison with an X on their column
+- Scout can replace an athlete by clicking the column header and searching
+- Comparison state is stored in the URL so it can be shared: `/scout/compare?ids=abc,def,ghi`
+- "Export Comparison" button exports the table as PDF (see Feature 5)
+
+---
+
+### API Endpoint
+
+```
+GET /api/scouts/compare?ids=uuid1,uuid2,uuid3
+
+Response:
+{
+  athletes: [
+    {
+      id, name, photo, age, position, county, club,
+      composite_score, risk_band, consistency_rating,
+      goals, assists, appearances,
+      yellow_cards, red_cards,
+      height, weight, preferred_foot,
+      is_verified, actively_looking, coach_name
+    }
+  ]
+}
+```
+
+---
+
+## Feature 5 — Scouting Report Export
+
+### What This Feature Does
+A scout generates a formatted PDF scouting report for any athlete. The report is professional enough to send to a club director or share in a transfer conversation.
+
+---
+
+### How to Trigger
+- On any athlete profile page there is an **"Export Scouting Report"** button
+- From the comparison tool there is an **"Export Comparison PDF"** button that generates a multi-athlete report
+
+---
+
+### Single Athlete Report — Contents
+
+**Page 1 — Cover**
+- Talent Graph logo + generated date
+- Athlete full photo
+- Name, age, nationality, position
+- Current club
+- Composite score (large, color banded)
+- Verified badge if applicable
+
+**Page 2 — Performance Data**
+- Radar chart (6 axes: Pace, Technique, Physicality, Discipline, Consistency, Potential)
+- Season stats table: appearances, goals, assists, minutes played
+- Career history table: club, season, appearances
+
+**Page 3 — Scouting Notes**
+- Risk band and risk score with explanation
+- Consistency rating with trend chart
+- Discipline record: cards per season
+- Coach verification details (coach name, club, date verified)
+- International profile format section (standardized attribute table for European/CAF clubs)
+
+**Page 4 — Contact & Next Steps**
+- Athlete contact details (phone, email if unlocked)
+- Club admin contact
+- Trial unlock status and insurance coverage if active
+- QR code linking to live athlete profile
+
+---
+
+### Comparison Report — Contents
+- All athletes side by side in the same table format as Feature 4
+- One page per athlete with their individual summary
+- Cover page listing all athletes being compared
+
+---
+
+### PDF Generation
+- Use a server-side PDF library (Puppeteer or pdfkit recommended)
+- Report is generated server-side, not client-side
+- Store generated reports temporarily (24 hours) so repeated downloads don't regenerate
+- File naming: `TalentGraph_Scout_Report_[AthleteName]_[Date].pdf`
+
+---
+
+### API Endpoint
+
+```
+POST /api/scouts/reports/generate
+Body: { athlete_id, report_type: 'single' | 'comparison', athlete_ids[] }
+
+Response: { report_url, expires_at }
+
+GET /api/scouts/reports/:id/download
+— streams the PDF file
+```
+
+---
+
+## Feature 6 — Direct Messages
+
+### What This Feature Does
+A scout can send a direct message to an athlete through the platform. The athlete receives it in their inbox and can reply. All communication stays on-platform.
+
+---
+
+### Sending a Message
+- On any athlete profile, **"Send Message"** button opens a compose modal
+- Modal shows: athlete name and photo, message text area (max 500 characters), Send button
+- Scout cannot message the same athlete twice until the athlete replies (prevents spam)
+- Monthly send limit tracked and displayed in UI: *"3 of 5 messages used this month"*
+- When limit is reached button shows: *"Message limit reached. Resets on [date]."*
+
+---
+
+### Inbox — Scout Side
+- Messages tab in sidebar
+- List of conversations, sorted by most recent
+- Each conversation shows: athlete photo, name, last message preview, timestamp, unread indicator
+- Clicking opens the full conversation thread
+- Scout can see read receipts (delivered / read)
+
+---
+
+### Inbox — Athlete Side
+- Athlete receives message in their inbox
+- Notification: in-app bell + SMS
+- SMS reads:
+```
+TalentGraph: You have a message from 
+a scout. Login to read and reply:
+talentgraph.co.ke/athlete/messages
+```
+- Athlete can reply with no character or volume limit
+- Athlete can report a message as spam — flagged for admin review
+
+---
+
+### Message Limit Reset
+- Limit resets on the scout's billing cycle date
+- If scout upgrades mid-month, limit resets immediately to the new plan's allowance
+- Track per scout per billing cycle in the database
+
+---
+
+### Database Schema
+
+```sql
+CREATE TABLE messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID REFERENCES conversations(id),
+  sender_id UUID REFERENCES users(id),
+  recipient_id UUID REFERENCES users(id),
+  body TEXT NOT NULL,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  read_at TIMESTAMPTZ,
+  is_reported BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scout_id UUID REFERENCES users(id),
+  athlete_id UUID REFERENCES users(id),
+  initiated_at TIMESTAMPTZ DEFAULT NOW(),
+  last_message_at TIMESTAMPTZ,
+  UNIQUE(scout_id, athlete_id)
+);
+
+CREATE TABLE message_usage (
+  scout_id UUID REFERENCES users(id),
+  billing_cycle_start DATE,
+  messages_sent INTEGER DEFAULT 0,
+  PRIMARY KEY (scout_id, billing_cycle_start)
+);
+```
+
+---
+
+### API Endpoints
+
+```
+GET  /api/messages/conversations          — list all conversations
+GET  /api/messages/conversations/:id      — get full thread
+POST /api/messages/conversations/:id      — send a message
+POST /api/messages/start                  — start new conversation with athlete
+PATCH /api/messages/:id/read             — mark as read
+POST /api/messages/:id/report            — report a message
+GET  /api/messages/usage                 — get current month usage count
+```
+
+---
+
+### Notes Across All Features
+
+- All 6 features are for the Scout dashboard only — coaches do not see any of these
+- Feature gating (what's locked vs unlocked per tier) is your decision — engineers should build all features fully functional and await your instruction on which to gate
+- Saved Search (Feature 2) reuses the exact filter schema from Feature 1 — build search first
+- Scouting Report PDF (Feature 5) depends on athlete data from Features 1 and 4 — build those first
+- Suggested build order: **1 → 4 → 2 → 3 → 5 → 6**

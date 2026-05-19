@@ -138,6 +138,9 @@ export interface AthleteProfile {
   showcaseVideos?: ShowcaseVideo[];
   likeCount?: number;
   phone?: string;
+  activelyLooking?: boolean;
+  availabilityDate?: string;
+  marketplaceBio?: string;
 }
 
 export interface ShowcaseVideo {
@@ -193,6 +196,37 @@ export interface ScoutProfile {
   isVerified?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SearchFilters {
+  positions?: string[];
+  county?: string;
+  ageMin?: number;
+  ageMax?: number;
+  scoreMin?: number;
+  scoreMax?: number;
+  riskBand?: 'low' | 'medium' | 'high';
+  consistency?: 'poor' | 'average' | 'good' | 'excellent';
+  verified?: boolean;
+  activelyLooking?: boolean;
+  clubStatus?: 'has_club' | 'no_club' | 'all';
+  sort?: 'score' | 'recent' | 'alpha' | 'age';
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: SearchFilters;
+  notificationsEnabled: boolean;
+  createdAt: string;
+  lastMatchAt?: string;
+}
+
+export interface SavedAthlete {
+  id: string;
+  athleteId: string;
+  savedAt: string;
+  notes?: string;
 }
 
 export interface ClubProfile {
