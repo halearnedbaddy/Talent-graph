@@ -66,6 +66,11 @@ const AttributeRadarCharts = dynamic(
   { loading: () => <div className="h-[400px] w-full bg-muted/20 animate-pulse rounded-xl" />, ssr: false }
 );
 
+const MatchPerformanceChart = dynamic(
+  () => import('./match-performance-chart').then((mod) => mod.MatchPerformanceChart),
+  { loading: () => <div className="h-[320px] w-full bg-muted/20 animate-pulse rounded-xl" />, ssr: false }
+);
+
 interface AthleteDashboardProps {
   userAccount: UserAccount;
   athleteProfile?: AthleteProfile;
@@ -579,6 +584,10 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             </Card>
 
             <AttributeRadarCharts profile={athleteProfile} />
+
+            {(athleteProfile.matchHistory?.length ?? 0) > 0 && (
+              <MatchPerformanceChart matchHistory={athleteProfile.matchHistory || []} />
+            )}
 
             <Card className="shadow-lg border-none">
               <CardHeader>
