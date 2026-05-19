@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Eye, EyeOff, Sparkles, Smartphone, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -129,17 +129,13 @@ export default function SignupPage() {
         <Card className="w-full overflow-hidden border-border/60 bg-background/90 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.45)] backdrop-blur">
           <div className="h-2 bg-gradient-to-r from-primary via-fuchsia-400 to-cyan-400" />
           <CardHeader className="space-y-5 p-6 pb-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-start">
               <Button variant="ghost" size="icon" asChild className="-ml-2 h-10 w-10 rounded-full">
                 <Link href="/" prefetch={false}>
                   <ArrowLeft className="h-5 w-5" />
                   <span className="sr-only">Back to home</span>
                 </Link>
               </Button>
-              <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-primary">
-                <Smartphone className="h-3.5 w-3.5" />
-                App Style
-              </div>
             </div>
             <div className="space-y-3 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
@@ -149,13 +145,6 @@ export default function SignupPage() {
               <CardDescription className="mx-auto max-w-[18rem] text-sm leading-6">
                 Build a verified professional identity in sport with a premium mobile-first flow.
               </CardDescription>
-            </div>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {['Quick setup', 'Verified profile', 'Built for mobile'].map((item) => (
-                <div key={item} className="rounded-2xl border border-border/60 bg-muted/40 px-2 py-3 text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{item}</p>
-                </div>
-              ))}
             </div>
           </CardHeader>
           <CardContent className="space-y-5 p-6 pt-0">
@@ -311,10 +300,6 @@ export default function SignupPage() {
           </Form>
 
           <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-center text-sm">
-            <div className="mb-2 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5" />
-              Already started?
-            </div>
             Already have an account?{' '}
             <Link href="/login" className="font-bold text-primary">
               Sign in

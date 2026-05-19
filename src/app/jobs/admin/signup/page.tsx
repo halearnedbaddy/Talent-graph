@@ -6,7 +6,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, ShieldCheck, Eye, EyeOff, Smartphone } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -116,17 +116,13 @@ export default function AdminSignupPage() {
         <Card className="w-full overflow-hidden border-border/60 bg-background/90 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.45)] backdrop-blur">
           <div className="h-2 bg-gradient-to-r from-primary via-amber-400 to-cyan-400" />
           <CardHeader className="space-y-5 p-6 pb-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-start">
               <Button variant="ghost" size="icon" asChild className="-ml-2 h-10 w-10 rounded-full">
                 <Link href="/jobs" prefetch={false}>
                   <ArrowLeft className="h-5 w-5" />
                   <span className="sr-only">Back to jobs</span>
                 </Link>
               </Button>
-              <div className="flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-amber-600">
-                <Smartphone className="h-3.5 w-3.5" />
-                Mobile Flow
-              </div>
             </div>
             <div className="space-y-3 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
