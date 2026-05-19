@@ -25,6 +25,7 @@ import { collection, query, where, doc, updateDoc, getDoc } from 'firebase/fires
 import { smsSend } from '@/hooks/useSMS';
 import type { ScoutConnection, AthleteProfile, ClubMember, ScoutProfile } from '@/lib/types';
 import { Loader2, ArrowUpDown } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -97,6 +98,20 @@ export const columns: ColumnDef<AthleteData>[] = [
     id: 'athleteName',
     header: 'Athlete Name',
     accessorFn: (row) => `${row.athlete.firstName} ${row.athlete.lastName}`,
+    cell: ({ row }) => (
+      <div className="flex items-center gap-3 min-w-[160px]">
+        <Avatar className="w-8 h-8 rounded-lg shrink-0">
+          <AvatarImage src={row.original.athlete.photoUrl} alt={`${row.original.athlete.firstName} ${row.original.athlete.lastName}`} className="object-cover rounded-lg" />
+          <AvatarFallback className="rounded-lg bg-muted font-black text-[10px] text-muted-foreground uppercase">
+            {row.original.athlete.firstName[0]}{row.original.athlete.lastName[0]}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="text-sm font-black uppercase leading-none truncate">{row.original.athlete.firstName} {row.original.athlete.lastName}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">{row.original.athlete.position}</p>
+        </div>
+      </div>
+    ),
   },
   { 
     accessorKey: 'athlete.age', 

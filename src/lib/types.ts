@@ -309,6 +309,8 @@ export interface LiveMatchStatSnapshot {
   awayOneVOne?: number;
   homeYellows?: number;
   awayYellows?: number;
+  homeTouchesInBox?: number;
+  awayTouchesInBox?: number;
   homePossession?: number;
 }
 

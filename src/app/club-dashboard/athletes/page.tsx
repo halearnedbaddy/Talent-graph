@@ -24,6 +24,7 @@ import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebas
 import { collection, query, where } from 'firebase/firestore';
 import type { ScoutConnection, AthleteProfile, ClubMember } from '@/lib/types';
 import { Loader2, ArrowUpDown, ShieldCheck, Clock, ExternalLink, Search } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -72,9 +73,12 @@ export default function SquadListPage() {
             accessorFn: (row) => `${row.firstName} ${row.lastName}`,
             cell: ({ row }) => (
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center font-black text-[10px] text-muted-foreground uppercase shrink-0">
-                        {row.original.firstName[0]}{row.original.lastName[0]}
-                    </div>
+                    <Avatar className="w-8 h-8 rounded-lg shrink-0">
+                        <AvatarImage src={row.original.photoUrl} alt={`${row.original.firstName} ${row.original.lastName}`} className="object-cover rounded-lg" />
+                        <AvatarFallback className="rounded-lg bg-muted font-black text-[10px] text-muted-foreground uppercase">
+                            {row.original.firstName[0]}{row.original.lastName[0]}
+                        </AvatarFallback>
+                    </Avatar>
                     <div>
                         <p className="text-sm font-black uppercase leading-none">{row.original.firstName} {row.original.lastName}</p>
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">@{row.original.username}</p>

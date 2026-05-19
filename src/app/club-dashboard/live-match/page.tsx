@@ -48,6 +48,7 @@ const EMPTY_STATS: LiveMatchStatSnapshot = {
   homeGkSaves: 0, awayGkSaves: 0,
   homeOneVOne: 0, awayOneVOne: 0,
   homeYellows: 0, awayYellows: 0,
+  homeTouchesInBox: 0, awayTouchesInBox: 0,
   homePossession: 50,
 };
 
@@ -60,6 +61,7 @@ const STAT_ROWS: { label: string; homeKey: keyof LiveMatchStatSnapshot; awayKey:
   { label: 'Crosses', homeKey: 'homeCrosses', awayKey: 'awayCrosses', color: 'bg-sky-500', section: 'Attacking Play' },
   { label: 'Cutbacks', homeKey: 'homeCutbacks', awayKey: 'awayCutbacks', color: 'bg-indigo-500', section: 'Attacking Play' },
   { label: 'Penetration Passes', homeKey: 'homePenetrationPasses', awayKey: 'awayPenetrationPasses', color: 'bg-violet-500', section: 'Attacking Play' },
+  { label: 'Touches in Box', homeKey: 'homeTouchesInBox', awayKey: 'awayTouchesInBox', color: 'bg-pink-500', section: 'Attacking Play' },
   { label: 'Fouls Committed', homeKey: 'homeFouls', awayKey: 'awayFouls', color: 'bg-red-500', section: 'Discipline' },
   { label: 'Yellow Cards', homeKey: 'homeYellows', awayKey: 'awayYellows', color: 'bg-yellow-500', section: 'Discipline' },
   { label: 'Aerial Duels Won', homeKey: 'homeAerialDuelsWon', awayKey: 'awayAerialDuelsWon', color: 'bg-cyan-500', section: 'Duels' },

@@ -3,8 +3,9 @@
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, Users, ShieldCheck, Clock, Search } from 'lucide-react';
-import type { ClubMember, ScoutConnection, AthleteProfile, ClubProfile } from '@/lib/types';
+import { Loader2, ShieldCheck, Clock, Trophy, Target, BookOpen, TrendingUp } from 'lucide-react';
+import type { ClubMember, ScoutConnection, AthleteProfile, ClubProfile, ClubMatch } from '@/lib/types';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -39,6 +40,49 @@ export default function ClubOverviewPage() {
     firestore && athleteIds.length > 0 ? query(collection(firestore, 'athletes'), where('uid', 'in', athleteIds)) : null
   ), [firestore, athleteIds.join(',')]);
   const { data: athletes, isLoading: isAthletesLoading } = useCollection<AthleteProfile>(athletesQuery);
+
+  const matchesQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
+  ), [firestore, clubId]);
+  const { data: matches } = useCollection<ClubMatch>(matchesQuery);
+
+  const seasonStats = React.useMemo(() => {
+    if (!matches || matches.length === 0) return null;
+    const played = matches.filter(m => m.result).length;
+    const wins = matches.filter(m => m.result === 'W').length;
+    const draws = matches.filter(m => m.result === 'D').length;
+    const losses = matches.filter(m => m.result === 'L').length;
+    let goalsFor = 0, goalsAgainst = 0;
+    matches.forEach(m => {
+      if (m.score) {
+        const parts = m.score.split('-').map(s => parseInt(s.trim(), 10));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          goalsFor += parts[0];
+          goalsAgainst += parts[1];
+        }
+      }
+    });
+    const totalYellows = matches.reduce((s, m) => s + (m.totalYellowCards || 0), 0);
+    const totalReds = matches.reduce((s, m) => s + (m.totalRedCards || 0), 0);
+    return { played, wins, draws, losses, goalsFor, goalsAgainst, goalDiff: goalsFor - goalsAgainst, totalYellows, totalReds };
+  }, [matches]);
+
+  const leaderboards = React.useMemo(() => {
+    if (!athletes || athletes.length === 0) return { topScorer: null, topAssister: null, mostBooked: null };
+    let topScorer: { name: string; value: number; photo?: string; position?: string } | null = null;
+    let topAssister: { name: string; value: number; photo?: string; position?: string } | null = null;
+    let mostBooked: { name: string; value: number; photo?: string; position?: string } | null = null;
+    athletes.forEach(a => {
+      const goals = (a.matchHistory || []).reduce((s, m) => s + (m.goals || 0), 0);
+      const assists = (a.matchHistory || []).reduce((s, m) => s + (m.assists || 0), 0);
+      const bookings = (a.matchHistory || []).reduce((s, m) => s + (m.yellowCards || 0) + (m.redCards || 0), 0);
+      const name = `${a.firstName} ${a.lastName}`;
+      if (!topScorer || goals > topScorer.value) topScorer = { name, value: goals, photo: a.photoUrl, position: a.position };
+      if (!topAssister || assists > topAssister.value) topAssister = { name, value: assists, photo: a.photoUrl, position: a.position };
+      if (!mostBooked || bookings > mostBooked.value) mostBooked = { name, value: bookings, photo: a.photoUrl, position: a.position };
+    });
+    return { topScorer, topAssister, mostBooked };
+  }, [athletes]);
 
   const stats = React.useMemo(() => {
     if (!athletes) return { count: 0, avgAge: 0, avgCSI: 0, verified: 0, pending: 0 };
@@ -154,6 +198,94 @@ export default function ClubOverviewPage() {
         </Card>
       </div>
 
+      {/* Season Record + Leaderboards */}
+      {seasonStats && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Season Record */}
+          <Card className="border-none shadow-xl bg-background overflow-hidden">
+            <CardHeader className="bg-neutral-950 text-white p-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-yellow-400" />
+                <CardTitle className="text-sm font-black uppercase tracking-widest">Season Record</CardTitle>
+              </div>
+              <CardDescription className="text-[10px] font-bold uppercase tracking-tight text-neutral-400">{seasonStats.played} matches played</CardDescription>
+            </CardHeader>
+            <CardContent className="p-5">
+              <div className="grid grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Win', value: seasonStats.wins, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', border: 'border-green-200 dark:border-green-900' },
+                  { label: 'Draw', value: seasonStats.draws, color: 'text-neutral-500', bg: 'bg-muted/40', border: 'border-border' },
+                  { label: 'Loss', value: seasonStats.losses, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-red-200 dark:border-red-900' },
+                  { label: 'GD', value: seasonStats.goalDiff > 0 ? `+${seasonStats.goalDiff}` : seasonStats.goalDiff, color: seasonStats.goalDiff >= 0 ? 'text-green-600' : 'text-red-600', bg: 'bg-muted/40', border: 'border-border' },
+                ].map(stat => (
+                  <div key={stat.label} className={`rounded-xl border p-3 text-center ${stat.bg} ${stat.border}`}>
+                    <p className={`text-2xl font-black leading-none ${stat.color}`}>{stat.value}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-1">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                  <span className="text-muted-foreground">Goals For / Against</span>
+                  <span className="font-black">{seasonStats.goalsFor} <span className="text-muted-foreground">—</span> {seasonStats.goalsAgainst}</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden flex">
+                  <div className="h-full bg-green-500 transition-all" style={{ width: `${(seasonStats.goalsFor / Math.max(seasonStats.goalsFor + seasonStats.goalsAgainst, 1)) * 100}%` }} />
+                  <div className="h-full bg-red-400 transition-all" style={{ width: `${(seasonStats.goalsAgainst / Math.max(seasonStats.goalsFor + seasonStats.goalsAgainst, 1)) * 100}%` }} />
+                </div>
+                <div className="flex items-center gap-4 pt-1">
+                  <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-yellow-400" /><span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{seasonStats.totalYellows} Yellows</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-600" /><span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{seasonStats.totalReds} Reds</span></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Leaderboards */}
+          <Card className="border-none shadow-xl bg-background overflow-hidden">
+            <CardHeader className="bg-muted/50 border-b p-4">
+              <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" /> Squad Leaders
+              </CardTitle>
+              <CardDescription className="text-[10px] font-bold uppercase tracking-tight">Based on logged match data</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 divide-y">
+              {[
+                { label: 'Top Scorer', icon: '⚽', leader: leaderboards.topScorer, unit: 'goals', color: 'text-green-600' },
+                { label: 'Most Assists', icon: '🎯', leader: leaderboards.topAssister, unit: 'assists', color: 'text-blue-600' },
+                { label: 'Most Booked', icon: '🟨', leader: leaderboards.mostBooked, unit: 'cards', color: 'text-yellow-600' },
+              ].map(({ label, icon, leader, unit, color }) => (
+                <div key={label} className="flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xl shrink-0">{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
+                      {leader ? (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Avatar className="w-6 h-6 rounded-md shrink-0">
+                            <AvatarImage src={leader.photo} className="object-cover rounded-md" />
+                            <AvatarFallback className="rounded-md bg-muted font-black text-[9px] text-muted-foreground uppercase">{leader.name[0]}</AvatarFallback>
+                          </Avatar>
+                          <p className="text-sm font-black uppercase leading-none truncate">{leader.name}</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-0.5">No data yet</p>
+                      )}
+                    </div>
+                  </div>
+                  {leader && (
+                    <div className="text-right shrink-0 ml-3">
+                      <p className={`text-2xl font-black leading-none ${color}`}>{leader.value}</p>
+                      <p className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter mt-0.5">{unit}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Main body - stacked on mobile, side-by-side on desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-5">
         <div className="lg:col-span-4 space-y-5">
@@ -173,9 +305,12 @@ export default function ClubOverviewPage() {
                 {athletes?.slice(0, 5).sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map(a => (
                   <div key={a.uid} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center font-black text-muted-foreground uppercase text-xs shrink-0">
-                        {a.firstName[0]}{a.lastName[0]}
-                      </div>
+                      <Avatar className="w-9 h-9 rounded-xl shrink-0">
+                        <AvatarImage src={a.photoUrl} alt={`${a.firstName} ${a.lastName}`} className="object-cover rounded-xl" />
+                        <AvatarFallback className="rounded-xl bg-muted font-black text-muted-foreground uppercase text-xs">
+                          {a.firstName[0]}{a.lastName[0]}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-black uppercase leading-none truncate">{a.firstName} {a.lastName}</p>
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{a.position} • {a.age}y</p>
