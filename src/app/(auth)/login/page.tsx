@@ -59,6 +59,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [userAccount, setUserAccount] = useState<UserAccount | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,12 +72,19 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isUserLoading && user) {
       if (user.emailVerified) {
-        router.push(userAccount?.role === 'coach' ? '/coach-dashboard' : userAccount?.role === 'scout' ? '/scout-dashboard' : '/');
+        const userDocRef = doc(firestore, "users", user.uid);
+        getDoc(userDocRef).then((snap) => {
+          const data = snap.data() as UserAccount | undefined;
+          setUserAccount(data ?? null);
+          router.push(data?.role === 'coach' ? '/coach-dashboard' : data?.role === 'scout' ? '/scout-dashboard' : '/');
+        }).catch(() => {
+          router.push('/');
+        });
       } else {
         router.push('/verify-email');
       }
     }
-  }, [user, isUserLoading, router, userAccount]);
+  }, [user, isUserLoading, router, firestore]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
