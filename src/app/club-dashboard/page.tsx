@@ -236,10 +236,10 @@ export default function ClubOverviewPage() {
         <CardContent className="p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-      { label: 'Available', value: readinessCounts.available, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-500/5 border-green-400/30' },
-      { label: 'Doubtful', value: readinessCounts.doubtful, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-500/5 border-amber-400/30' },
-      { label: 'Injured', value: readinessCounts.injured, icon: ShieldAlert, color: 'text-orange-600', bg: 'bg-orange-500/5 border-orange-400/30' },
-      { label: 'Suspended', value: readinessCounts.suspended, icon: ShieldAlert, color: 'text-red-600', bg: 'bg-red-500/5 border-red-400/30' },
+              { label: 'Available', value: readinessCounts.available, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-500/5 border-green-400/30' },
+              { label: 'Doubtful', value: readinessCounts.doubtful, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-500/5 border-amber-400/30' },
+              { label: 'Injured', value: readinessCounts.injured, icon: ShieldAlert, color: 'text-orange-600', bg: 'bg-orange-500/5 border-orange-400/30' },
+              { label: 'Suspended', value: readinessCounts.suspended, icon: ShieldAlert, color: 'text-red-600', bg: 'bg-red-500/5 border-red-400/30' },
             ].map((item) => (
               <div key={item.label} className={`rounded-xl border p-4 ${item.bg}`}>
                 <div className="flex items-center justify-between">
@@ -305,11 +305,13 @@ export default function ClubOverviewPage() {
               <CardDescription className="text-[10px] font-bold uppercase tracking-tight">Based on logged match data</CardDescription>
             </CardHeader>
             <CardContent className="p-0 divide-y">
-              {[
-                { label: 'Top Scorer', icon: '⚽', leader: leaderboards.topScorer, unit: 'goals', color: 'text-green-600' },
-                { label: 'Most Assists', icon: '🎯', leader: leaderboards.topAssister, unit: 'assists', color: 'text-blue-600' },
-                { label: 'Most Booked', icon: '🟨', leader: leaderboards.mostBooked, unit: 'cards', color: 'text-yellow-600' },
-              ] as Array<{ label: string; icon: string; leader: { name: string; value: number; photo?: string; position?: string } | null; unit: string; color: string }>.map(({ label, icon, leader, unit, color }) => (
+              {(
+                [
+                  { label: 'Top Scorer', icon: '⚽', leader: leaderboards.topScorer, unit: 'goals', color: 'text-green-600' },
+                  { label: 'Most Assists', icon: '🎯', leader: leaderboards.topAssister, unit: 'assists', color: 'text-blue-600' },
+                  { label: 'Most Booked', icon: '🟨', leader: leaderboards.mostBooked, unit: 'cards', color: 'text-yellow-600' },
+                ] as Array<{ label: string; icon: string; leader: { name: string; value: number; photo?: string; position?: string } | null; unit: string; color: string }>
+              ).map(({ label, icon, leader, unit, color }) => (
                 <div key={label} className="flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xl shrink-0">{icon}</span>
