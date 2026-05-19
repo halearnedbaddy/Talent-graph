@@ -57,6 +57,7 @@ import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
+import { ShareProfileCard } from './share-profile-card';
 
 const PerformanceRadarChart = dynamic(
   () => import('./performance-radar-chart').then((mod) => mod.PerformanceRadarChart),
@@ -582,6 +583,10 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         )}
 
         <ProfileHeader profile={athleteProfile} />
+
+        {athleteProfile.username && (
+          <ShareProfileCard username={athleteProfile.username} firstName={athleteProfile.firstName} />
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {indices.map((idx) => (

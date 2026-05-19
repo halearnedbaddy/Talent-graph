@@ -15,14 +15,16 @@ import { CompareTab } from './compare-tab';
 import { SavedAthletesTab } from './saved-athletes-tab';
 import { MessagesTab } from './messages-tab';
 import { ProfileTab } from './profile-tab';
-import { Search, Store, BarChart2, Bookmark, MessageSquare, User } from 'lucide-react';
+import { Search, Store, BarChart2, Bookmark, MessageSquare, User, GitPullRequestArrow } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PipelineTab } from './pipeline-tab';
 
 const TABS = [
   { id: 'search',    label: 'Search',    Icon: Search },
   { id: 'market',    label: 'Market',    Icon: Store },
   { id: 'compare',   label: 'Compare',   Icon: BarChart2 },
   { id: 'saved',     label: 'Saved',     Icon: Bookmark },
+  { id: 'pipeline',  label: 'Pipeline',  Icon: GitPullRequestArrow },
   { id: 'messages',  label: 'Messages',  Icon: MessageSquare },
   { id: 'profile',   label: 'Profile',   Icon: User },
 ] as const;
@@ -163,6 +165,9 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
             onUnsave={handleUnsave}
             onSendMessage={handleSendMessage}
           />
+        )}
+        {activeTab === 'pipeline' && (
+          <PipelineTab scoutProfile={scoutProfile} />
         )}
         {activeTab === 'messages' && (
           <MessagesTab
