@@ -72,18 +72,19 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
   }, [connections, activeFilter]);
 
   async function handleSendMessage() {
-    if (!firestore || !selectedAthlete || !messageText.trim()) return;
-    if (connectionAthleteIds.has(selectedAthlete.uid)) {
+    const target = selectedAthlete || composeTarget;
+    if (!firestore || !target || !messageText.trim()) return;
+    if (connectionAthleteIds.has(target.uid)) {
       toast({ variant: 'destructive', title: 'Message already sent', description: 'Wait for this athlete to reply before messaging again.' });
       return;
     }
     setIsSending(true);
     try {
-      const connId = `${selectedAthlete.uid}_${scoutProfile.uid}`;
+      const connId = `${target.uid}_${scoutProfile.uid}`;
       await setDoc(doc(firestore, 'scout_connections', connId), {
         id: connId,
         scoutId: scoutProfile.uid,
-        athleteId: selectedAthlete.uid,
+        athleteId: target.uid,
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -95,7 +96,7 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
         text: messageText.trim(),
         createdAt: serverTimestamp(),
       });
-      toast({ title: 'Message sent!', description: `Your message to ${selectedAthlete.firstName} has been sent.` });
+      toast({ title: 'Message sent!', description: `Your message to ${target.firstName} has been sent.` });
       setComposeOpen(false);
       setSelectedAthlete(null);
       setMessageText('');

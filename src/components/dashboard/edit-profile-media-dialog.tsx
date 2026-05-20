@@ -31,8 +31,20 @@ import {
   Upload,
   X,
   Plus,
+  MapPin,
+  Building2,
+  Users,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(blob);
+  });
+}
 
 function getInitials(name: string) {
   if (!name) return '??';
@@ -90,6 +102,12 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
   // Bio state
   const [bio, setBio] = useState('');
 
+  // Profile details state
+  const [country, setCountry] = useState('');
+  const [county, setCounty] = useState('');
+  const [team, setTeam] = useState('');
+  const [clubName, setClubName] = useState('');
+
   // Reset all state when dialog opens
   const resetState = useCallback(() => {
     setPhotoPreview(profile.photoUrl || '');
@@ -110,6 +128,10 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setShowcaseTitle('');
     setShowcaseDragOver(false);
     setBio(profile.bio || '');
+    setCountry((profile as any).country || '');
+    setCounty((profile as any).county || '');
+    setTeam(profile.team || '');
+    setClubName(profile.clubName || '');
   }, [profile]);
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -151,23 +173,22 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
       if (!auth.currentUser) throw new Error('Not signed in');
       const compressed = await compressImage(file, 400, 0.82);
       setIsCompressingPhoto(false);
-      setPhotoUpload({ progress: 5, state: 'running' });
-      const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
-      const downloadUrl = await uploadFileWithProgress(
-        firebaseApp,
-        `profile-photos/${profile.uid}/photo.jpg`,
-        photoBlob,
-        (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
-      );
-      // Auto-save photoUrl to Firestore immediately — no second click needed
+      setPhotoUpload({ progress: 40, state: 'running' });
+
+      // Convert to base64 data URL — stores directly in Firestore, works instantly
+      const dataUrl = await blobToBase64(compressed);
+      setPhotoUpload({ progress: 80, state: 'running' });
+
       if (firestore) {
         await updateDoc(doc(firestore, 'athletes', profile.uid), {
-          photoUrl: downloadUrl,
+          photoUrl: dataUrl,
           updatedAt: new Date().toISOString(),
         });
       }
-      setPendingPhotoUrl(downloadUrl);
-      setPhotoPreview(downloadUrl);
+      URL.revokeObjectURL(previewUrl);
+      setPhotoUpload({ progress: 100, state: 'success', downloadUrl: dataUrl });
+      setPendingPhotoUrl(dataUrl);
+      setPhotoPreview(dataUrl);
       toast({ title: 'Photo saved!', description: 'Your profile photo has been updated.' });
     } catch (err: any) {
       setIsCompressingPhoto(false);
@@ -316,21 +337,30 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     try {
       await updateDoc(doc(firestore, 'athletes', profile.uid), {
         bio: bio.trim() || null,
+        country: country.trim() || null,
+        county: county.trim() || null,
+        team: team.trim() || null,
+        clubName: clubName.trim() || null,
         updatedAt: new Date().toISOString(),
       });
-      toast({ title: 'Bio saved', description: 'Your bio has been updated.' });
+      toast({ title: 'Profile saved!', description: 'Your profile details have been updated.' });
       if (isControlled) onExternalOpenChange?.(false);
       else setInternalOpen(false);
     } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not save your bio. Please try again.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not save your profile. Please try again.' });
     } finally {
       setIsSaving(false);
     }
   };
 
   const isUploading = isCompressingPhoto || photoUpload?.state === 'running' || videoUpload?.state === 'running' || showcaseUpload?.state === 'running';
+  const detailsChanged =
+    country.trim() !== ((profile as any).country || '') ||
+    county.trim() !== ((profile as any).county || '') ||
+    team.trim() !== (profile.team || '') ||
+    clubName.trim() !== (profile.clubName || '');
   const canSave = !isSaving && !isUploading &&
-    bio.trim() !== (profile.bio || '').trim();
+    (bio.trim() !== (profile.bio || '').trim() || detailsChanged);
 
   return (
     <>
@@ -360,6 +390,10 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
               <TabsTrigger value="photo" className="flex-1 gap-1 text-xs">
                 <Camera className="w-3.5 h-3.5" />
                 Photo
+              </TabsTrigger>
+              <TabsTrigger value="details" className="flex-1 gap-1 text-xs">
+                <MapPin className="w-3.5 h-3.5" />
+                Details
               </TabsTrigger>
               <TabsTrigger value="video" className="flex-1 gap-1 text-xs">
                 <Video className="w-3.5 h-3.5" />
@@ -464,6 +498,67 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                   </Button>
                 </div>
               )}
+            </TabsContent>
+
+            {/* DETAILS TAB */}
+            <TabsContent value="details" className="space-y-5 mt-5">
+              <div className="space-y-1">
+                <p className="text-sm font-bold">Profile Details</p>
+                <p className="text-xs text-muted-foreground">Add your country, location, current team and club — these appear on your public profile.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-bold flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
+                  Country
+                </Label>
+                <Input
+                  placeholder="e.g. Kenya"
+                  value={country}
+                  onChange={e => setCountry(e.target.value)}
+                  maxLength={60}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-bold flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
+                  Location / Town
+                </Label>
+                <Input
+                  placeholder="e.g. Nairobi"
+                  value={county}
+                  onChange={e => setCounty(e.target.value)}
+                  maxLength={80}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-bold flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-primary" />
+                  Current Team
+                </Label>
+                <Input
+                  placeholder="e.g. Gor Mahia FC"
+                  value={team}
+                  onChange={e => setTeam(e.target.value)}
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-bold flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-primary" />
+                  Club Name
+                </Label>
+                <Input
+                  placeholder="e.g. AFC Leopards"
+                  value={clubName}
+                  onChange={e => setClubName(e.target.value)}
+                  maxLength={100}
+                />
+                <p className="text-[10px] text-muted-foreground">If you have joined a club through the platform, the club name is managed automatically.</p>
+              </div>
             </TabsContent>
 
             {/* VIDEO TAB */}
@@ -784,7 +879,7 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
                         Saving…
                       </>
                     ) : (
-                      'Save Bio'
+                      'Save Profile'
                     )}
                   </Button>
                 )}

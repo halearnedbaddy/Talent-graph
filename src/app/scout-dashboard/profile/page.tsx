@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser, useFirestore, useDoc, useMemoFirebase, useFirebaseApp, updateDocumentNonBlocking, useCollection } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, useCollection } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
@@ -22,7 +22,16 @@ import { ClubAffiliation } from '@/components/scout/club-affiliation';
 import { DeleteAccountDialog } from '@/components/account/delete-account-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
-import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
+import { compressImage, type UploadProgress } from '@/firebase/storage';
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(blob);
+  });
+}
 
 const scoutUpdateFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -35,7 +44,6 @@ const scoutUpdateFormSchema = z.object({
 export default function ScoutProfilePage() {
     const { user, isUserLoading } = useUser();
     const firestore = useFirestore();
-    const firebaseApp = useFirebaseApp();
     const router = useRouter();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
@@ -105,22 +113,21 @@ export default function ScoutProfilePage() {
         try {
             const compressed = await compressImage(file, 400, 0.82);
             setIsCompressingPhoto(false);
-            setPhotoUpload({ progress: 5, state: 'running' });
-            const photoBlob = new File([compressed], 'photo.jpg', { type: 'image/jpeg' });
-            const downloadUrl = await uploadFileWithProgress(
-                firebaseApp,
-                `scout-photos/${user.uid}/photo.jpg`,
-                photoBlob,
-                (p) => setPhotoUpload({ ...p, progress: Math.max(5, p.progress) })
-            );
-            // Auto-save to Firestore immediately — no separate form submit needed
+            setPhotoUpload({ progress: 40, state: 'running' });
+
+            // Convert to base64 data URL — saves directly to Firestore, works instantly
+            const dataUrl = await blobToBase64(compressed);
+            setPhotoUpload({ progress: 80, state: 'running' });
+
             const { doc: firestoreDoc, updateDoc } = await import('firebase/firestore');
             await updateDoc(firestoreDoc(firestore, 'scouts', user.uid), {
-                photoUrl: downloadUrl,
+                photoUrl: dataUrl,
                 updatedAt: new Date().toISOString(),
             });
-            setPendingPhotoUrl(downloadUrl);
-            setPhotoPreview(downloadUrl);
+            URL.revokeObjectURL(previewUrl);
+            setPhotoUpload({ progress: 100, state: 'success', downloadUrl: dataUrl });
+            setPendingPhotoUrl(dataUrl);
+            setPhotoPreview(dataUrl);
             toast({ title: 'Photo saved!', description: 'Your profile photo has been updated.' });
         } catch (err: any) {
             setIsCompressingPhoto(false);

@@ -100,6 +100,7 @@ export interface AthleteProfile {
   isVerified?: boolean;
   photoUrl?: string;
   country?: string;
+  county?: string;
   nationality?: string;
 
   minutesPlayed: number;
