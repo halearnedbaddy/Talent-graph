@@ -41,7 +41,7 @@ export function ScoutAthleteCard({
   onSendMessage,
   showAvailability,
 }: ScoutAthleteCardProps) {
-  const { firstName, lastName, position, altPositions, age, country, clubName, compositeScoutingIndex, isVerified, photoUrl, activelyLooking, availabilityDate, marketplaceBio } = athlete;
+  const { firstName, lastName, position, altPositions, age, country, clubName, team, compositeScoutingIndex, isVerified, photoUrl, activelyLooking, availabilityDate, marketplaceBio } = athlete;
   const fullName = `${firstName} ${lastName}`;
 
   return (
@@ -90,7 +90,7 @@ export function ScoutAthleteCard({
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {clubName || 'Unattached'}
+              {clubName || team || 'Unattached'}
             </p>
           </div>
         </div>

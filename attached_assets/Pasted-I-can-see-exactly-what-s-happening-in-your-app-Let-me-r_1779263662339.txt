@@ -1,0 +1,273 @@
+I can see exactly what's happening in your app. Let me read the feedback clearly from the screenshots:
+
+**Issues spotted:**
+1. **Image 1 & 4** — Profile shows "VERVE FC" under location icon but also "NO CLUB" — these are conflicting. Location and club are mixed up. The circle highlights this bug.
+2. **Image 2** — Someone is asking to add a club chat interface connected to the platform
+3. **Image 3** — Two issues flagged: club members showing as "Unattached" even when they belong to a club, and a missing club chat interface
+4. **Image 4** — Live app on talent-graph.vercel.app confirming the location/club display bug
+
+---
+
+Here are the refined and enhanced prompts:
+
+---
+
+## Bug Fix 1 — Athlete Profile: Location vs Club Display Conflict
+
+### The Problem
+On the athlete profile, the location pin icon is showing the club name ("VERVE FC") instead of the athlete's actual location/county. Simultaneously a separate field shows "NO CLUB." These two data points are conflicting and pulling from the wrong fields.
+
+### What It Should Look Like
+
+```
+📍 Nairobi          ← location/county here
+🏟️ Verve FC         ← club name here  
+👤 19 YRS           ← age here
+```
+
+### The Fix
+
+**Database check first:**
+Confirm the `athletes` or `users` table has these as separate columns:
+```sql
+county TEXT,        -- location e.g. "Nairobi", "Kisumu"
+club_id UUID,       -- foreign key to clubs table
+age INTEGER         -- or date_of_birth
+```
+
+**Profile query fix:**
+```sql
+SELECT 
+  u.county,                    -- for location display
+  cl.name as club_name,        -- for club display
+  a.age
+FROM athletes a
+JOIN users u ON a.user_id = u.id
+LEFT JOIN club_memberships cm 
+  ON a.id = cm.athlete_id 
+  AND cm.status = 'active'     -- only active membership
+LEFT JOIN clubs cl ON cm.club_id = cl.id
+```
+
+**Frontend display logic:**
+
+```javascript
+// Location row
+<LocationIcon /> 
+{athlete.county ?? "Location not set"}
+
+// Club row  
+<ClubIcon />
+{athlete.club_name ?? "No Club"}
+
+// Age row
+<PersonIcon />
+{athlete.age} YRS
+```
+
+**Display rules:**
+- If `county` is null → show "Location not set" not the club name
+- If `club_name` is null → show "No Club"
+- These two fields must never share a display slot — they are always separate rows
+- If an athlete has a club, "No Club" must not appear anywhere on their profile
+
+---
+
+## Bug Fix 2 — Club Members Showing as "Unattached"
+
+### The Problem
+Athletes who belong to a club are still showing "NO CLUB" or "Unattached" on their profile and in search results. The club membership exists but is not being reflected correctly.
+
+### Root Cause to Investigate
+1. Club membership record exists in `club_memberships` but the join is missing or broken in the profile query
+2. Membership status may be `pending` instead of `active` — the query needs to only show active memberships
+3. The athlete profile is reading from a cached or stale record that was set before they joined the club
+
+### The Fix
+
+**Step 1 — Audit the membership query:**
+```sql
+-- Check if memberships exist but aren't being read
+SELECT 
+  a.id as athlete_id,
+  u.name,
+  cm.status,
+  cm.club_id,
+  cl.name as club_name
+FROM athletes a
+JOIN users u ON a.user_id = u.id
+LEFT JOIN club_memberships cm ON a.id = cm.athlete_id
+LEFT JOIN clubs cl ON cm.club_id = cl.id
+WHERE cm.club_id IS NOT NULL
+```
+
+**Step 2 — Fix status filtering:**
+```sql
+-- Only show active memberships
+LEFT JOIN club_memberships cm 
+  ON a.id = cm.athlete_id 
+  AND cm.status = 'active'  -- not pending, not rejected
+```
+
+**Step 3 — When athlete joins a club, update their profile immediately:**
+```javascript
+async function onAthleteJoinsClub(athleteId, clubId) {
+  // Update membership status to active
+  await db.from('club_memberships')
+    .update({ status: 'active' })
+    .eq('athlete_id', athleteId)
+    .eq('club_id', clubId)
+  
+  // Invalidate any cached profile data for this athlete
+  await invalidateAthleteCache(athleteId)
+  
+  // Update search index
+  await reindexAthlete(athleteId)
+}
+```
+
+**Step 4 — In search results:**
+Make sure the search query (Feature 1 from scout spec) also uses the same corrected join — not a separate query that might have the same bug.
+
+---
+
+## New Feature — Club Chat Interface
+
+### What This Feature Does
+Every club on Talent Graph has a dedicated group chat that is connected to the club. All members of that club (athletes, coaches, club admin) are automatically added to the club chat when they join. This is separate from the Direct Messages feature between scouts and athletes.
+
+### Who Has Access
+- Club Admin — always in the chat, can pin messages, remove members from chat
+- Coaches affiliated with the club — automatically added on joining
+- Athletes affiliated with the club — automatically added on joining
+- Scouts — cannot access club chat (this is internal to the club)
+
+### Chat Interface Layout
+
+**Entry point:**
+- In the club dashboard sidebar: **"Club Chat"** menu item
+- In the athlete dashboard: **"My Club"** section with a **"Open Club Chat"** button
+- Unread message count badge on the sidebar icon
+
+**Chat window:**
+- Standard messaging UI — messages in chronological order, newest at bottom
+- Each message shows: sender avatar, sender name, role badge (Admin / Coach / Athlete), message text, timestamp
+- Message input at bottom with send button
+- Support for text only in v1 — no file uploads yet
+
+**Club Admin controls:**
+- Pin important messages (pinned message appears at top of chat for all members)
+- Remove a member from the chat (does not remove them from the club)
+- Delete any message
+
+### Automatic Membership Logic
+```javascript
+// When athlete joins club
+async function onAthleteJoinsClub(athleteId, clubId) {
+  const clubChat = await getClubChat(clubId)
+  
+  await db.from('chat_members').insert({
+    chat_id: clubChat.id,
+    user_id: athleteId,
+    role: 'athlete',
+    joined_at: new Date()
+  })
+}
+
+// When coach is affiliated with club
+async function onCoachJoinsClub(coachId, clubId) {
+  const clubChat = await getClubChat(clubId)
+  
+  await db.from('chat_members').insert({
+    chat_id: clubChat.id,
+    user_id: coachId,
+    role: 'coach',
+    joined_at: new Date()
+  })
+}
+
+// When athlete or coach leaves/is removed from club
+async function onMemberLeavesClub(userId, clubId) {
+  const clubChat = await getClubChat(clubId)
+  
+  await db.from('chat_members')
+    .update({ left_at: new Date() })
+    .eq('chat_id', clubChat.id)
+    .eq('user_id', userId)
+}
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE club_chats (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_id UUID REFERENCES clubs(id) UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE chat_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID REFERENCES club_chats(id),
+  user_id UUID REFERENCES users(id),
+  role TEXT, -- admin, coach, athlete
+  joined_at TIMESTAMPTZ DEFAULT NOW(),
+  left_at TIMESTAMPTZ,
+  UNIQUE(chat_id, user_id)
+);
+
+CREATE TABLE chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID REFERENCES club_chats(id),
+  sender_id UUID REFERENCES users(id),
+  body TEXT NOT NULL,
+  is_pinned BOOLEAN DEFAULT FALSE,
+  is_deleted BOOLEAN DEFAULT FALSE,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  read_by JSONB DEFAULT '[]'  -- array of user IDs who have read
+);
+```
+
+### Real-time Delivery
+Use **Supabase Realtime** or **Pusher** for live message delivery — do not poll. Messages should appear instantly without page refresh.
+
+```javascript
+// Subscribe to club chat channel
+const channel = supabase
+  .channel(`club-chat-${clubId}`)
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'chat_messages',
+    filter: `chat_id=eq.${chatId}`
+  }, (payload) => {
+    appendMessage(payload.new)
+  })
+  .subscribe()
+```
+
+### API Endpoints
+
+```
+GET  /api/clubs/:id/chat/messages        — fetch last 50 messages
+POST /api/clubs/:id/chat/messages        — send a message
+DELETE /api/clubs/:id/chat/messages/:id  — delete a message (admin only)
+PATCH /api/clubs/:id/chat/messages/:id   — pin a message (admin only)
+GET  /api/clubs/:id/chat/members         — list chat members
+```
+
+### Notifications
+- SMS notification via Africa's Talking only for pinned messages:
+```
+TalentGraph [Club Name]: 
+Coach posted an important update. 
+Open the app to read it.
+```
+- Regular messages: in-app notification only (badge count on sidebar icon)
+
+---
+
+### Priority Order for Engineers
+1. **Bug Fix 1** (location/club display) — live in production, fix immediately
+2. **Bug Fix 2** (unattached members) — live in production, fix immediately
+3. **Club Chat** — new feature, build after bugs are resolved

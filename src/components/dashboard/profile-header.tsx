@@ -74,12 +74,11 @@ export function ProfileHeader({ profile }: { profile: AthleteProfile }) {
             )}
 
             <div className="flex flex-wrap items-center gap-4 text-sm font-bold uppercase tracking-widest text-muted-foreground">
-              <div className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{profile.team || 'Unattached'}</div>
-              <div className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" />{profile.clubName || 'No club'}</div>
-              <div className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{profile.age} YRS</div>
-              {profile.country && (
-                <div className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />{profile.country}</div>
+              {(profile.county || profile.country) && (
+                <div className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{profile.county || profile.country}</div>
               )}
+              <div className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" />{profile.clubName || profile.team || 'No Club'}</div>
+              <div className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{profile.age} YRS</div>
               <Badge className="bg-primary text-primary-foreground font-black tracking-[0.2em]">{profile.readinessTier || 'Developing'}</Badge>
               {isVerified ? (
                 <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20 flex items-center gap-1.5">

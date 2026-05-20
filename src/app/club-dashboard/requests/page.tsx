@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
   collection, query, where, doc, writeBatch, deleteDoc,
-  onSnapshot, orderBy, addDoc,
+  onSnapshot, orderBy, addDoc, getDoc,
 } from 'firebase/firestore';
-import type { ClubMember, PendingMember } from '@/lib/types';
+import type { ClubMember, PendingMember, ClubProfile } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +50,9 @@ export default function MemberRequestsPage() {
     if (!firestore || !clubId) return;
     setProcessingUid(member.uid);
     try {
+      const clubSnap = await getDoc(doc(firestore, 'clubs', clubId));
+      const resolvedClubName = (clubSnap.data() as ClubProfile | undefined)?.clubName || member.clubName || '';
+
       const batch = writeBatch(firestore);
 
       batch.set(doc(firestore, 'clubs', clubId, 'squad', member.uid), {
@@ -71,9 +74,18 @@ export default function MemberRequestsPage() {
 
       batch.update(doc(firestore, 'athletes', member.uid), {
         affiliatedClubId: clubId,
-        clubName: member.clubName || '',
+        clubName: resolvedClubName,
         clubStatus: 'active',
         updatedAt: new Date().toISOString(),
+      });
+
+      batch.set(doc(firestore, 'club_members', `${member.uid}_${clubId}`), {
+        userId: member.uid,
+        clubId,
+        clubName: resolvedClubName,
+        role: 'athlete',
+        status: 'active',
+        joinedAt: new Date().toISOString(),
       });
 
       batch.delete(doc(firestore, 'clubs', clubId, 'pendingMembers', member.uid));
@@ -82,9 +94,9 @@ export default function MemberRequestsPage() {
 
       await addDoc(collection(firestore, 'notifications', member.uid, 'items'), {
         type: 'club_approved',
-        actorName: member.clubName || 'Your Club',
+        actorName: resolvedClubName || 'Your Club',
         actorRole: 'club',
-        message: `You've been approved and added to ${member.clubName || 'the club'}'s squad!`,
+        message: `You've been approved and added to ${resolvedClubName || 'the club'}'s squad!`,
         isRead: false,
         createdAt: new Date().toISOString(),
       });
