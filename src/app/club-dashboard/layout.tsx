@@ -75,12 +75,23 @@ export default function ClubDashboardLayout({
 
   useEffect(() => {
     if (!firestore || !clubId) return;
-    const unsub = onSnapshot(
+
+    let athleteCount = 0;
+    let staffCount = 0;
+
+    const unsubAthletes = onSnapshot(
       collection(firestore, 'clubs', clubId, 'pendingMembers'),
-      (snap) => setPendingCount(snap.size),
-      () => setPendingCount(0)
+      (snap) => { athleteCount = snap.size; setPendingCount(athleteCount + staffCount); },
+      () => setPendingCount(staffCount)
     );
-    return () => unsub();
+
+    const unsubStaff = onSnapshot(
+      query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('status', '==', 'pending')),
+      (snap) => { staffCount = snap.size; setPendingCount(athleteCount + staffCount); },
+      () => setPendingCount(athleteCount)
+    );
+
+    return () => { unsubAthletes(); unsubStaff(); };
   }, [firestore, clubId]);
 
   const handleSignOut = async () => {

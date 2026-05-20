@@ -22,9 +22,15 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [loadingId, setLoadingId] = useState<string | null>(null);
 
-    // 1. Get clubs matching search
+    // 1. Get clubs matching search (prefix search: >= query and <= query + '\uf8ff')
     const clubsQuery = useMemoFirebase(() => (
-        firestore && searchQuery.length > 2 ? query(collection(firestore, 'clubs'), where('clubName', '>=', searchQuery)) : null
+        firestore && searchQuery.length > 2
+            ? query(
+                collection(firestore, 'clubs'),
+                where('clubName', '>=', searchQuery),
+                where('clubName', '<=', searchQuery + '\uf8ff')
+              )
+            : null
     ), [firestore, searchQuery]);
     const { data: clubs } = useCollection<ClubProfile>(clubsQuery);
 
@@ -63,6 +69,41 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
                 status: 'pending',
                 joinedAt: new Date().toISOString()
             });
+
+            // Notify the club admin of the new request
+            try {
+                const [adminSnap, scoutSnap] = await Promise.all([
+                    getDocs(query(
+                        collection(firestore, 'club_members'),
+                        where('clubId', '==', clubId),
+                        where('role', '==', 'admin'),
+                        where('status', '==', 'active')
+                    )),
+                    getDoc(doc(firestore, 'scouts', user.uid)),
+                ]);
+
+                if (!adminSnap.empty) {
+                    const adminUserId = adminSnap.docs[0].data().userId as string;
+                    const scoutName: string = scoutSnap.exists()
+                        ? (scoutSnap.data().name ?? 'A scout')
+                        : 'A scout';
+                    const scoutUsername: string = scoutSnap.exists() && scoutSnap.data().username
+                        ? ` (@${scoutSnap.data().username})`
+                        : '';
+                    const roleLabel = memberRole === 'coach' ? 'coach' : 'scout';
+
+                    await addDoc(collection(firestore, 'notifications', adminUserId, 'items'), {
+                        type: 'scout_join_request',
+                        title: 'New Staff Request',
+                        body: `${scoutName}${scoutUsername} has requested to join your club as a ${roleLabel}.`,
+                        isRead: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+            } catch (notifErr) {
+                console.warn('[ClubAffiliation] admin notification failed:', notifErr);
+            }
+
             toast({ title: 'Request Sent', description: 'Club administrators have been notified of your request.' });
         } catch (e: any) {
             console.error('[ClubAffiliation] join error:', e);
