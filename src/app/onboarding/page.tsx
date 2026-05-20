@@ -649,7 +649,92 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
   );
 };
 
+const coachFormSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters.'),
+  username: z.string().min(3, 'Username must be at least 3 characters.').max(30).regex(/^[a-z0-9_]+$/, 'Only lowercase letters, numbers and underscores.'),
+  sports: z.string().min(2, 'Please list at least one sport.'),
+  bio: z.string().max(500).optional(),
+  clubId: z.string().optional(),
+});
+
 const CoachProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [clubSearch, setClubSearch] = useState('');
+
+  const defaultName = `${userAccount.firstName} ${userAccount.lastName}`.trim();
+
+  const form = useForm<z.infer<typeof coachFormSchema>>({
+    resolver: zodResolver(coachFormSchema),
+    defaultValues: { name: defaultName, username: '', sports: 'Football', bio: '', clubId: '' },
+  });
+
+  const clubsQuery = useMemoFirebase(() => (
+    firestore && clubSearch.length > 2 ? query(collection(firestore, 'clubs'), where('clubName', '>=', clubSearch)) : null
+  ), [firestore, clubSearch]);
+  const { data: searchedClubs } = useCollection<ClubProfile>(clubsQuery);
+
+  const selectedClubId = useWatch({ control: form.control, name: 'clubId' });
+  const selectedClub = searchedClubs?.find(c => c.uid === selectedClubId);
+
+  const onSubmit = async (values: z.infer<typeof coachFormSchema>) => {
+    if (!user || !firestore) return;
+    setIsLoading(true);
+    try {
+      const userDocRef = doc(firestore, 'users', user.uid);
+      const coachDocRef = doc(firestore, 'scouts', user.uid);
+
+      const coachData: Record<string, any> = {
+        uid: user.uid,
+        name: values.name,
+        username: values.username,
+        entityType: 'individual',
+        role: 'coach',
+        sports: values.sports.split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+        profileCompleted: true,
+        isVerified: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      if (values.bio) coachData.bio = values.bio;
+      if (values.clubId) coachData.clubId = values.clubId;
+
+      await updateDoc(userDocRef, { role: 'coach', profileCompleted: true, onboardingStep: 'coach_completed' });
+      await setDoc(coachDocRef, coachData);
+
+      if (values.clubId) {
+        try {
+          const memberId = `${user.uid}_${values.clubId}`;
+          await setDoc(doc(firestore, 'club_members', memberId), {
+            id: memberId,
+            userId: user.uid,
+            clubId: values.clubId,
+            role: 'coach',
+            status: 'pending',
+            joinedAt: new Date().toISOString(),
+          });
+        } catch (clubErr) {
+          console.error('[onboarding] coach club_members write failed:', clubErr);
+        }
+      }
+
+      toast({
+        title: 'Profile created!',
+        description: values.clubId
+          ? 'Welcome! Your join request has been sent to the club.'
+          : 'Welcome to Talent Graph, Coach.',
+      });
+      router.push('/scout-dashboard');
+    } catch (error) {
+      console.error('[onboarding] coach profile save failed:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile. Please try again.' });
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Card className="w-full max-w-2xl shadow-xl">
       <CardHeader>
@@ -657,25 +742,100 @@ const CoachProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
         <CardDescription>Define your coaching identity and institutional affiliation.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label>Full Name / Org Name</Label>
-              <Input defaultValue={`${userAccount.firstName} ${userAccount.lastName}`.trim()} />
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="username" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
+                    <FormControl><Input placeholder="coach_hez" className="pl-7" {...field} /></FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </div>
-            <div className="space-y-2">
-              <Label>Username</Label>
-              <Input placeholder="coach_pro" />
+
+            <FormField control={form.control} name="sports" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Sports of Expertise</FormLabel>
+                <FormControl><Input placeholder="Football, Basketball" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <div className="space-y-4">
+              <Label>Club / Institutional Affiliation <span className="text-muted-foreground text-xs font-normal">(optional)</span></Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search for your club or academy..."
+                  className="pl-9"
+                  value={clubSearch}
+                  onChange={e => setClubSearch(e.target.value)}
+                />
+              </div>
+
+              {searchedClubs && searchedClubs.length > 0 && (
+                <div className="grid grid-cols-1 gap-2">
+                  {searchedClubs.slice(0, 4).map(club => (
+                    <div
+                      key={club.uid}
+                      className={cn(
+                        'flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all',
+                        selectedClubId === club.uid ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                      )}
+                      onClick={() => form.setValue('clubId', club.uid)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Building className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-bold leading-none">{club.clubName}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">{club.location}</p>
+                        </div>
+                      </div>
+                      {selectedClubId === club.uid && <Check className="w-4 h-4 text-primary" />}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedClub && (
+                <div className="bg-blue-50 border border-blue-100 dark:bg-blue-950/30 dark:border-blue-900/50 p-3 rounded-lg text-[10px] text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                  <Badge variant="outline" className="bg-blue-600 text-white border-none h-4 px-1 text-[8px] uppercase shrink-0">Join Request</Badge>
+                  <p>Selecting <strong>{selectedClub.clubName}</strong> will send a join request to their admin team. You'll be notified when approved.</p>
+                </div>
+              )}
+
+              {selectedClubId && (
+                <button
+                  type="button"
+                  onClick={() => { form.setValue('clubId', ''); setClubSearch(''); }}
+                  className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+                >
+                  Clear selection
+                </button>
+              )}
             </div>
-          </div>
-          <div className="space-y-4">
-            <Label>Institutional Affiliation</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Search for your club or agency..." className="pl-9" />
-            </div>
-          </div>
-        </div>
+
+            <FormField control={form.control} name="bio" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Professional Bio <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
+                <FormControl><Textarea className="h-24" placeholder="Describe your coaching philosophy, experience and achievements..." {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+              Complete Setup
+            </Button>
+          </form>
+        </Form>
       </CardContent>
     </Card>
   );
