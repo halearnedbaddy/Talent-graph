@@ -76,17 +76,27 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
     setUserAuthState({ user: null, isUserLoading: true, userError: null }); // Reset on auth instance change
 
+    // Safety timeout: if onAuthStateChanged doesn't fire within 3 seconds (e.g. due to
+    // IndexedDB being blocked in an iframe), resolve the loading state to unblock the UI.
+    const timeout = setTimeout(() => {
+      setUserAuthState(prev =>
+        prev.isUserLoading ? { user: null, isUserLoading: false, userError: null } : prev
+      );
+    }, 3000);
+
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => { // Auth state determined
+        clearTimeout(timeout);
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => { // Auth listener error
+        clearTimeout(timeout);
         console.error("FirebaseProvider: onAuthStateChanged error:", error);
         setUserAuthState({ user: null, isUserLoading: false, userError: error });
       }
     );
-    return () => unsubscribe(); // Cleanup
+    return () => { clearTimeout(timeout); unsubscribe(); }; // Cleanup
   }, [auth]); // Depends on the auth instance
 
   // Memoize the context value

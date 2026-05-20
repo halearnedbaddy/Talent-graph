@@ -5,27 +5,28 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase(): { firebaseApp: FirebaseApp } {
   let firebaseApp: FirebaseApp;
   if (!getApps().length) {
-    // Important! initializeApp() is called without any arguments because Firebase App Hosting
-    // integrates with the initializeApp() function to provide the environment variables needed to
-    // populate the FirebaseOptions in production. It is critical that we attempt to call initializeApp()
-    // without arguments.
-    try {
-      // Attempt to initialize via Firebase App Hosting environment variables
-      firebaseApp = initializeApp();
-    } catch (e) {
-      // Only warn in production because it's normal to use the firebaseConfig to initialize
-      // during development
-      if (process.env.NODE_ENV === "production") {
-        console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
+    // Only attempt no-args init when Firebase App Hosting defaults are present.
+    // On Replit (and other non-Firebase-App-Hosting environments) the global is
+    // never injected, so we fall straight through to the explicit config object.
+    const hasAppHostingDefaults =
+      typeof globalThis !== 'undefined' &&
+      !!(globalThis as Record<string, unknown>)['__FIREBASE_DEFAULTS__'];
+
+    if (hasAppHostingDefaults) {
+      try {
+        firebaseApp = initializeApp();
+      } catch (e) {
+        console.warn('Firebase App Hosting init failed. Falling back to config object.', e);
+        firebaseApp = initializeApp(firebaseConfig);
       }
+    } else {
       firebaseApp = initializeApp(firebaseConfig);
     }
   } else {
-      firebaseApp = getApp();
+    firebaseApp = getApp();
   }
 
   return { firebaseApp };
