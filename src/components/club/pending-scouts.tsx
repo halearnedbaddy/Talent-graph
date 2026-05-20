@@ -31,11 +31,16 @@ export function PendingScouts() {
     const { data: currentUserMemberships } = useCollection<ClubMember>(clubMemberQuery);
     const clubId = currentUserMemberships?.[0]?.clubId;
 
-    // 2. Get pending scout join requests for this club
+    // 2. Get pending scout/coach join requests for this club
     const pendingMembersQuery = useMemoFirebase(() => (
-        firestore && clubId ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('status', '==', 'pending'), where('role', '==', 'scout')) : null
+        firestore && clubId ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('status', '==', 'pending')) : null
     ), [firestore, clubId]);
-    const { data: pendingMembers, isLoading: membersLoading } = useCollection<ClubMember>(pendingMembersQuery);
+    const { data: allPendingMembers, isLoading: membersLoading } = useCollection<ClubMember>(pendingMembersQuery);
+    // Filter client-side to only show scouts and coaches (not athletes)
+    const pendingMembers = React.useMemo(
+        () => allPendingMembers?.filter(m => m.role === 'scout' || m.role === 'coach') ?? [],
+        [allPendingMembers]
+    );
 
     const pendingUserIds = React.useMemo(() => pendingMembers?.map(m => m.userId) || [], [pendingMembers]);
 

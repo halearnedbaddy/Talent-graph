@@ -7,13 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search, Building, Check, Clock, X, AlertCircle } from 'lucide-react';
-import type { ClubProfile, ClubMember } from '@/lib/types';
+import type { ClubProfile, ClubMember, UserAccount } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 
 export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
     const { user } = useUser();
     const firestore = useFirestore();
+
+    const userDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null), [firestore, user?.uid]);
+    const { data: userAccount } = useDoc<UserAccount>(userDocRef);
+    const memberRole: 'scout' | 'coach' = userAccount?.role === 'coach' ? 'coach' : 'scout';
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -55,7 +59,7 @@ export function ClubAffiliation({ currentClubId }: { currentClubId?: string }) {
                 id: memberId,
                 userId: user.uid,
                 clubId: clubId,
-                role: 'scout',
+                role: memberRole,
                 status: 'pending',
                 joinedAt: new Date().toISOString()
             });

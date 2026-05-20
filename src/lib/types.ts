@@ -262,7 +262,7 @@ export interface ClubMember {
   id: string;
   userId: string;
   clubId: string;
-  role: 'admin' | 'scout';
+  role: 'admin' | 'scout' | 'coach';
   status: 'pending' | 'active';
   joinedAt: string;
 }

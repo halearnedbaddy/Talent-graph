@@ -15,10 +15,11 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import type { ScoutProfile, ClubMember } from '@/lib/types';
+import type { ScoutProfile, ClubMember, UserAccount } from '@/lib/types';
 import { doc, query, collection, where } from 'firebase/firestore';
 import { Label } from '@/components/ui/label';
 import { ClubAffiliation } from '@/components/scout/club-affiliation';
+import { DeleteAccountDialog } from '@/components/account/delete-account-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
@@ -47,6 +48,10 @@ export default function ScoutProfilePage() {
 
     const scoutDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'scouts', user.uid) : null), [firestore, user?.uid]);
     const { data: scoutProfile, isLoading: isScoutProfileLoading } = useDoc<ScoutProfile>(scoutDocRef);
+
+    const userDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null), [firestore, user?.uid]);
+    const { data: userAccount } = useDoc<UserAccount>(userDocRef);
+    const accountRole: 'scout' | 'coach' = userAccount?.role === 'coach' ? 'coach' : 'scout';
 
     const clubMemberQuery = useMemoFirebase(() => (
         firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
@@ -325,6 +330,20 @@ export default function ScoutProfilePage() {
                 </Card>
 
                 <ClubAffiliation currentClubId={activeClubId} />
+
+                {/* Danger Zone */}
+                <div className="border border-destructive/30 rounded-2xl overflow-hidden bg-background shadow-xl">
+                    <div className="bg-destructive/5 border-b border-destructive/20 py-3 px-4">
+                        <p className="text-sm font-black uppercase tracking-widest text-destructive">Danger Zone</p>
+                    </div>
+                    <div className="p-4 flex items-center justify-between gap-4">
+                        <div>
+                            <p className="font-black text-sm">Delete Account</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Permanently delete your account and all associated data. This cannot be undone.</p>
+                        </div>
+                        <DeleteAccountDialog role={accountRole} />
+                    </div>
+                </div>
             </div>
         </div>
     );

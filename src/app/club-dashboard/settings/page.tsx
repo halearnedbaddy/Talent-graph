@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Save, Plus, X, Camera, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import type { ClubProfile, ClubSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { DeleteAccountDialog } from '@/components/account/delete-account-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
@@ -236,7 +237,7 @@ export default function ClubSettingsPage() {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 [&>*]:self-start">
                 <Card className="border-none shadow-xl bg-background overflow-hidden">
                     <CardHeader className="bg-muted/50 border-b py-3 px-4">
                         <CardTitle className="text-sm font-black uppercase tracking-widest">League & Seasons</CardTitle>
@@ -301,6 +302,20 @@ export default function ClubSettingsPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Danger Zone */}
+            <Card className="border border-destructive/30 bg-background overflow-hidden">
+                <CardHeader className="bg-destructive/5 border-b border-destructive/20 py-3 px-4">
+                    <CardTitle className="text-sm font-black uppercase tracking-widest text-destructive">Danger Zone</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 flex items-center justify-between gap-4">
+                    <div>
+                        <p className="font-black text-sm">Delete Club Account</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Permanently delete this club and all associated data. This cannot be undone.</p>
+                    </div>
+                    <DeleteAccountDialog role="club" clubId={clubId ?? undefined} />
+                </CardContent>
+            </Card>
         </div>
     );
 }
