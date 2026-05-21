@@ -131,6 +131,20 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
         </Button>
       </div>
 
+      {/* Universal Direct Messages Banner */}
+      <Link href="/chat" className="flex items-center justify-between p-3 rounded-xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors group">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <MessageSquare className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <p className="font-bold text-sm">Direct Messages</p>
+            <p className="text-xs text-muted-foreground">Message any scout, club, coach, or athlete</p>
+          </div>
+        </div>
+        <ArrowRight className="w-4 h-4 text-primary transition-transform group-hover:translate-x-1" />
+      </Link>
+
       <div className="flex gap-1 bg-muted p-0.5 rounded-lg">
         {(['all', 'accepted', 'pending'] as const).map(f => (
           <button

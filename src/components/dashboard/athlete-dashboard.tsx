@@ -1013,6 +1013,17 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </span>
         </button>
 
+        {/* Direct Messages — universal messaging */}
+        <Link
+          href="/chat"
+          className="flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative text-muted-foreground hover:text-primary"
+        >
+          <MessageSquare className="h-5 w-5" />
+          <span className="text-[10px] font-bold uppercase tracking-wide">
+            Messages
+          </span>
+        </Link>
+
         {/* Squad Chat — only for active club members */}
         {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
           <button

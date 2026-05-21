@@ -546,3 +546,28 @@ export interface PendingMember {
   clubId?: string;
   clubName?: string;
 }
+
+export interface Conversation {
+  id: string;
+  participants: string[];
+  participantInfo: Record<string, { name: string; role: string; photoUrl?: string }>;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  lastSenderId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string;
+  editedAt?: string;
+  isDeleted?: boolean;
+  forwardedFrom?: {
+    originalSenderName: string;
+    originalContent: string;
+  };
+}
