@@ -1,23 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-let adminApp: import('firebase-admin/app').App | null = null;
-
-function getAdminApp() {
-  if (adminApp) return adminApp;
-  const { initializeApp, getApps, cert, applicationDefault } = require('firebase-admin/app');
-  if (getApps().length > 0) {
-    adminApp = getApps()[0];
-    return adminApp;
-  }
-  const svcAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (svcAccountStr) {
-    const svcAccount = JSON.parse(svcAccountStr);
-    adminApp = initializeApp({ credential: cert(svcAccount) });
-  } else {
-    adminApp = initializeApp({ credential: applicationDefault() });
-  }
-  return adminApp;
-}
+import { FIREBASE_API_KEY, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,9 +8,11 @@ export async function POST(req: NextRequest) {
     if (!name || !email || !message) {
       return NextResponse.json({ error: 'name, email, and message are required' }, { status: 400 });
     }
-
     if (typeof name !== 'string' || typeof email !== 'string' || typeof message !== 'string') {
       return NextResponse.json({ error: 'Invalid input types' }, { status: 400 });
+    }
+    if (name.length > 100 || email.length > 200 || message.length > 5000) {
+      return NextResponse.json({ error: 'Input too long' }, { status: 400 });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,24 +20,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
 
-    let app: import('firebase-admin/app').App;
-    try {
-      app = getAdminApp()!;
-    } catch (initErr: any) {
-      console.error('[contact] Admin SDK init failed:', initErr.message);
-      return NextResponse.json({ error: 'Server not configured.' }, { status: 503 });
+    const docBody = {
+      fields: {
+        name: { stringValue: name.trim() },
+        email: { stringValue: email.trim().toLowerCase() },
+        message: { stringValue: message.trim() },
+        createdAt: { stringValue: new Date().toISOString() },
+        status: { stringValue: 'new' },
+      },
+    };
+
+    const res = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/contact_inquiries?key=${FIREBASE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docBody),
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[contact] Firestore error:', err?.error?.message);
+      return NextResponse.json({ error: 'Failed to submit. Please try again.' }, { status: 500 });
     }
-
-    const { getFirestore } = require('firebase-admin/firestore');
-    const db = getFirestore(app);
-
-    await db.collection('contact_inquiries').add({
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      message: message.trim(),
-      createdAt: new Date().toISOString(),
-      status: 'new',
-    });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

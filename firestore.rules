@@ -108,9 +108,13 @@ service cloud.firestore {
         (isSignedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'pending');
     }
 
+    // Matches: owner can create/update/delete their own; others can read
     match /matches/{matchId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.athleteId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid || isAdmin()
+      );
     }
 
     match /live_matches/{matchId} {
@@ -207,12 +211,24 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
+    // Contact Form — public create, admin read/manage
+    // ----------------------------------------------------------------------
+    match /contact_inquiries/{docId} {
+      allow create: if
+        request.resource.data.name is string &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() <= 200 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() <= 5000;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------------------------
     // Profile View Tracking
     // ----------------------------------------------------------------------
     match /profile_views/{athleteId}/viewers/{viewerId} {
-      // Any signed-in user can record a view (write their own viewer doc)
       allow create, update: if isSignedIn();
-      // Only the athlete can read who viewed their profile
       allow read: if isOwner(athleteId);
       allow list: if isOwner(athleteId);
     }
@@ -221,7 +237,6 @@ service cloud.firestore {
     // Notifications
     // ----------------------------------------------------------------------
     match /notifications/{userId}/items/{notificationId} {
-      // The owner reads their own notifications; any signed-in user can push a notification
       allow read, list: if isOwner(userId);
       allow create: if isSignedIn();
       allow update: if isOwner(userId);
@@ -232,9 +247,7 @@ service cloud.firestore {
     // Profile Reactions (Likes)
     // ----------------------------------------------------------------------
     match /profile_reactions/{reactionId} {
-      // Anyone signed in can read all reactions (needed for like count + own like state)
       allow read, list: if isSignedIn();
-      // A user can only create/delete their own reaction
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
@@ -243,11 +256,8 @@ service cloud.firestore {
     // Profile Comments
     // ----------------------------------------------------------------------
     match /profile_comments/{athleteId}/comments/{commentId} {
-      // Anyone signed in can read comments on a profile
       allow read, list: if isSignedIn();
-      // Any signed-in user can post a comment
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      // Only the comment author or the profile owner can delete
       allow delete: if isSignedIn() && (
         resource.data.authorId == request.auth.uid || isOwner(athleteId)
       );
@@ -257,7 +267,6 @@ service cloud.firestore {
     // Club Subcollections (pendingMembers, squad)
     // ----------------------------------------------------------------------
     match /clubs/{clubId}/pendingMembers/{memberId} {
-      // Only the club admin can read/write pending member requests
       allow read, list: if isSignedIn() && (
         clubId == ('club_' + request.auth.uid) || isAdmin()
       );
@@ -268,7 +277,6 @@ service cloud.firestore {
     }
 
     match /clubs/{clubId}/squad/{memberId} {
-      // Club admin and active members can read the squad list
       allow read, list: if isSignedIn() && (
         clubId == ('club_' + request.auth.uid) ||
         isActiveMemberOfClub(clubId) ||
@@ -283,9 +291,7 @@ service cloud.firestore {
     // Video Reactions (Likes on highlight videos)
     // ----------------------------------------------------------------------
     match /video_reactions/{reactionId} {
-      // Anyone signed in can read reactions (needed for like count + own like state)
       allow read, list: if isSignedIn();
-      // A user can only create/delete their own reaction
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
@@ -294,11 +300,8 @@ service cloud.firestore {
     // Video Comments (Comments on highlight videos)
     // ----------------------------------------------------------------------
     match /video_comments/{videoId}/comments/{commentId} {
-      // Anyone signed in can read comments on a video
       allow read, list: if isSignedIn();
-      // Any signed-in user can post a comment
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      // Only the comment author can delete their comment
       allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
     }
   }

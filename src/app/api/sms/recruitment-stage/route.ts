@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendSMS } from '@/lib/sms';
+import { verifyBearerToken } from '@/lib/server-auth';
 
 const STAGE_MESSAGES: Record<string, string> = {
   shortlisted: 'Great news! You have been shortlisted by a club on Talent Graph. Log in to view your recruitment status.',
@@ -9,6 +10,9 @@ const STAGE_MESSAGES: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const uid = await verifyBearerToken(req);
+  if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
     const { athletePhone, athleteName, stage, clubName } = await req.json();
     if (!athletePhone || !athleteName || !stage) return NextResponse.json({ skipped: true });

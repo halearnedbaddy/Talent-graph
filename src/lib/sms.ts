@@ -39,7 +39,7 @@ export async function sendSMS(to: string, message: string): Promise<SMSResult> {
       return { success: false, error: data?.message || `HTTP ${res.status}` };
     }
 
-    console.log('[SMS] Sent to', phone, '—', data?.status);
+    console.log('[SMS] Sent successfully —', data?.status);
     return { success: true };
   } catch (err: any) {
     console.error('[SMS] Network error:', err);

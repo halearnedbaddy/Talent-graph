@@ -142,9 +142,20 @@ export async function sendClubNotification(params: {
 
     let sent = 0;
     if (subscriptions.length > 0) {
+      let token: string | undefined;
+      try {
+        const { getApps } = await import('firebase/app');
+        const { getAuth } = await import('firebase/auth');
+        const apps = getApps();
+        token = apps.length > 0 ? await getAuth(apps[0]).currentUser?.getIdToken() : undefined;
+      } catch { /* non-blocking */ }
+
       const res = await fetch('/api/push/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ subscriptions, title, body, url, tag }),
       });
       if (res.ok) {
