@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useUser, useFirestore, useDoc, useMemoFirebase, useFirebaseApp } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,11 @@ import { DeleteAccountDialog } from '@/components/account/delete-account-dialog'
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
-import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
+import { compressImage, uploadFileViaProxy, type UploadProgress } from '@/firebase/storage';
 
 export default function ClubSettingsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
-    const firebaseApp = useFirebaseApp();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [clubId, setClubId] = useState<string | null>(null);
@@ -87,10 +86,11 @@ export default function ClubSettingsPage() {
             setIsCompressingLogo(false);
             setLogoUpload({ progress: 5, state: 'running' });
             const logoBlob = new File([compressed], 'logo.jpg', { type: 'image/jpeg' });
-            const downloadUrl = await uploadFileWithProgress(
-                firebaseApp,
+            const idToken = await user.getIdToken();
+            const downloadUrl = await uploadFileViaProxy(
                 `club-logos/${clubId}/logo.jpg`,
                 logoBlob,
+                idToken,
                 (p) => setLogoUpload({ ...p, progress: Math.max(5, p.progress) })
             );
             // Auto-save logoUrl to Firestore immediately — no "Save Changes" click needed

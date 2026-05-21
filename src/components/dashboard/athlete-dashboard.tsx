@@ -768,6 +768,20 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </div>
 
           <div className="space-y-8">
+            {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
+              <Card className="border-none shadow-xl overflow-hidden">
+                <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                  <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    Squad Chat
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <SquadChatWidget clubId={athleteProfile.affiliatedClubId} scrollHeight="380px" />
+                </CardContent>
+              </Card>
+            )}
+
             <EngagementLoop profile={athleteProfile} />
             <ProfileStrengthCard profile={athleteProfile} />
             <TierProgressionCard profile={athleteProfile} />
