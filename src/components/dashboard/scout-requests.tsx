@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Mail, Check, X, ShieldQuestion, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { smsSend } from '@/hooks/useSMS';
 import Link from 'next/link';
 
 function getInitials(name: string) {
@@ -54,11 +55,20 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
                         const athleteDocRef = doc(firestore, 'athletes', athleteId);
                         await updateDoc(athleteDocRef, {
                             affiliatedClubId: request.clubId,
-                            team: clubData.clubName, // Update the display team name
+                            team: clubData.clubName,
                             updatedAt: new Date().toISOString()
                         });
                     }
                 }
+
+                // SMS the scout that their request was accepted
+                const athleteDoc = await getDoc(doc(firestore, 'athletes', athleteId));
+                const aData = athleteDoc.data() as AthleteProfile | undefined;
+                const athleteFullName = aData ? `${aData.firstName} ${aData.lastName}`.trim() : 'An athlete';
+                smsSend('connection-accepted', {
+                    scoutId: request.scoutId,
+                    athleteName: athleteFullName,
+                });
 
                 toast({
                     title: 'Connection Accepted',

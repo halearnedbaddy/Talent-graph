@@ -155,15 +155,12 @@ export default function UsernamePage() {
             }
         ).catch(() => {});
 
-        // SMS alert — only fire for scout/club viewers
-        if (viewerRole === 'scout' || viewerRole === 'club') {
-            smsSend('profile-view', {
-                athletePhone: (athlete as any).phone,
-                athleteName: athlete.firstName,
-                viewerName,
-                viewerRole,
-            });
-        }
+        // SMS alert — fires for ALL non-owner visitors (rate-limited server-side to 1 per 30 min)
+        smsSend('profile-view', {
+            athleteId: athlete.uid,
+            viewerName,
+            viewerRole,
+        });
     }, [firestore, athlete?.uid, currentUserProfile, isOwner, authUser?.uid]);
 
     const handleRequestAccess = () => {
@@ -182,6 +179,17 @@ export default function UsernamePage() {
             updatedAt: now,
             clubId: clubId || null,
         });
+
+        // SMS the athlete about the new connection request
+        smsSend('connection-request', {
+            athleteId: athlete.uid,
+            scoutName: scoutProfile?.name ||
+                (currentUserProfile
+                    ? `${currentUserProfile.firstName} ${currentUserProfile.lastName}`.trim()
+                    : undefined),
+            scoutOrg: scoutProfile?.entityType === 'organization' ? scoutProfile.name : undefined,
+        });
+
         toast({ title: 'Request Sent', description: `Request to connect with ${athlete.firstName} sent.` });
     };
 

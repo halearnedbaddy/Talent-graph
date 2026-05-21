@@ -39,6 +39,28 @@ export async function verifyBearerToken(
 }
 
 /**
+ * Accepts either a user Bearer token OR an internal server secret.
+ * Internal secret: Authorization: Internal {SMS_SECRET}
+ * Returns 'internal' for server calls, UID for user calls, null if invalid.
+ */
+export async function verifyBearerOrInternal(
+  request: { headers: { get(name: string): string | null } }
+): Promise<string | null> {
+  const header = request.headers.get('authorization');
+  if (!header) return null;
+  if (header.startsWith('Internal ')) {
+    const provided = header.slice(9).trim();
+    const secret = process.env.SMS_SECRET;
+    if (secret && provided === secret) return 'internal';
+    return null;
+  }
+  if (header.startsWith('Bearer ')) {
+    return verifyIdToken(header.slice(7).trim());
+  }
+  return null;
+}
+
+/**
  * Returns a 401 NextResponse JSON body — use when auth check fails.
  */
 export function unauthorizedResponse() {
