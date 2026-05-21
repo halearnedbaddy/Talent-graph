@@ -1,6 +1,6 @@
 export const FIREBASE_API_KEY = 'AIzaSyDLmugbxMX_0QGxxKRzuUR-9nqtiFBgDQ0';
 export const FIREBASE_PROJECT_ID = 'studio-1186001190-d08bc';
-export const STORAGE_BUCKET = 'studio-1186001190-d08bc.appspot.com';
+export const STORAGE_BUCKET = 'studio-1186001190-d08bc.firebasestorage.app';
 
 /**
  * Verifies a Firebase ID token via the Identity Toolkit REST API.

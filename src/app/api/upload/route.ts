@@ -6,8 +6,8 @@ const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
 // Firebase projects created before ~2024 use .appspot.com; newer ones use .firebasestorage.app.
 // We try both so the route works regardless of which bucket Firebase actually provisioned.
 const CANDIDATE_BUCKETS = [
-  `${FIREBASE_PROJECT_ID}.appspot.com`,
   `${FIREBASE_PROJECT_ID}.firebasestorage.app`,
+  `${FIREBASE_PROJECT_ID}.appspot.com`,
 ];
 
 async function tryUpload(
