@@ -263,9 +263,13 @@ export interface ClubMember {
   id: string;
   userId: string;
   clubId: string;
+  clubName?: string;
   role: 'admin' | 'scout' | 'coach';
-  status: 'pending' | 'active';
+  status: 'pending' | 'active' | 'club_invited' | 'rejected';
   joinedAt: string;
+  invitedAt?: string;
+  displayName?: string;
+  photoUrl?: string;
 }
 
 export interface MatchLineupPlayer {

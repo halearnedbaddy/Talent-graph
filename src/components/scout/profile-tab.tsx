@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Shield, Globe, Eye, LogOut, Edit3, CheckCircle2, Building2, Tag } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { ClubInvitationsCard } from './club-invitations-card';
 
 interface Props {
   scoutProfile: ScoutProfile;
@@ -24,6 +25,8 @@ export function ProfileTab({ scoutProfile, onSignOut }: Props) {
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
+      <ClubInvitationsCard />
+
       <Card className="overflow-hidden">
         <div className="h-20 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent" />
         <CardContent className="pt-0 pb-4">
