@@ -264,10 +264,12 @@ export default function MemberRequestsPage() {
   const staffBadgeCount = inboundStaffCount + sentCount;
   const totalCount = athleteCount + inboundStaffCount + sentCount;
 
-  const existingUserIds = [
-    ...(staffRequests?.map(s => s.userId) ?? []),
-    ...(sentInvitations?.map(s => s.userId) ?? []),
-  ];
+  // Scouts already formally invited by the club (status: club_invited)
+  const sentInvitationIds = sentInvitations?.map(s => s.userId) ?? [];
+  // Scouts who sent an inbound join request (status: pending) — shown separately in dialog
+  const pendingRequestIds = staffRequests?.map(s => s.userId) ?? [];
+  // Combined for any legacy usage
+  const existingUserIds = [...sentInvitationIds, ...pendingRequestIds];
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -594,7 +596,8 @@ export default function MemberRequestsPage() {
               onClose={() => setInviteDialogOpen(false)}
               clubId={clubId}
               clubName={clubName}
-              existingUserIds={existingUserIds}
+              existingUserIds={sentInvitationIds}
+              pendingRequestIds={pendingRequestIds}
             />
           )}
         </>

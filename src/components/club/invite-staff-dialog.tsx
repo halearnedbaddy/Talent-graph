@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
 import {
-  collection, query, where, getDocs, setDoc, doc, addDoc, limit,
+  collection, query, where, getDocs, setDoc, updateDoc, getDoc, doc, addDoc, limit,
 } from 'firebase/firestore';
 import type { ScoutProfile } from '@/lib/types';
 import {
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Search, UserPlus, CheckCircle2 } from 'lucide-react';
+import { Loader2, Search, UserPlus, CheckCircle2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
@@ -22,7 +22,10 @@ interface Props {
   onClose: () => void;
   clubId: string;
   clubName: string;
+  /** UIDs of scouts/coaches already in the club as active members or already invited */
   existingUserIds: string[];
+  /** UIDs of scouts/coaches who have an inbound pending join request */
+  pendingRequestIds: string[];
 }
 
 function getInitials(name: string) {
@@ -33,7 +36,9 @@ function getInitials(name: string) {
     : name.substring(0, 2).toUpperCase();
 }
 
-export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUserIds }: Props) {
+export function InviteStaffDialog({
+  open, onClose, clubId, clubName, existingUserIds, pendingRequestIds,
+}: Props) {
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -82,17 +87,30 @@ export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUse
     setInvitingId(scout.uid);
     try {
       const memberId = `${scout.uid}_${clubId}`;
-      await setDoc(doc(firestore, 'club_members', memberId), {
+      const memberRef = doc(firestore, 'club_members', memberId);
+      const now = new Date().toISOString();
+
+      const inviteData = {
         userId: scout.uid,
         clubId,
         clubName,
         role,
         status: 'club_invited',
-        invitedAt: new Date().toISOString(),
-        joinedAt: new Date().toISOString(),
+        invitedAt: now,
         displayName: scout.name,
         photoUrl: scout.photoUrl || null,
-      });
+      };
+
+      // Check whether the document already exists.
+      // If it does (e.g. scout previously sent a join request), use updateDoc —
+      // club admins are already allowed to update. If it doesn't exist, use setDoc
+      // (requires the updated Firestore rules to be deployed).
+      const existing = await getDoc(memberRef);
+      if (existing.exists()) {
+        await updateDoc(memberRef, inviteData);
+      } else {
+        await setDoc(memberRef, { ...inviteData, joinedAt: now });
+      }
 
       await addDoc(collection(firestore, 'notifications', scout.uid, 'items'), {
         type: 'club_invitation',
@@ -100,13 +118,30 @@ export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUse
         actorRole: 'club',
         message: `${clubName} has invited you to join as a ${role}. Go to your profile to accept or decline.`,
         isRead: false,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       });
 
       setInvitedIds(prev => new Set([...prev, scout.uid]));
       toast({ title: 'Invitation sent', description: `${scout.name} has been invited as a ${role}.` });
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message || 'Could not send invitation.' });
+      const isPermissionError =
+        err?.code === 'permission-denied' ||
+        (err?.message || '').toLowerCase().includes('permission');
+
+      if (isPermissionError) {
+        toast({
+          variant: 'destructive',
+          title: 'Permission denied',
+          description:
+            'Your Firestore rules need to be updated. Open the Firebase Console → Firestore → Rules, publish the updated rules, then try again.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: err.message || 'Could not send invitation.',
+        });
+      }
     } finally {
       setInvitingId(null);
     }
@@ -149,6 +184,7 @@ export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUse
                 onChange={e => setSearchTerm(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
                 className="flex-1"
+                autoFocus
               />
               <Button
                 onClick={handleSearch}
@@ -167,7 +203,8 @@ export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUse
           {results.length > 0 && (
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {results.map(scout => {
-                const isExisting = existingUserIds.includes(scout.uid);
+                const isAlreadyInvited = existingUserIds.includes(scout.uid);
+                const hasPendingRequest = pendingRequestIds.includes(scout.uid);
                 const isJustInvited = invitedIds.has(scout.uid);
                 const isInviting = invitingId === scout.uid;
 
@@ -194,14 +231,27 @@ export function InviteStaffDialog({ open, onClose, clubId, clubName, existingUse
                       </div>
                     </div>
 
-                    {isExisting ? (
-                      <Badge variant="outline" className="text-[10px] shrink-0 font-bold">
-                        Already added
-                      </Badge>
-                    ) : isJustInvited ? (
+                    {isJustInvited ? (
                       <Badge className="bg-green-500/15 text-green-600 border-none text-[10px] shrink-0 font-bold">
                         ✓ Invited
                       </Badge>
+                    ) : isAlreadyInvited ? (
+                      <Badge variant="outline" className="text-[10px] shrink-0 font-bold">
+                        Already invited
+                      </Badge>
+                    ) : hasPendingRequest ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleInvite(scout)}
+                        disabled={isInviting}
+                        className="h-8 shrink-0 font-black uppercase tracking-widest text-xs border-amber-400 text-amber-600 hover:bg-amber-50"
+                      >
+                        {isInviting
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <><UserPlus className="h-3.5 w-3.5 mr-1.5" />Confirm</>
+                        }
+                      </Button>
                     ) : (
                       <Button
                         size="sm"
