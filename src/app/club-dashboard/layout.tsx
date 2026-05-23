@@ -103,73 +103,83 @@ export default function ClubDashboardLayout({
   const currentLabel = navItems.find(item => item.href === pathname)?.label || 'Dashboard';
 
   const SidebarNavLinks = () => (
-    <nav className="grid items-start px-2 text-sm font-medium lg:px-4 space-y-1">
-      {navItems.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary',
-            pathname === item.href && 'bg-muted text-primary'
-          )}
-        >
-          <item.icon className="h-4 w-4 shrink-0" />
-          <span className="flex-1">{item.label}</span>
-          {(item as any).badge && (
-            <Badge className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0 h-4 tracking-wider">
-              {(item as any).badge}
-            </Badge>
-          )}
-          {(item as any).pendingBadge && pendingCount > 0 && (
-            <Badge className="bg-primary text-primary-foreground font-black text-[8px] px-1.5 py-0 h-4 min-w-4 tracking-wider">
-              {pendingCount}
-            </Badge>
-          )}
-        </Link>
-      ))}
+    <nav className="grid items-start px-2 text-sm font-medium lg:px-3 space-y-0.5">
+      {navItems.map((item) => {
+        const isActive = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary hover:bg-muted/60',
+              isActive && 'bg-primary/10 text-primary font-semibold'
+            )}
+          >
+            <item.icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
+            <span className="flex-1 truncate">{item.label}</span>
+            {(item as any).badge && (
+              <Badge className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0 h-4 tracking-wider shrink-0">
+                {(item as any).badge}
+              </Badge>
+            )}
+            {(item as any).pendingBadge && pendingCount > 0 && (
+              <Badge className="bg-primary text-primary-foreground font-black text-[8px] px-1.5 py-0 h-4 min-w-4 tracking-wider shrink-0">
+                {pendingCount}
+              </Badge>
+            )}
+          </Link>
+        );
+      })}
     </nav>
   );
 
   return (
-    <div className="grid min-h-screen w-full overflow-x-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+    <div className="grid min-h-screen w-full overflow-x-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[260px_1fr]">
+
       {/* ── Desktop Sidebar ── */}
-      <div className="hidden border-r bg-muted/40 md:block">
-        <div className="flex h-full max-h-screen flex-col gap-2">
-          <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
-              <Zap className="h-6 w-6 text-primary" />
-              <span>Club Admin</span>
-            </Link>
+      <div className="hidden border-r bg-background md:flex md:flex-col">
+        {/* Sidebar header */}
+        <div className="flex h-14 items-center gap-2.5 border-b px-5 shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shrink-0">
+            <Zap className="h-4 w-4 text-primary-foreground" />
           </div>
-          <div className="flex-1 overflow-auto py-2">
-            <SidebarNavLinks />
+          <div className="min-w-0">
+            <p className="text-sm font-black tracking-tight truncate">Talent Graph</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">Club Admin</p>
           </div>
-          <div className="mt-auto p-4 border-t space-y-2">
-            <PushNotificationToggle clubId={clubId} userId={user?.uid} />
-            <SupportDialog />
-            <Button
-              size="sm"
-              variant="ghost"
-              className="w-full justify-start text-muted-foreground hover:text-destructive"
-              onClick={handleSignOut}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
-          </div>
+        </div>
+
+        {/* Nav links */}
+        <div className="flex-1 overflow-auto py-3">
+          <SidebarNavLinks />
+        </div>
+
+        {/* Sidebar footer */}
+        <div className="border-t p-3 space-y-1 shrink-0">
+          <PushNotificationToggle clubId={clubId} userId={user?.uid} />
+          <SupportDialog />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full justify-start text-muted-foreground hover:text-destructive gap-2 h-9"
+            onClick={handleSignOut}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
         </div>
       </div>
 
       {/* ── Main Content Column ── */}
       <div className="flex flex-col min-h-screen overflow-x-hidden">
-        {/* Mobile Top Header */}
+
+        {/* ── Mobile Top Header ── */}
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 backdrop-blur px-4 md:hidden">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Zap className="h-5 w-5 text-primary shrink-0" />
             <h1 className="text-base font-black uppercase tracking-tight truncate">{currentLabel}</h1>
           </div>
 
-          {/* "More" drawer trigger */}
           <Sheet open={isMoreOpen} onOpenChange={setIsMoreOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
@@ -228,10 +238,38 @@ export default function ClubDashboardLayout({
           </Sheet>
         </header>
 
+        {/* ── Desktop Content Topbar ── */}
+        <header className="hidden md:flex sticky top-0 z-20 h-13 min-h-[52px] items-center justify-between border-b bg-background/95 backdrop-blur-sm px-6 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-sm font-black uppercase tracking-wider text-foreground">{currentLabel}</h1>
+            {pendingCount > 0 && pathname !== '/club-dashboard/requests' && (
+              <Link href="/club-dashboard/requests">
+                <Badge className="bg-primary/15 text-primary border border-primary/30 font-black text-[9px] px-2 h-5 hover:bg-primary/25 transition-colors cursor-pointer">
+                  {pendingCount} pending
+                </Badge>
+              </Link>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Link href="/club-dashboard/notifications">
+              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+                <Bell className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/club-dashboard/settings">
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </header>
+
         {/* Page Content */}
-        <main className="flex flex-1 flex-col gap-4 p-4 pb-24 md:pb-4 lg:gap-6 lg:p-6 overflow-x-hidden bg-muted/10">
-          <PushNotificationPrompt clubId={clubId} userId={user?.uid} />
-          {children}
+        <main className="flex flex-1 flex-col gap-4 p-4 pb-24 md:pb-6 md:p-6 lg:gap-6 lg:p-8 overflow-x-hidden bg-muted/10">
+          <div className="w-full max-w-7xl mx-auto">
+            <PushNotificationPrompt clubId={clubId} userId={user?.uid} />
+            {children}
+          </div>
         </main>
 
         {/* ── Mobile Bottom Navigation ── */}

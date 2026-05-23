@@ -7,7 +7,8 @@ import {
   LogOut, Loader2, Target, TrendingUp, ShieldAlert, BarChart3,
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
-  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck, MessageSquare
+  Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck, MessageSquare,
+  type LucideIcon
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
@@ -407,6 +408,42 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </div>
         </div>
       </header>
+
+      {/* ── Desktop Horizontal Tab Nav ── */}
+      <div className="hidden md:block border-b bg-background sticky top-[65px] z-10">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-0 overflow-x-auto">
+            {([
+              { id: 'home' as ActiveTab, label: 'Overview', icon: Home },
+              { id: 'edit' as ActiveTab, label: 'Edit Profile', icon: Pencil },
+              { id: 'notifications' as ActiveTab, label: 'Notifications', icon: Bell },
+              ...(athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId
+                ? [{ id: 'squad-chat' as ActiveTab, label: 'Squad Chat', icon: MessageSquare }]
+                : []),
+              { id: 'support' as ActiveTab, label: 'Support', icon: Headphones },
+            ] as { id: ActiveTab; label: string; icon: LucideIcon }[]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex items-center gap-2 whitespace-nowrap px-5 py-3 text-sm font-semibold border-b-2 transition-colors shrink-0',
+                  activeTab === tab.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                )}
+              >
+                <tab.icon className="w-4 h-4 shrink-0" />
+                {tab.label}
+                {tab.id === 'notifications' && unreadCount > 0 && (
+                  <span className="ml-0.5 text-[10px] bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center font-black shrink-0">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ── Main Content ── */}
       <main className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
