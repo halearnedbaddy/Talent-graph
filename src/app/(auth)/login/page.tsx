@@ -6,7 +6,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, Zap, BarChart3, Users, Trophy } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, BarChart3, Users, Trophy } from 'lucide-react';
+import Image from 'next/image';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -130,9 +131,7 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-2.5 w-fit">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <Image src="/icons/logo-transparent.png" alt="Talent Graph" width={36} height={36} className="rounded-xl" />
             <span className="text-lg font-black tracking-tight">Talent Graph</span>
           </Link>
         </div>
@@ -143,7 +142,7 @@ export default function LoginPage() {
               The intelligence<br />layer for sport.
             </h2>
             <p className="mt-3 text-neutral-400 text-base leading-relaxed max-w-sm">
-              A verified recruitment platform connecting athletes, scouts and clubs across Kenya.
+              A verified recruitment platform connecting athletes, scouts and clubs worldwide.
             </p>
           </div>
 
@@ -160,7 +159,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="text-xs text-neutral-600 font-medium">© 2025 Talent Graph Kenya</p>
+          <p className="text-xs text-neutral-600 font-medium">© 2026 Talent Graph</p>
         </div>
       </div>
 

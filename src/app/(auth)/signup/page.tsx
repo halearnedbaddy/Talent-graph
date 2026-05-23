@@ -6,7 +6,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, Zap, TrendingUp, Globe, Star } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, TrendingUp, Globe, Star } from 'lucide-react';
+import Image from 'next/image';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -140,9 +141,7 @@ export default function SignupPage() {
 
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-2.5 w-fit">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <Image src="/icons/logo-transparent.png" alt="Talent Graph" width={36} height={36} className="rounded-xl" />
             <span className="text-lg font-black tracking-tight">Talent Graph</span>
           </Link>
         </div>
@@ -153,7 +152,7 @@ export default function SignupPage() {
               Your career starts<br />with your data.
             </h2>
             <p className="mt-3 text-neutral-400 text-base leading-relaxed max-w-sm">
-              Join thousands of athletes, scouts, and clubs building the future of sport recruitment in Kenya.
+              Join thousands of athletes, scouts, and clubs building the future of sport recruitment worldwide.
             </p>
           </div>
 
@@ -170,7 +169,7 @@ export default function SignupPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="text-xs text-neutral-600 font-medium">© 2025 Talent Graph Kenya</p>
+          <p className="text-xs text-neutral-600 font-medium">© 2026 Talent Graph</p>
         </div>
       </div>
 

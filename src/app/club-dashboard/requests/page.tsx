@@ -257,7 +257,8 @@ export default function MemberRequestsPage() {
     }
   };
 
-  const isLoading = isLoadingMembers || !clubId;
+  const membershipsLoaded = memberships !== undefined;
+  const isLoading = !membershipsLoaded || isLoadingMembers;
   const athleteCount = pendingMembers.length;
   const inboundStaffCount = staffRequests?.length ?? 0;
   const sentCount = sentInvitations?.length ?? 0;
@@ -291,6 +292,14 @@ export default function MemberRequestsPage() {
         <div className="flex h-48 items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
+      ) : !clubId ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <Shield className="w-10 h-10 text-muted-foreground/50" />
+            <p className="font-bold">No club linked</p>
+            <p className="text-sm text-muted-foreground max-w-xs">Your account isn&apos;t linked to a club yet. Contact support if you believe this is an error.</p>
+          </CardContent>
+        </Card>
       ) : (
         <>
           <Tabs defaultValue="athletes">
