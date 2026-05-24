@@ -19,7 +19,13 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ['recharts'],
   allowedDevOrigins,
-  turbopack: {},
+  turbopack: {
+    resolveAlias: {
+      '@firebase/firestore': './node_modules/@firebase/firestore/dist/index.esm2017.js',
+      '@firebase/auth': './node_modules/@firebase/auth/dist/esm2017/index.js',
+      '@firebase/storage': './node_modules/@firebase/storage/dist/index.esm2017.js',
+    },
+  },
   images: {
     remotePatterns: [
       {
