@@ -9,12 +9,12 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { ClubMember } from '@/lib/types';
+import type { ClubMember, UserAccount } from '@/lib/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/coach/notification-bell';
 import { useCoachNotifications } from '@/hooks/useCoachNotifications';
@@ -50,6 +50,9 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
   const { isUserLoading } = useUser();
 
+  const userDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null), [firestore, user?.uid]);
+  const { data: userAccount, isLoading: isAccountLoading } = useDoc<UserAccount>(userDocRef);
+
   const { notifications, unreadCount, markRead, markAllRead } = useCoachNotifications(
     clubId,
     user?.uid ?? null
@@ -58,8 +61,18 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   useEffect(() => {
     if (!isUserLoading && !user) {
       router.push('/login');
+      return;
     }
-  }, [user, isUserLoading, router]);
+    if (!isUserLoading && !isAccountLoading && userAccount) {
+      if (userAccount.role === 'scout') {
+        router.push('/scout-dashboard');
+      } else if (userAccount.role === 'athlete') {
+        router.push('/');
+      } else if (userAccount.role === 'club') {
+        router.push('/club-dashboard/athletes');
+      }
+    }
+  }, [user, isUserLoading, userAccount, isAccountLoading, router]);
 
   if (isUserLoading) {
     return (
