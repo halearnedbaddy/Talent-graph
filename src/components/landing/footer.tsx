@@ -73,7 +73,7 @@ export function Footer() {
               </div>
               <div className="space-y-3">
                 <a
-                  href="mailto:admin@talentgraph.ke"
+                  href="mailto:billionaireomenda@gmail.com"
                   className="flex items-center gap-3 group"
                 >
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
