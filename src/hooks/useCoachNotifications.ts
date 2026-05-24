@@ -54,9 +54,9 @@ export function useCoachNotifications(clubId: string | null, userId: string | nu
     () =>
       firestore && clubId
         ? query(
-            collection(firestore, 'athlete_profiles'),
+            collection(firestore, 'athletes'),
             where('affiliatedClubId', '==', clubId),
-            where('clubStatus', '==', 'pending')
+            where('isVerified', '==', false)
           )
         : null,
     [firestore, clubId]

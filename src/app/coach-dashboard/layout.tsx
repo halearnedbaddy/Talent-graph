@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { ClubMember } from '@/lib/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/coach/notification-bell';
@@ -46,10 +47,28 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   const membership = memberships?.[0];
   const clubId = membership?.clubId ?? null;
 
+  const { isUserLoading } = useUser();
+
   const { notifications, unreadCount, markRead, markAllRead } = useCoachNotifications(
     clubId,
     user?.uid ?? null
   );
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0A0E1A]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   const handleSignOut = async () => {
     await signOut(auth);
