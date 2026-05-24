@@ -8,6 +8,7 @@ import {
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
   Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck, MessageSquare,
+  Trophy, Settings2, Shield, Activity,
   type LucideIcon
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -313,6 +314,24 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   Public View
                 </Link>
               </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/dashboard/injury-tracker">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Injuries
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/dashboard/achievements">
+                  <Trophy className="mr-2 h-4 w-4" />
+                  Badges
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/dashboard/settings">
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </Button>
               <DeleteAccountDialog />
               <Button onClick={handleSignOut} variant="ghost" size="sm">
                 <LogOut className="mr-2 h-4 w-4" />
@@ -381,6 +400,36 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                       <Link href="/dashboard/add-match" onClick={() => setMoreOpen(false)}>
                         <PlusCircle className="h-4 w-4 text-primary" />
                         Log a Match
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/dashboard/injury-tracker" onClick={() => setMoreOpen(false)}>
+                        <Shield className="h-4 w-4 text-primary" />
+                        Injury Tracker
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/dashboard/achievements" onClick={() => setMoreOpen(false)}>
+                        <Trophy className="h-4 w-4 text-primary" />
+                        Achievements
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
+                      <Link href="/dashboard/settings" onClick={() => setMoreOpen(false)}>
+                        <Settings2 className="h-4 w-4 text-primary" />
+                        Settings
                       </Link>
                     </Button>
                   </div>
@@ -954,6 +1003,15 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           >
             <Zap className="h-4 w-4 text-green-500" />
             Update Index
+          </button>
+
+          {/* Injury Tracker */}
+          <button
+            onClick={() => { setFabOpen(false); router.push('/dashboard/injury-tracker'); }}
+            className="flex items-center gap-2 rounded-full bg-background border shadow-md px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+          >
+            <Shield className="h-4 w-4 text-red-500" />
+            Injury Tracker
           </button>
         </div>
 
