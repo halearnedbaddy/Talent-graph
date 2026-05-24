@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, MessageSquare, Building2, Settings, LogOut,
-  Menu, X, Bell, Zap, ChevronRight
+  Menu, X, Zap, ChevronRight
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,9 +13,10 @@ import { useAuth, useUser, useFirestore, useCollection, useMemoFirebase } from '
 import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import type { ClubMember } from '@/lib/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { NotificationBell } from '@/components/coach/notification-bell';
+import { useCoachNotifications } from '@/hooks/useCoachNotifications';
 
 const navItems = [
   { href: '/coach-dashboard', label: 'Overview', icon: Home, exact: true },
@@ -43,6 +44,12 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   ), [firestore, user]);
   const { data: memberships } = useCollection<ClubMember>(memberQuery);
   const membership = memberships?.[0];
+  const clubId = membership?.clubId ?? null;
+
+  const { notifications, unreadCount, markRead, markAllRead } = useCoachNotifications(
+    clubId,
+    user?.uid ?? null
+  );
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -163,11 +170,12 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
             <Zap className="h-4 w-4 text-[#00C853] shrink-0" />
             <h1 className="text-sm font-black uppercase tracking-tight text-white truncate">{currentLabel}</h1>
           </div>
-          <Link href="/coach-dashboard/communications">
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-[#94A3B8]">
-              <Bell className="h-4 w-4" />
-            </Button>
-          </Link>
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onMarkRead={markRead}
+            onMarkAllRead={markAllRead}
+          />
         </header>
 
         {/* Desktop topbar */}
@@ -176,11 +184,12 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
             <h1 className="text-sm font-black uppercase tracking-wider text-white">{currentLabel}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/coach-dashboard/communications">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-[#94A3B8] hover:text-white">
-                <Bell className="h-4 w-4" />
-              </Button>
-            </Link>
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount}
+              onMarkRead={markRead}
+              onMarkAllRead={markAllRead}
+            />
           </div>
         </header>
 
