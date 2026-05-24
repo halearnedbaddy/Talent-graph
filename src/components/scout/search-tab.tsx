@@ -84,14 +84,15 @@ interface Props {
   savedIds: Set<string>;
   onSave: (a: AthleteProfile) => void;
   onSendMessage: (a: AthleteProfile) => void;
+  initialFilters?: SearchFilters;
 }
 
-export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage }: Props) {
+export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage, initialFilters }: Props) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
-  const [filters, setFilters] = useState<SearchFilters>({ sort: 'score' });
+  const [filters, setFilters] = useState<SearchFilters>(initialFilters ?? { sort: 'score' });
   const [page, setPage] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [view, setView] = useState<'results' | 'saved'>('results');
