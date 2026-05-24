@@ -20,6 +20,10 @@ import {
   X,
   Bell,
   UserCheck,
+  Building2,
+  Unlock,
+  CreditCard,
+  GraduationCap,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -36,9 +40,11 @@ import type { ClubMember } from '@/lib/types';
 
 const navItems = [
   { href: '/club-dashboard', label: 'Overview', icon: Home },
+  { href: '/club-dashboard/club-profile', label: 'Club Profile', icon: Building2 },
   { href: '/club-dashboard/athletes', label: 'Squad', icon: Users },
   { href: '/club-dashboard/requests', label: 'Requests', icon: UserCheck, pendingBadge: true },
-  { href: '/club-dashboard/scouts', label: 'Staff', icon: UserPlus },
+  { href: '/club-dashboard/coaching-staff', label: 'Coaching Staff', icon: GraduationCap },
+  { href: '/club-dashboard/scouts', label: 'Scouts', icon: UserPlus },
   { href: '/club-dashboard/squad-chat', label: 'Chat', icon: MessageSquare },
   { href: '/chat', label: 'DM', icon: MessageSquareShare },
   { href: '/club-dashboard/matches', label: 'Matches', icon: Trophy },
@@ -49,6 +55,8 @@ const navItems = [
   { href: '/club-dashboard/verification', label: 'Verify', icon: ClipboardCheck },
   { href: '/club-dashboard/messages', label: 'Network', icon: MessageSquareShare },
   { href: '/club-dashboard/notifications', label: 'Alerts', icon: Bell },
+  { href: '/club-dashboard/trial-unlocks', label: 'Trial Unlocks', icon: Unlock },
+  { href: '/club-dashboard/billing', label: 'Billing', icon: CreditCard },
   { href: '/club-dashboard/settings', label: 'Settings', icon: Settings },
 ];
 

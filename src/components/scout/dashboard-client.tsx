@@ -18,9 +18,10 @@ import { ProfileTab } from './profile-tab';
 import { PipelineTab } from './pipeline-tab';
 import { SavedSearchesTab } from './saved-searches-tab';
 import { ActivityTab } from './activity-tab';
+import { SettingsTab } from './settings-tab';
 import {
   Search, Store, BarChart2, Bookmark, MessageSquare, User,
-  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight
+  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ const TABS = [
   { id: 'messages',  label: 'Messages',            icon: MessageSquare,      short: 'Messages' },
   { id: 'activity',  label: 'My Activity',         icon: Activity,           short: 'Activity' },
   { id: 'profile',   label: 'Profile',             icon: User,               short: 'Profile' },
+  { id: 'settings',  label: 'Settings',            icon: Settings,           short: 'Settings' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -299,6 +301,9 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
           )}
           {activeTab === 'profile' && (
             <ProfileTab scoutProfile={scoutProfile} onSignOut={handleSignOut} />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsTab scoutProfile={scoutProfile} />
           )}
         </main>
 
