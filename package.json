@@ -48,7 +48,7 @@
     "firebase-admin": "^13.10.0",
     "genkit": "^1.34.0",
     "lucide-react": "^0.475.0",
-    "next": "^15.5.18",
+    "next": "^16.2.6",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
     "patch-package": "^8.0.1",

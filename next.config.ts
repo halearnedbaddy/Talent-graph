@@ -17,15 +17,9 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   transpilePackages: ['recharts'],
-  /**
-   * Allow Replit preview origins to prevent cross-origin errors during development.
-   * Includes the specific Replit dev domain from the environment variable.
-   */
   allowedDevOrigins,
+  turbopack: {},
   images: {
     remotePatterns: [
       {
@@ -54,25 +48,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { dev, isServer }) => {
-    if (dev && !isServer) {
-      config.watchOptions = {
-        poll: 1000,
-        aggregateTimeout: 500,
-      };
-    }
-    return config;
-  },
-  ...(process.env.NODE_ENV !== 'production' && {
-    headers: async () => [
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
-        ],
-      },
-    ],
-  }),
 };
 
 export default nextConfig;
