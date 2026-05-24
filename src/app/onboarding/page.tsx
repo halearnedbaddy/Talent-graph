@@ -539,7 +539,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             id: memberId,
             userId: user.uid,
             clubId: values.clubId,
-            role: 'coach',
+            role: 'scout',
             status: 'pending',
             joinedAt: new Date().toISOString()
           });
@@ -727,7 +727,7 @@ const CoachProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
           ? 'Welcome! Your join request has been sent to the club.'
           : 'Welcome to Talent Graph, Coach.',
       });
-      router.push('/scout-dashboard');
+      router.push('/coach-dashboard');
     } catch (error) {
       console.error('[onboarding] coach profile save failed:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile. Please try again.' });

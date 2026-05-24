@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, MessageSquare, Building2, Settings, LogOut,
-  Menu, X, Zap, ChevronRight
+  Menu, X, Zap, ChevronRight, Radio
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ const navItems = [
   { href: '/coach-dashboard/squad', label: 'My Squad', icon: Users },
   { href: '/coach-dashboard/verify', label: 'Verify Athletes', icon: ShieldCheck, pendingBadge: true },
   { href: '/coach-dashboard/match-entry', label: 'Match Entry', icon: Trophy },
+  { href: '/coach-dashboard/live-match', label: 'Live Match', icon: Radio },
   { href: '/coach-dashboard/training', label: 'Training & Drills', icon: Dumbbell },
   { href: '/coach-dashboard/schedule', label: 'Schedule', icon: Calendar },
   { href: '/coach-dashboard/analytics', label: 'Performance Analytics', icon: BarChart3 },
