@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   BarChart3, TrendingUp, TrendingDown, Minus, Users,
-  Loader2, Star, AlertTriangle, Activity, Target, Shield
+  Loader2, Star, AlertTriangle, Activity, Target, Shield, Printer
 } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -115,13 +115,30 @@ export default function CoachAnalyticsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; color: black !important; }
+          .print-root { color: black !important; }
+        }
+        @page { size: A4 landscape; margin: 1.2cm; }
+      `}</style>
+      <div className="flex items-start justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase">Performance Analytics</h1>
           <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">
             Individual · Squad · Trends
           </p>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-bold text-xs"
+          onClick={() => window.print()}
+        >
+          <Printer className="w-3.5 h-3.5" />
+          Export PDF
+        </Button>
       </div>
 
       {/* Athlete selector */}

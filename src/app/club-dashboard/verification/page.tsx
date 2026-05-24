@@ -17,6 +17,30 @@ export default function AttributeVerificationPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [flaggingId, setFlaggingId] = useState<string | null>(null);
+
+    const handleFlag = async (athleteId: string, athleteName?: string) => {
+        if (!firestore) return;
+        setFlaggingId(athleteId);
+        try {
+            const athleteRef = doc(firestore, 'athletes', athleteId);
+            await updateDoc(athleteRef, {
+                isFlagged: true,
+                flaggedAt: new Date().toISOString(),
+                flaggedBy: user?.uid,
+                updatedAt: new Date().toISOString(),
+            });
+            toast({
+                title: 'Athlete Flagged',
+                description: `${athleteName || 'Athlete'} has been flagged for review. An admin will be notified.`,
+                variant: 'destructive',
+            });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to flag athlete.' });
+        } finally {
+            setFlaggingId(null);
+        }
+    };
 
     const clubMemberQuery = useMemoFirebase(() => (
         firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
@@ -129,9 +153,12 @@ export default function AttributeVerificationPage() {
                                             </Button>
                                             <Button
                                                 variant="outline"
+                                                onClick={() => handleFlag(a.uid, `${a.firstName} ${a.lastName}`)}
+                                                disabled={flaggingId === a.uid}
                                                 className="font-black uppercase tracking-widest text-[10px] h-11 min-h-[44px] border-red-500/20 text-red-600 hover:bg-red-50 flex-1 sm:flex-none"
                                             >
-                                                <X className="w-4 h-4 mr-2" /> Flag
+                                                {flaggingId === a.uid ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <X className="w-4 h-4 mr-2" />}
+                                                Flag
                                             </Button>
                                         </div>
                                     </div>

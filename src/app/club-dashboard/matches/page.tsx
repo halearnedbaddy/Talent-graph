@@ -184,7 +184,10 @@ export default function MatchManagementPage() {
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                       {!clubProfile?.settings?.competitions?.length && (
-                        <p className="p-2 text-xs text-muted-foreground">No competitions defined in Settings.</p>
+                        <div className="p-2 text-xs text-muted-foreground space-y-1">
+                          <p>No competitions defined.</p>
+                          <a href="/club-dashboard/settings" className="text-primary underline font-semibold">Go to Settings →</a>
+                        </div>
                       )}
                     </SelectContent>
                   </Select>
