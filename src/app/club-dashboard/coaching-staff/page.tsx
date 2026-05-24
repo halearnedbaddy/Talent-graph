@@ -15,6 +15,7 @@ import {
 import type { ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { InviteStaffDialog } from '@/components/club/invite-staff-dialog';
+import { AddStaffDirectDialog } from '@/components/club/add-staff-direct-dialog';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
@@ -57,6 +58,8 @@ export default function CoachingStaffPage() {
   const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [addDirectOpen, setAddDirectOpen] = useState(false);
+  const [clubName, setClubName] = useState('');
 
   const myMembershipQuery = useMemoFirebase(() => (
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
@@ -64,7 +67,10 @@ export default function CoachingStaffPage() {
   const { data: myMemberships } = useCollection<ClubMember>(myMembershipQuery);
 
   useEffect(() => {
-    if (myMemberships?.[0]?.clubId) setClubId(myMemberships[0].clubId);
+    if (myMemberships?.[0]?.clubId) {
+      setClubId(myMemberships[0].clubId);
+      setClubName(myMemberships[0].clubName || '');
+    }
   }, [myMemberships]);
 
   const allMembersQuery = useMemoFirebase(() => (
@@ -151,7 +157,15 @@ export default function CoachingStaffPage() {
             Manage coaches, analysts and technical staff
           </p>
         </div>
-        <InviteStaffDialog clubId={clubId} clubName="" />
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setAddDirectOpen(true)}
+            className="bg-primary hover:bg-primary/90 font-black text-xs uppercase gap-2 h-9"
+          >
+            <UserPlus className="h-4 w-4" /> Add Directly
+          </Button>
+          <InviteStaffDialog clubId={clubId} clubName={clubName} />
+        </div>
       </div>
 
       {/* Stats */}
@@ -334,6 +348,13 @@ export default function CoachingStaffPage() {
           )}
         </CardContent>
       </Card>
+
+      <AddStaffDirectDialog
+        open={addDirectOpen}
+        onClose={() => setAddDirectOpen(false)}
+        clubId={clubId}
+        clubName={clubName}
+      />
 
       <AlertDialog open={!!removeMemberId} onOpenChange={open => !open && setRemoveMemberId(null)}>
         <AlertDialogContent>

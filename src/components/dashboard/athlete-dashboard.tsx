@@ -45,6 +45,7 @@ import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import {
@@ -106,6 +107,21 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
     ) : null
   ), [firestore, athleteProfile?.uid]);
   const { data: unreadNotifs } = useCollection<{ id: string; isRead: boolean }>(notifsQuery);
+
+  // Club announcements
+  const announcementsQuery = useMemoFirebase(() => (
+    firestore && athleteProfile?.affiliatedClubId && athleteProfile.clubStatus === 'active'
+      ? query(
+          collection(firestore, 'announcements'),
+          where('clubId', '==', athleteProfile.affiliatedClubId),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )
+      : null
+  ), [firestore, athleteProfile?.affiliatedClubId, athleteProfile?.clubStatus]);
+  const { data: clubAnnouncements } = useCollection<{
+    id: string; title: string; content: string; authorName: string; audience: string; createdAt: string;
+  }>(announcementsQuery);
   const unreadCount = unreadNotifs?.length ?? 0;
 
   const handleMarkAllRead = async () => {
@@ -621,6 +637,30 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 onSuccess={() => {}}
               />
             )}
+          </div>
+        )}
+
+        {/* ── Club Announcements ── */}
+        {clubAnnouncements && clubAnnouncements.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Bell className="h-3.5 w-3.5 text-primary" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Club Announcements</p>
+            </div>
+            {clubAnnouncements.map(ann => (
+              <div key={ann.id} className="rounded-xl border border-primary/15 bg-primary/5 p-4 space-y-1.5">
+                <p className="font-black text-sm">{ann.title}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{ann.content}</p>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+                    {ann.authorName}
+                  </p>
+                  <p className="text-[9px] font-bold text-muted-foreground">
+                    {formatDistanceToNow(parseISO(ann.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

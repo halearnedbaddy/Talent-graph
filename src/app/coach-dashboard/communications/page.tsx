@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  MessageSquare, Send, Search, Inbox, Bell, Users,
+  MessageSquare, Send, Search, Inbox, Bell, Users, Shield,
   Loader2, CheckCheck, Clock, ChevronRight, Plus, X
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
@@ -51,7 +51,7 @@ export default function CoachCommunicationsPage() {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'squad' | 'announcements' | 'compose'>('inbox');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'squad' | 'staff' | 'announcements' | 'compose'>('inbox');
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
@@ -92,6 +92,14 @@ export default function CoachCommunicationsPage() {
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
   ), [firestore, clubId]);
   const { data: athletes } = useCollection<AthleteProfile>(athletesQuery);
+
+  const staffQuery = useMemoFirebase(() => (
+    firestore && clubId
+      ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('status', '==', 'active'))
+      : null
+  ), [firestore, clubId]);
+  const { data: staffMembers } = useCollection<ClubMember>(staffQuery);
+  const otherStaff = (staffMembers ?? []).filter(m => m.userId !== user?.uid && m.role !== 'athlete');
 
   const allMessages = useMemo(() => {
     const combined = [...(inbox ?? []), ...(sent ?? [])];
@@ -177,19 +185,37 @@ export default function CoachCommunicationsPage() {
     setSending(true);
     try {
       const athlete = athletes?.find(a => a.uid === composeForm.recipient);
+      const staffMember = otherStaff.find(s => s.userId === composeForm.recipient);
+      const recipientName = athlete
+        ? `${athlete.firstName} ${athlete.lastName}`
+        : staffMember?.displayName ?? composeForm.recipient;
       const msgId = `msg-${Date.now()}`;
+      const now = new Date().toISOString();
       await addDoc(collection(firestore, 'messages'), {
         senderId: user.uid,
         senderName: user.displayName || user.email || 'Coach',
         senderRole: 'coach',
         recipientId: composeForm.recipient,
-        recipientName: athlete ? `${athlete.firstName} ${athlete.lastName}` : composeForm.recipient,
+        recipientName,
         subject: composeForm.subject,
         content: composeForm.content,
         isRead: false,
         threadId: msgId,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       });
+      // Create notification for recipient
+      try {
+        await addDoc(collection(firestore, 'notifications', composeForm.recipient, 'items'), {
+          type: 'message',
+          title: 'New message from coach',
+          body: composeForm.subject ? `${composeForm.subject}: ${composeForm.content.slice(0, 80)}` : composeForm.content.slice(0, 100),
+          senderId: user.uid,
+          senderName: user.displayName || 'Coach',
+          threadId: msgId,
+          isRead: false,
+          createdAt: now,
+        });
+      } catch { /* non-critical */ }
       toast({ title: 'Message Sent ✓' });
       setComposeForm({ recipient: '', subject: '', content: '' });
       setActiveTab('inbox');
@@ -248,10 +274,13 @@ export default function CoachCommunicationsPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="squad" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
-            <Users className="h-3 w-3" /> Squad Messages
+            <Users className="h-3 w-3" /> Squad
+          </TabsTrigger>
+          <TabsTrigger value="staff" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
+            <Shield className="h-3 w-3" /> Staff
           </TabsTrigger>
           <TabsTrigger value="announcements" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
-            <Bell className="h-3 w-3" /> Announcements
+            <Bell className="h-3 w-3" /> Announce
           </TabsTrigger>
           <TabsTrigger value="compose" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
             <Plus className="h-3 w-3" /> New Message
@@ -428,6 +457,61 @@ export default function CoachCommunicationsPage() {
           </div>
         </TabsContent>
 
+        {/* STAFF MESSAGES */}
+        <TabsContent value="staff" className="space-y-3">
+          <p className="text-[11px] font-bold text-[#94A3B8]">
+            Direct message analysts, assistant coaches, and other technical staff.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {otherStaff.map(s => {
+              const staffThreads = threads.filter(t =>
+                t.latest.senderId === s.userId || t.latest.recipientId === s.userId
+              );
+              const unread = staffThreads.reduce((sum, t) => sum + t.unread, 0);
+              const ROLE_LABELS: Record<string, string> = {
+                admin: 'Admin', coach: 'Head Coach', assistant_coach: 'Asst. Coach',
+                analyst: 'Analyst', gk_coach: 'GK Coach', scout: 'Scout',
+              };
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    if (staffThreads.length > 0) {
+                      setActiveTab('inbox');
+                      handleSelectThread(staffThreads[0].id);
+                    } else {
+                      setComposeForm(f => ({ ...f, recipient: s.userId }));
+                      setActiveTab('compose');
+                    }
+                  }}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-[#1E293B] bg-[#111827] hover:border-[#00C853]/30 transition-colors text-left"
+                >
+                  <div className="h-10 w-10 rounded-xl bg-[#1C2333] flex items-center justify-center shrink-0 font-black text-[#94A3B8] text-sm">
+                    {(s.displayName || '?')[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-white truncate">{s.displayName || 'Staff'}</p>
+                    <p className="text-[9px] font-bold text-[#94A3B8] uppercase tracking-widest">
+                      {ROLE_LABELS[s.role] ?? s.role}
+                    </p>
+                  </div>
+                  {unread > 0
+                    ? <Badge className="bg-[#00C853] text-black font-black text-[9px] shrink-0">{unread}</Badge>
+                    : <MessageSquare className="h-4 w-4 text-[#94A3B8] shrink-0" />
+                  }
+                </button>
+              );
+            })}
+            {!otherStaff.length && (
+              <div className="col-span-2 text-center py-12">
+                <Shield className="h-10 w-10 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+                <p className="text-[#94A3B8] font-bold">No other staff yet</p>
+                <p className="text-[11px] text-[#94A3B8] mt-1">Add analysts and coaches from the club dashboard.</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
         {/* ANNOUNCEMENTS */}
         <TabsContent value="announcements" className="space-y-4">
           {/* Post new announcement */}
@@ -515,29 +599,60 @@ export default function CoachCommunicationsPage() {
             </CardHeader>
             <CardContent className="p-4 space-y-4">
               <div className="space-y-1">
-                <p className="text-[10px] font-black text-[#94A3B8] uppercase">To (Athlete)</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {athletes?.map(a => (
-                    <button
-                      key={a.uid}
-                      onClick={() => setComposeForm(f => ({ ...f, recipient: f.recipient === a.uid ? '' : a.uid }))}
-                      className={cn(
-                        'flex items-center gap-2 p-2 rounded-xl border transition-all text-left',
-                        composeForm.recipient === a.uid
-                          ? 'border-[#00C853]/50 bg-[#00C853]/10'
-                          : 'border-[#1E293B] bg-[#1C2333] hover:border-[#94A3B8]/30'
-                      )}
-                    >
-                      <Avatar className="h-7 w-7 rounded-lg shrink-0">
-                        <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-[10px] font-black">
-                          {a.firstName[0]}{a.lastName[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs font-bold text-white truncate">{a.firstName} {a.lastName}</span>
-                    </button>
-                  ))}
-                  {!athletes?.length && <p className="text-[#94A3B8] text-sm col-span-3 py-2">No squad athletes</p>}
-                </div>
+                <p className="text-[10px] font-black text-[#94A3B8] uppercase">To</p>
+                {athletes && athletes.length > 0 && (
+                  <>
+                    <p className="text-[9px] text-[#94A3B8] font-bold uppercase tracking-widest pt-1">Athletes</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {athletes.map(a => (
+                        <button
+                          key={a.uid}
+                          onClick={() => setComposeForm(f => ({ ...f, recipient: f.recipient === a.uid ? '' : a.uid }))}
+                          className={cn(
+                            'flex items-center gap-2 p-2 rounded-xl border transition-all text-left',
+                            composeForm.recipient === a.uid
+                              ? 'border-[#00C853]/50 bg-[#00C853]/10'
+                              : 'border-[#1E293B] bg-[#1C2333] hover:border-[#94A3B8]/30'
+                          )}
+                        >
+                          <Avatar className="h-7 w-7 rounded-lg shrink-0">
+                            <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-[10px] font-black">
+                              {a.firstName[0]}{a.lastName[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs font-bold text-white truncate">{a.firstName} {a.lastName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {otherStaff.length > 0 && (
+                  <>
+                    <p className="text-[9px] text-[#94A3B8] font-bold uppercase tracking-widest pt-2">Staff</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {otherStaff.map(s => (
+                        <button
+                          key={s.userId}
+                          onClick={() => setComposeForm(f => ({ ...f, recipient: f.recipient === s.userId ? '' : s.userId }))}
+                          className={cn(
+                            'flex items-center gap-2 p-2 rounded-xl border transition-all text-left',
+                            composeForm.recipient === s.userId
+                              ? 'border-[#00C853]/50 bg-[#00C853]/10'
+                              : 'border-[#1E293B] bg-[#1C2333] hover:border-[#94A3B8]/30'
+                          )}
+                        >
+                          <div className="h-7 w-7 rounded-lg bg-[#0A0E1A] flex items-center justify-center shrink-0">
+                            <span className="text-[#94A3B8] text-[10px] font-black">{(s.displayName || '?')[0]}</span>
+                          </div>
+                          <span className="text-xs font-bold text-white truncate">{s.displayName || 'Staff'}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {!athletes?.length && !otherStaff.length && (
+                  <p className="text-[#94A3B8] text-sm py-2">No squad members yet</p>
+                )}
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-black text-[#94A3B8] uppercase">Subject</p>
