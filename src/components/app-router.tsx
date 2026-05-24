@@ -59,6 +59,9 @@ export function AppRouter() {
             } else if (userAccount.role === 'scout') {
                 router.push('/scout-dashboard');
                 setDestination('redirect');
+            } else if (userAccount.role === 'analyst') {
+                router.push('/analyst-dashboard');
+                setDestination('redirect');
             } else if (userAccount.role === 'club') {
                 router.push('/club-dashboard/athletes');
                 setDestination('redirect');

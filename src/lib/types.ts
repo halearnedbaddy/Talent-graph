@@ -5,7 +5,7 @@ export interface UserAccount {
   lastName: string;
   creationTimestamp: string;
   isEmailVerified: boolean;
-  role?: 'athlete' | 'scout' | 'coach' | 'club' | 'admin';
+  role?: 'athlete' | 'scout' | 'coach' | 'club' | 'admin' | 'analyst';
   profileCompleted?: boolean;
   onboardingStep?: string;
   updatedAt?: string;
@@ -264,7 +264,7 @@ export interface ClubMember {
   userId: string;
   clubId: string;
   clubName?: string;
-  role: 'admin' | 'scout' | 'coach';
+  role: 'admin' | 'scout' | 'coach' | 'analyst' | 'assistant_coach' | 'gk_coach';
   status: 'pending' | 'active' | 'club_invited' | 'rejected';
   joinedAt: string;
   invitedAt?: string;

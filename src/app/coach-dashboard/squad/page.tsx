@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc, addDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, addDoc, getDocs, limit, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,18 +124,24 @@ export default function CoachSquadPage() {
     if (!firestore || !athleteSearch.trim()) return;
     setSearching(true);
     try {
-      const snap = await getDocs(collection(firestore, 'athletes'));
-      const q = athleteSearch.toLowerCase();
-      const results = snap.docs
-        .map(d => ({ uid: d.id, ...d.data() } as AthleteProfile))
-        .filter(a =>
-          (a.firstName.toLowerCase().includes(q) || a.lastName.toLowerCase().includes(q)) &&
-          a.affiliatedClubId !== clubId
-        )
-        .slice(0, 10);
-      setSearchResults(results);
-    } catch {
-      toast({ title: 'Search failed', variant: 'destructive' });
+      const term = athleteSearch.trim();
+      const termEnd = term + '\uf8ff';
+      const [byFirst, byLast] = await Promise.all([
+        getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', term), where('firstName', '<=', termEnd), limit(10))),
+        getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', term), where('lastName', '<=', termEnd), limit(10))),
+      ]);
+      const seen = new Set<string>();
+      const results: AthleteProfile[] = [];
+      [...byFirst.docs, ...byLast.docs].forEach(d => {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          const a = { uid: d.id, ...d.data() } as AthleteProfile;
+          if (a.affiliatedClubId !== clubId) results.push(a);
+        }
+      });
+      setSearchResults(results.slice(0, 10));
+    } catch (err: any) {
+      toast({ title: 'Search failed', description: err?.message ?? 'Please try again.', variant: 'destructive' });
     } finally {
       setSearching(false);
     }
