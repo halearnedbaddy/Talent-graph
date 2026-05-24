@@ -1,22 +1,44 @@
 'use client';
 
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Users, ShieldCheck, Trophy, TrendingUp, AlertTriangle,
-  CheckCircle2, Plus, ChevronRight, Calendar, Activity, Star, Loader2, Building2
+  CheckCircle2, Plus, ChevronRight, Calendar, Activity, Star,
+  Loader2, Building2, Dumbbell, Clock, MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile } from '@/lib/types';
 import { useMemo } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, isAfter } from 'date-fns';
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
+}
+
+interface TrainingSession {
+  id: string;
+  clubId: string;
+  title: string;
+  date: string;
+  duration: number;
+  focus: string;
+  attendees: string[];
+  createdAt: string;
+}
+
+interface VerificationRecord {
+  id: string;
+  athleteId: string;
+  athleteName: string;
+  coachId: string;
+  coachName: string;
+  clubId: string;
+  verifiedAt: string;
 }
 
 export default function CoachOverviewPage() {
@@ -44,6 +66,18 @@ export default function CoachOverviewPage() {
   ), [firestore, clubId]);
   const { data: matches } = useCollection<ClubMatch>(matchesQuery);
 
+  const sessionsQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'training_sessions'), where('clubId', '==', clubId)) : null
+  ), [firestore, clubId]);
+  const { data: trainingSessions } = useCollection<TrainingSession>(sessionsQuery);
+
+  const verificationsQuery = useMemoFirebase(() => (
+    firestore && user
+      ? query(collection(firestore, 'verifications'), where('coachId', '==', user.uid), orderBy('verifiedAt', 'desc'), limit(10))
+      : null
+  ), [firestore, user]);
+  const { data: verifications } = useCollection<VerificationRecord>(verificationsQuery);
+
   const stats = useMemo(() => {
     const total = athletes?.length ?? 0;
     const verified = athletes?.filter(a => a.isVerified).length ?? 0;
@@ -54,11 +88,19 @@ export default function CoachOverviewPage() {
     return { total, verified, pending, avgCSI };
   }, [athletes]);
 
+  const nextSession = useMemo(() => {
+    if (!trainingSessions) return null;
+    const now = new Date().toISOString();
+    return trainingSessions
+      .filter(s => s.date >= now.slice(0, 10))
+      .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null;
+  }, [trainingSessions]);
+
   const upcomingMatches = useMemo(() => {
     if (!matches) return [];
     const now = new Date().toISOString();
     return matches
-      .filter(m => !m.result && m.date >= now)
+      .filter(m => !m.result && m.date >= now.slice(0, 10))
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 3);
   }, [matches]);
@@ -90,6 +132,54 @@ export default function CoachOverviewPage() {
     if (!athletes) return [];
     return athletes.filter(a => !a.isVerified).slice(0, 3);
   }, [athletes]);
+
+  // Recent Activity Feed — combine verifications + recent matches entries
+  const activityFeed = useMemo(() => {
+    const items: { id: string; icon: string; text: string; time: string; color: string }[] = [];
+
+    (verifications ?? []).slice(0, 5).forEach(v => {
+      items.push({
+        id: `v-${v.id}`,
+        icon: 'verify',
+        text: `You verified ${v.athleteName}'s profile`,
+        time: v.verifiedAt,
+        color: '#00C853',
+      });
+    });
+
+    const recentMatches = [...(matches ?? [])]
+      .filter(m => m.result && m.createdAt)
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      .slice(0, 5);
+
+    recentMatches.forEach(m => {
+      items.push({
+        id: `m-${m.id}`,
+        icon: 'match',
+        text: `Match entered — vs ${m.opponent} (${m.result ?? 'TBD'})`,
+        time: m.createdAt ?? m.date,
+        color: '#00C853',
+      });
+    });
+
+    const recentSessions = [...(trainingSessions ?? [])]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 3);
+
+    recentSessions.forEach(s => {
+      items.push({
+        id: `s-${s.id}`,
+        icon: 'training',
+        text: `Training session created — ${s.title}`,
+        time: s.createdAt,
+        color: '#3B82F6',
+      });
+    });
+
+    return items
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 10);
+  }, [verifications, matches, trainingSessions]);
 
   if (memberLoading) {
     return (
@@ -132,20 +222,28 @@ export default function CoachOverviewPage() {
       {/* 4 KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Squad Size', value: stats.total, icon: Users, sub: 'Athletes', color: 'text-white', bg: 'bg-[#1C2333]' },
+          { label: 'Squad Size', value: stats.total, icon: Users, sub: 'Athletes', color: 'text-white', bg: 'bg-[#1C2333]', href: '/coach-dashboard/squad' },
           { label: 'Pending Verifications', value: stats.pending, icon: ShieldCheck, sub: 'Awaiting review', color: 'text-[#FF6D00]', bg: 'bg-[#FF6D00]/10', href: '/coach-dashboard/verify' },
-          { label: 'Matches This Month', value: thisMonthMatches, icon: Trophy, sub: 'Logged', color: 'text-[#00C853]', bg: 'bg-[#00C853]/10' },
-          { label: 'Avg Composite', value: stats.avgCSI || '--', icon: TrendingUp, sub: 'Squad CSI', color: 'text-white', bg: 'bg-[#1C2333]' },
+          { label: 'Matches This Month', value: thisMonthMatches, icon: Trophy, sub: 'Logged', color: 'text-[#00C853]', bg: 'bg-[#00C853]/10', href: '/coach-dashboard/match-entry' },
+          {
+            label: 'Next Session',
+            value: nextSession ? (() => { try { return format(parseISO(nextSession.date), 'dd MMM'); } catch { return nextSession.date; } })() : '—',
+            icon: Dumbbell,
+            sub: nextSession ? nextSession.title : 'No upcoming',
+            color: 'text-white',
+            bg: 'bg-[#1C2333]',
+            href: '/coach-dashboard/schedule',
+          },
         ].map((card) => (
-          <Link key={card.label} href={(card as any).href ?? '#'} className={(card as any).href ? '' : 'pointer-events-none'}>
+          <Link key={card.label} href={card.href}>
             <Card className={`border border-[#1E293B] ${card.bg} shadow-xl hover:border-[#00C853]/30 transition-colors`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest leading-tight">{card.label}</p>
                   <card.icon className={`h-4 w-4 shrink-0 ${card.color}`} />
                 </div>
-                <div className={`text-3xl font-black mt-2 ${card.color}`}>{card.value}</div>
-                <p className="text-[9px] font-bold text-[#94A3B8] uppercase tracking-widest mt-1">{card.sub}</p>
+                <div className={`text-2xl font-black mt-2 ${card.color} truncate`}>{card.value}</div>
+                <p className="text-[9px] font-bold text-[#94A3B8] uppercase tracking-widest mt-1 truncate">{card.sub}</p>
               </CardContent>
             </Card>
           </Link>
@@ -178,7 +276,7 @@ export default function CoachOverviewPage() {
                 </div>
                 <Link href="/coach-dashboard/verify">
                   <Button size="sm" className="bg-[#FF6D00] hover:bg-[#FF6D00]/90 text-white font-black text-[10px] uppercase h-7 px-3">
-                    Verify
+                    Verify Now
                   </Button>
                 </Link>
               </div>
@@ -207,9 +305,23 @@ export default function CoachOverviewPage() {
               <Activity className="h-4 w-4 text-[#00C853]" /> Squad Performance Snapshot
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 space-y-4">
+          <CardContent className="p-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="text-center p-2 bg-[#1C2333] rounded-xl">
+                <p className="text-lg font-black text-[#00C853]">{stats.total}</p>
+                <p className="text-[8px] font-black text-[#94A3B8] uppercase">Players</p>
+              </div>
+              <div className="text-center p-2 bg-[#1C2333] rounded-xl">
+                <p className="text-lg font-black text-[#00C853]">{stats.verified}</p>
+                <p className="text-[8px] font-black text-[#94A3B8] uppercase">Verified</p>
+              </div>
+              <div className="text-center p-2 bg-[#1C2333] rounded-xl">
+                <p className="text-lg font-black text-white">{stats.avgCSI || '--'}</p>
+                <p className="text-[8px] font-black text-[#94A3B8] uppercase">Avg CSI</p>
+              </div>
+            </div>
             {flaggedAthletes.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <p className="text-[9px] font-black text-red-400 uppercase tracking-widest flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" /> High Risk Athletes
                 </p>
@@ -221,6 +333,23 @@ export default function CoachOverviewPage() {
                     </Badge>
                   </div>
                 ))}
+              </div>
+            )}
+            {topPerformers.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[9px] font-black text-[#00C853] uppercase tracking-widest flex items-center gap-1">
+                  <Star className="h-3 w-3" /> Top Performer
+                </p>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-[#00C853]/5 border border-[#00C853]/20">
+                  <Avatar className="h-7 w-7 rounded-lg shrink-0">
+                    <AvatarImage src={topPerformers[0].photoUrl} className="object-cover" />
+                    <AvatarFallback className="rounded-lg bg-[#1C2333] text-[#94A3B8] text-xs font-black">
+                      {topPerformers[0].firstName[0]}{topPerformers[0].lastName[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-black text-white flex-1">{topPerformers[0].firstName} {topPerformers[0].lastName}</span>
+                  <span className="text-lg font-black text-[#00C853]">{topPerformers[0].compositeScoutingIndex ?? '--'}</span>
+                </div>
               </div>
             )}
             <Link href="/coach-dashboard/analytics">
@@ -276,6 +405,47 @@ export default function CoachOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Activity Feed */}
+      <Card className="border border-[#1E293B] bg-[#111827]">
+        <CardHeader className="p-4 pb-0 flex-row items-center justify-between">
+          <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#00C853]" /> Recent Activity
+          </CardTitle>
+          <Badge className="bg-[#1C2333] text-[#94A3B8] border-[#1E293B] font-black text-[9px]">Last 10 events</Badge>
+        </CardHeader>
+        <CardContent className="p-4">
+          {activityFeed.length === 0 ? (
+            <div className="text-center py-8">
+              <Activity className="h-10 w-10 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+              <p className="text-[#94A3B8] text-sm font-bold">No activity yet</p>
+              <p className="text-[#94A3B8] text-xs mt-1">Your activity will appear here as you verify athletes and log matches.</p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {activityFeed.map((item, i) => (
+                <div key={item.id} className="flex items-start gap-3 py-2.5">
+                  <div className="flex flex-col items-center">
+                    <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: item.color }} />
+                    {i < activityFeed.length - 1 && (
+                      <div className="w-px flex-1 bg-[#1E293B] mt-1" style={{ minHeight: '16px' }} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 pb-1">
+                    <p className="text-[13px] font-semibold text-white leading-snug">{item.text}</p>
+                    <p className="text-[10px] text-[#94A3B8] font-bold mt-0.5">
+                      {(() => {
+                        try { return formatDistanceToNow(new Date(item.time), { addSuffix: true }); }
+                        catch { return item.time; }
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Squad Leaderboard */}
       <Card className="border border-[#1E293B] bg-[#111827]">

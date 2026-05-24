@@ -1,23 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ShieldCheck, ShieldX, Loader2, CheckCircle2, XCircle,
-  AlertTriangle, Eye, Ruler, Weight, Zap, Clock
+  AlertTriangle, Eye, Ruler, Weight, Zap, Clock,
+  ChevronDown, ChevronUp, Edit3, Check, RotateCcw
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { smsSend } from '@/hooks/useSMS';
+import { format, parseISO } from 'date-fns';
 
 function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(' '); }
+
+interface VerificationRecord {
+  id: string;
+  athleteId: string;
+  athleteName: string;
+  coachId: string;
+  coachName: string;
+  clubId: string;
+  statsSnapshot: Record<string, unknown>;
+  corrections: Array<{ field: string; oldValue: number; newValue: number }>;
+  notes: string;
+  verifiedAt: string;
+}
+
+type StatCorrections = Record<string, Record<string, number>>;
 
 export default function CoachVerifyPage() {
   const { user } = useUser();
@@ -25,6 +45,11 @@ export default function CoachVerifyPage() {
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [viewAthlete, setViewAthlete] = useState<AthleteProfile | null>(null);
+
+  // Per-stat correction state inside the modal
+  const [corrections, setCorrections] = useState<StatCorrections>({});
+  const [verifyNotes, setVerifyNotes] = useState('');
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const memberQuery = useMemoFirebase(() => (
     firestore && user
@@ -48,16 +73,44 @@ export default function CoachVerifyPage() {
   ), [firestore, clubId]);
   const { data: verified, isLoading: verifiedLoading } = useCollection<AthleteProfile>(verifiedQuery);
 
-  const handleVerify = async (a: AthleteProfile, approve: boolean) => {
-    if (!firestore) return;
+  const verificationsQuery = useMemoFirebase(() => (
+    firestore && user
+      ? query(collection(firestore, 'verifications'), where('coachId', '==', user.uid))
+      : null
+  ), [firestore, user]);
+  const { data: auditTrail } = useCollection<VerificationRecord>(verificationsQuery);
+
+  const handleQuickVerify = async (a: AthleteProfile, approve: boolean) => {
+    if (!firestore || !clubId || !user) return;
     setProcessingId(a.uid);
     try {
       await updateDoc(doc(firestore, 'athletes', a.uid), {
         isVerified: approve,
         attributesVerified: approve,
+        verifiedBy: approve ? (user.displayName || user.email || 'Coach') : null,
+        verifiedAt: approve ? new Date().toISOString() : null,
         updatedAt: new Date().toISOString(),
       });
       if (approve) {
+        // Write to verifications/ collection
+        await addDoc(collection(firestore, 'verifications'), {
+          athleteId: a.uid,
+          athleteName: `${a.firstName} ${a.lastName}`,
+          coachId: user.uid,
+          coachName: user.displayName || user.email || 'Coach',
+          clubId,
+          statsSnapshot: {
+            compositeScoutingIndex: a.compositeScoutingIndex,
+            performanceIndex: a.performanceIndex,
+            consistencyIndex: a.consistencyIndex,
+            riskIndex: a.riskIndex,
+            heightCm: a.heightCm,
+            weightKg: a.weightKg,
+          },
+          corrections: [],
+          notes: 'Quick verification — no stat corrections',
+          verifiedAt: new Date().toISOString(),
+        });
         smsSend('match-verified', {
           athletePhone: a.phone,
           athleteName: a.firstName,
@@ -70,10 +123,111 @@ export default function CoachVerifyPage() {
           ? `${a.firstName} ${a.lastName}'s data is now institutional truth.`
           : `${a.firstName} ${a.lastName} has been asked to resubmit.`,
       });
-    } catch (e) {
+    } catch {
       toast({ title: 'Error', description: 'Could not update verification status.', variant: 'destructive' });
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleOpenModal = (a: AthleteProfile) => {
+    setViewAthlete(a);
+    // Pre-populate corrections with current attribute values
+    const initial: StatCorrections = {};
+    if (a.detailedAttributes) {
+      for (const [cat, attrs] of Object.entries(a.detailedAttributes)) {
+        initial[cat] = { ...(attrs as Record<string, number>) };
+      }
+    }
+    setCorrections(initial);
+    setVerifyNotes('');
+  };
+
+  const handleConfirmVerification = async () => {
+    if (!firestore || !viewAthlete || !clubId || !user) return;
+    setConfirmLoading(true);
+    try {
+      const original = viewAthlete.detailedAttributes;
+      const correctionList: Array<{ field: string; oldValue: number; newValue: number }> = [];
+
+      // Find changed values
+      for (const [cat, attrs] of Object.entries(corrections)) {
+        for (const [stat, newVal] of Object.entries(attrs)) {
+          const oldVal = (original?.[cat as keyof typeof original] as Record<string, number>)?.[stat];
+          if (oldVal !== undefined && oldVal !== newVal) {
+            correctionList.push({ field: `${cat}.${stat}`, oldValue: oldVal, newValue: newVal });
+          }
+        }
+      }
+
+      // Build updated detailedAttributes
+      const updatedAttributes = {
+        ...(viewAthlete.detailedAttributes ?? {}),
+        ...Object.fromEntries(
+          Object.entries(corrections).map(([cat, attrs]) => [cat, attrs])
+        ),
+      };
+
+      // Update athlete document
+      await updateDoc(doc(firestore, 'athletes', viewAthlete.uid), {
+        isVerified: true,
+        attributesVerified: true,
+        detailedAttributes: updatedAttributes,
+        verifiedBy: user.displayName || user.email || 'Coach',
+        verifiedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Write audit record to verifications/ collection
+      await addDoc(collection(firestore, 'verifications'), {
+        athleteId: viewAthlete.uid,
+        athleteName: `${viewAthlete.firstName} ${viewAthlete.lastName}`,
+        coachId: user.uid,
+        coachName: user.displayName || user.email || 'Coach',
+        clubId,
+        statsSnapshot: {
+          compositeScoutingIndex: viewAthlete.compositeScoutingIndex,
+          performanceIndex: viewAthlete.performanceIndex,
+          consistencyIndex: viewAthlete.consistencyIndex,
+          riskIndex: viewAthlete.riskIndex,
+          heightCm: viewAthlete.heightCm,
+          weightKg: viewAthlete.weightKg,
+          detailedAttributes: viewAthlete.detailedAttributes,
+        },
+        corrections: correctionList,
+        notes: verifyNotes,
+        verifiedAt: new Date().toISOString(),
+      });
+
+      smsSend('match-verified', {
+        athletePhone: viewAthlete.phone,
+        athleteName: viewAthlete.firstName,
+        clubName: undefined,
+      });
+
+      toast({
+        title: 'Verification Complete ✓',
+        description: `${viewAthlete.firstName} ${viewAthlete.lastName} verified. ${correctionList.length} correction${correctionList.length !== 1 ? 's' : ''} applied.`,
+      });
+      setViewAthlete(null);
+    } catch {
+      toast({ title: 'Error', description: 'Verification failed. Please try again.', variant: 'destructive' });
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const updateCorrection = (category: string, stat: string, value: number) => {
+    setCorrections(prev => ({
+      ...prev,
+      [category]: { ...(prev[category] ?? {}), [stat]: value },
+    }));
+  };
+
+  const resetCorrection = (category: string, stat: string) => {
+    const original = viewAthlete?.detailedAttributes?.[category as keyof typeof viewAthlete.detailedAttributes] as Record<string, number> | undefined;
+    if (original?.[stat] !== undefined) {
+      updateCorrection(category, stat, original[stat]);
     }
   };
 
@@ -94,8 +248,7 @@ export default function CoachVerifyPage() {
         <div className="space-y-1">
           <p className="text-[11px] font-black text-[#FF6D00] uppercase tracking-wide">Automated Verification Flow</p>
           <p className="text-[11px] text-[#94A3B8]">
-            When you verify an athlete, their profile data is locked as institutional truth visible to scouts.
-            Athletes receive instant SMS confirmation. Unverified athletes remain hidden from the scout marketplace.
+            Review each athlete's self-reported stats, make corrections where needed, then confirm. Verified profiles are locked as institutional truth visible to scouts. Athletes receive instant SMS confirmation.
           </p>
         </div>
       </div>
@@ -110,8 +263,13 @@ export default function CoachVerifyPage() {
             <CheckCircle2 className="h-3 w-3" />
             Verified ({verified?.length ?? 0})
           </TabsTrigger>
+          <TabsTrigger value="audit" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase tracking-wide gap-2">
+            <ShieldCheck className="h-3 w-3" />
+            Audit ({auditTrail?.length ?? 0})
+          </TabsTrigger>
         </TabsList>
 
+        {/* PENDING */}
         <TabsContent value="pending" className="space-y-3">
           {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-[#00C853]" /></div>
@@ -127,14 +285,15 @@ export default function CoachVerifyPage() {
                 key={a.uid}
                 athlete={a}
                 loading={processingId === a.uid}
-                onVerify={() => handleVerify(a, true)}
-                onDecline={() => handleVerify(a, false)}
-                onView={() => setViewAthlete(a)}
+                onVerify={() => handleQuickVerify(a, true)}
+                onDecline={() => handleQuickVerify(a, false)}
+                onView={() => handleOpenModal(a)}
               />
             ))
           )}
         </TabsContent>
 
+        {/* VERIFIED */}
         <TabsContent value="verified" className="space-y-3">
           {verifiedLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-[#00C853]" /></div>
@@ -161,7 +320,7 @@ export default function CoachVerifyPage() {
                 </Badge>
                 <Button
                   size="sm" variant="ghost"
-                  onClick={() => handleVerify(a, false)}
+                  onClick={() => handleQuickVerify(a, false)}
                   disabled={processingId === a.uid}
                   className="text-red-400 hover:bg-red-400/10 font-black text-[10px] uppercase h-7"
                 >
@@ -171,89 +330,262 @@ export default function CoachVerifyPage() {
             ))
           )}
         </TabsContent>
+
+        {/* AUDIT TRAIL */}
+        <TabsContent value="audit" className="space-y-3">
+          {!auditTrail?.length ? (
+            <div className="text-center py-12">
+              <ShieldCheck className="h-10 w-10 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+              <p className="text-[#94A3B8] font-bold">No verification records yet</p>
+              <p className="text-[#94A3B8] text-sm mt-1">Verifications you perform will appear here as an audit trail.</p>
+            </div>
+          ) : (
+            auditTrail
+              .slice()
+              .sort((a, b) => b.verifiedAt.localeCompare(a.verifiedAt))
+              .map(v => (
+                <Card key={v.id} className="border border-[#1E293B] bg-[#111827]">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-white">{v.athleteName}</p>
+                        <p className="text-[9px] font-bold text-[#94A3B8] uppercase mt-0.5">
+                          Verified by {v.coachName} ·{' '}
+                          {(() => { try { return format(parseISO(v.verifiedAt), 'dd MMM yyyy, HH:mm'); } catch { return v.verifiedAt; } })()}
+                        </p>
+                      </div>
+                      <Badge className="bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30 font-black text-[9px] shrink-0">
+                        {v.corrections.length} correction{v.corrections.length !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    {v.corrections.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Corrections Applied</p>
+                        {v.corrections.map((c, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[11px]">
+                            <span className="text-[#94A3B8] font-bold">{c.field}</span>
+                            <span className="text-red-400 line-through">{c.oldValue}</span>
+                            <span className="text-[#94A3B8]">→</span>
+                            <span className="text-[#00C853] font-black">{c.newValue}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {v.notes && v.notes !== 'Quick verification — no stat corrections' && (
+                      <p className="text-[11px] text-[#94A3B8] mt-2 italic">"{v.notes}"</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+          )}
+        </TabsContent>
       </Tabs>
 
-      {/* Athlete Detail Dialog */}
+      {/* Verification Detail Modal with Per-Stat Correction Table */}
       {viewAthlete && (
         <Dialog open onOpenChange={() => setViewAthlete(null)}>
-          <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-lg">
+          <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-2xl max-h-[90vh] flex flex-col">
             <DialogHeader>
-              <DialogTitle className="font-black uppercase tracking-wide text-white">
-                {viewAthlete.firstName} {viewAthlete.lastName}
+              <DialogTitle className="font-black uppercase tracking-wide text-white flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-[#00C853]" />
+                Verify — {viewAthlete.firstName} {viewAthlete.lastName}
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16 rounded-2xl">
-                  <AvatarImage src={viewAthlete.photoUrl} className="object-cover" />
-                  <AvatarFallback className="rounded-2xl bg-[#1C2333] text-[#94A3B8] text-xl font-black">
-                    {viewAthlete.firstName[0]}{viewAthlete.lastName[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-lg font-black text-white">{viewAthlete.firstName} {viewAthlete.lastName}</p>
-                  <p className="text-[#94A3B8] text-sm font-bold uppercase">{viewAthlete.position}</p>
-                  <p className="text-[#94A3B8] text-xs">{viewAthlete.sport} · {viewAthlete.age} years</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Height', value: viewAthlete.heightCm ? `${viewAthlete.heightCm}cm` : '--', icon: Ruler },
-                  { label: 'Weight', value: viewAthlete.weightKg ? `${viewAthlete.weightKg}kg` : '--', icon: Weight },
-                  { label: 'Foot', value: viewAthlete.dominantFoot ?? '--', icon: Zap },
-                ].map(s => (
-                  <div key={s.label} className="p-3 rounded-xl bg-[#1C2333] text-center">
-                    <s.icon className="h-4 w-4 text-[#94A3B8] mx-auto mb-1" />
-                    <p className="text-sm font-black text-white">{s.value}</p>
-                    <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{s.label}</p>
+            <ScrollArea className="flex-1 overflow-y-auto pr-1">
+              <div className="space-y-5 pb-2">
+                {/* Athlete Header */}
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-14 w-14 rounded-2xl shrink-0">
+                    <AvatarImage src={viewAthlete.photoUrl} className="object-cover" />
+                    <AvatarFallback className="rounded-2xl bg-[#1C2333] text-[#94A3B8] text-xl font-black">
+                      {viewAthlete.firstName[0]}{viewAthlete.lastName[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-lg font-black text-white">{viewAthlete.firstName} {viewAthlete.lastName}</p>
+                    <p className="text-[#94A3B8] text-sm font-bold uppercase">{viewAthlete.position} · {viewAthlete.sport}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge className="bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/30 font-black text-[9px] gap-1">
+                        <Clock className="h-2.5 w-2.5" /> Self-Reported — Awaiting Review
+                      </Badge>
+                    </div>
                   </div>
-                ))}
-              </div>
-
-              {viewAthlete.bio && (
-                <div className="p-3 rounded-xl bg-[#1C2333]">
-                  <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest mb-1">Bio</p>
-                  <p className="text-sm text-white">{viewAthlete.bio}</p>
                 </div>
-              )}
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'CSI', value: viewAthlete.compositeScoutingIndex ?? '--' },
-                  { label: 'Risk Index', value: viewAthlete.riskIndex ?? '--' },
-                  { label: 'Performance', value: viewAthlete.performanceIndex ?? '--' },
-                  { label: 'Consistency', value: viewAthlete.consistencyIndex ?? '--' },
-                ].map(s => (
-                  <div key={s.label} className="p-3 rounded-xl bg-[#1C2333]">
-                    <p className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">{s.label}</p>
-                    <p className="text-xl font-black text-[#00C853] mt-1">{s.value}</p>
+                {/* Bio Stats */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { label: 'Age', value: `${viewAthlete.age}y`, icon: Zap },
+                    { label: 'Height', value: viewAthlete.heightCm ? `${viewAthlete.heightCm}cm` : '--', icon: Ruler },
+                    { label: 'Weight', value: viewAthlete.weightKg ? `${viewAthlete.weightKg}kg` : '--', icon: Weight },
+                    { label: 'Foot', value: viewAthlete.dominantFoot ?? '--', icon: Zap },
+                  ].map(s => (
+                    <div key={s.label} className="p-2 rounded-xl bg-[#1C2333] text-center">
+                      <p className="text-sm font-black text-white">{s.value}</p>
+                      <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Index Scores */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'CSI', value: viewAthlete.compositeScoutingIndex ?? '--', color: 'text-[#00C853]' },
+                    { label: 'Risk Index', value: viewAthlete.riskIndex ?? '--', color: (viewAthlete.riskIndex ?? 0) >= 60 ? 'text-red-400' : 'text-white' },
+                    { label: 'Performance', value: viewAthlete.performanceIndex ?? '--', color: 'text-white' },
+                    { label: 'Consistency', value: viewAthlete.consistencyIndex ?? '--', color: 'text-white' },
+                  ].map(s => (
+                    <div key={s.label} className="p-3 rounded-xl bg-[#1C2333]">
+                      <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">{s.label}</p>
+                      <p className={`text-xl font-black mt-1 ${s.color}`}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-Stat Correction Table */}
+                {viewAthlete.detailedAttributes && Object.keys(viewAthlete.detailedAttributes).length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Edit3 className="h-4 w-4 text-[#FF6D00]" />
+                      <p className="text-[11px] font-black text-[#FF6D00] uppercase tracking-widest">
+                        Per-Stat Review — Correct any inaccurate values below
+                      </p>
+                    </div>
+
+                    {(['Technical', 'Mental', 'Physical'] as const).map(cat => {
+                      const attrs = viewAthlete.detailedAttributes?.[cat] as Record<string, number> | undefined;
+                      if (!attrs || Object.keys(attrs).length === 0) return null;
+                      return (
+                        <div key={cat} className="space-y-2">
+                          <p className={cn(
+                            'text-[10px] font-black uppercase tracking-widest',
+                            cat === 'Technical' ? 'text-blue-400' : cat === 'Mental' ? 'text-purple-400' : 'text-[#FF6D00]'
+                          )}>
+                            {cat}
+                          </p>
+                          <div className="space-y-1.5">
+                            {Object.entries(attrs).map(([stat, originalVal]) => {
+                              const currentVal = corrections[cat]?.[stat] ?? originalVal;
+                              const isChanged = currentVal !== originalVal;
+                              return (
+                                <div key={stat} className={cn(
+                                  'grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center p-2 rounded-lg border transition-colors',
+                                  isChanged ? 'bg-[#FF6D00]/5 border-[#FF6D00]/30' : 'bg-[#1C2333] border-[#1E293B]'
+                                )}>
+                                  <div>
+                                    <p className="text-xs font-bold text-white capitalize">{stat.replace(/([A-Z])/g, ' $1').trim()}</p>
+                                    {isChanged && (
+                                      <p className="text-[9px] text-[#94A3B8]">
+                                        Original: <span className="text-red-400 line-through">{originalVal}</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => updateCorrection(cat, stat, Math.max(0, currentVal - 1))}
+                                      className="w-6 h-6 flex items-center justify-center rounded bg-[#0A0E1A] text-[#94A3B8] hover:text-white font-black text-sm"
+                                    >
+                                      <ChevronDown className="h-3 w-3" />
+                                    </button>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      value={currentVal}
+                                      onChange={e => updateCorrection(cat, stat, Math.min(100, Math.max(0, Number(e.target.value))))}
+                                      className={cn(
+                                        'w-14 h-6 text-center text-xs font-black border p-0',
+                                        isChanged ? 'text-[#FF6D00] border-[#FF6D00]/50 bg-[#0A0E1A]' : 'text-white border-[#1E293B] bg-[#0A0E1A]'
+                                      )}
+                                    />
+                                    <button
+                                      onClick={() => updateCorrection(cat, stat, Math.min(100, currentVal + 1))}
+                                      className="w-6 h-6 flex items-center justify-center rounded bg-[#0A0E1A] text-[#94A3B8] hover:text-white font-black text-sm"
+                                    >
+                                      <ChevronUp className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <div className="w-5 h-5 rounded flex items-center justify-center shrink-0">
+                                    {isChanged ? (
+                                      <span className="text-[#FF6D00] font-black text-[9px] uppercase">Edited</span>
+                                    ) : (
+                                      <Check className="h-3 w-3 text-[#00C853]" />
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => resetCorrection(cat, stat)}
+                                    disabled={!isChanged}
+                                    className="w-6 h-6 flex items-center justify-center rounded text-[#94A3B8] hover:text-[#FF6D00] disabled:opacity-30"
+                                    title="Reset to original"
+                                  >
+                                    <RotateCcw className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-[#1C2333] border border-[#1E293B]">
+                    <p className="text-[11px] text-[#94A3B8] text-center">
+                      No detailed attribute data available. You can still verify the athlete's profile and core metrics.
+                    </p>
+                  </div>
+                )}
 
-            <DialogFooter className="gap-2 flex-col sm:flex-row">
+                {/* Verification Notes */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Coach Notes (Optional)</p>
+                  <Textarea
+                    placeholder="Add any notes about this verification (e.g. verified during training, tested in-person)..."
+                    value={verifyNotes}
+                    onChange={e => setVerifyNotes(e.target.value)}
+                    rows={2}
+                    className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853] resize-none text-sm"
+                  />
+                </div>
+
+                {/* Correction Summary */}
+                {(() => {
+                  const changedCount = Object.entries(corrections).reduce((total, [cat, attrs]) => {
+                    const original = viewAthlete.detailedAttributes?.[cat as keyof typeof viewAthlete.detailedAttributes] as Record<string, number> | undefined;
+                    return total + Object.entries(attrs).filter(([stat, val]) => original?.[stat] !== val).length;
+                  }, 0);
+                  return changedCount > 0 ? (
+                    <div className="p-3 rounded-xl bg-[#FF6D00]/5 border border-[#FF6D00]/20">
+                      <p className="text-[11px] font-black text-[#FF6D00]">
+                        {changedCount} stat correction{changedCount !== 1 ? 's' : ''} will be applied and recorded in the audit trail.
+                      </p>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            </ScrollArea>
+
+            <DialogFooter className="gap-2 flex-col sm:flex-row pt-4 border-t border-[#1E293B]">
               <Button
                 variant="outline"
-                onClick={() => handleVerify(viewAthlete, false)}
-                disabled={processingId === viewAthlete.uid}
+                onClick={() => handleQuickVerify(viewAthlete, false)}
+                disabled={confirmLoading || processingId === viewAthlete.uid}
                 className="border-red-500/30 text-red-400 hover:bg-red-400/10 font-black uppercase text-[10px] flex-1"
               >
                 <XCircle className="h-4 w-4 mr-2" /> Decline
               </Button>
               <Button
-                onClick={() => { handleVerify(viewAthlete, true); setViewAthlete(null); }}
-                disabled={processingId === viewAthlete.uid}
+                onClick={handleConfirmVerification}
+                disabled={confirmLoading}
                 className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black uppercase text-[10px] flex-1 gap-2"
               >
-                {processingId === viewAthlete.uid ? (
+                {confirmLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <ShieldCheck className="h-4 w-4" />
                 )}
-                Verify & Confirm
+                Confirm & Verify
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -272,6 +604,10 @@ function AthleteVerifyCard({
   onDecline: () => void;
   onView: () => void;
 }) {
+  const hasAttributes = a.detailedAttributes && Object.values(a.detailedAttributes).some(
+    cat => Object.keys(cat as Record<string, number>).length > 0
+  );
+
   return (
     <Card className="border border-[#1E293B] bg-[#111827] hover:border-[#FF6D00]/30 transition-colors">
       <CardContent className="p-4">
@@ -293,18 +629,21 @@ function AthleteVerifyCard({
               <Badge className="bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/20 font-black text-[8px]">
                 <Clock className="h-2.5 w-2.5 mr-1" /> Pending
               </Badge>
+              {hasAttributes && (
+                <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 font-black text-[8px]">
+                  <Edit3 className="h-2.5 w-2.5 mr-1" /> Has detailed stats
+                </Badge>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 shrink-0">
-            <Button
-              size="sm" variant="ghost"
-              onClick={onView}
-              className="border border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-black text-[10px] uppercase h-7 gap-1"
-            >
-              <Eye className="h-3 w-3" /> View
-            </Button>
-          </div>
+          <Button
+            size="sm" variant="ghost"
+            onClick={onView}
+            className="border border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-black text-[10px] uppercase h-8 gap-1 shrink-0"
+          >
+            <Eye className="h-3 w-3" /> Review Stats
+          </Button>
         </div>
 
         {/* Metrics preview */}
@@ -313,7 +652,7 @@ function AthleteVerifyCard({
             { label: 'CSI', value: a.compositeScoutingIndex ?? '--' },
             { label: 'Risk', value: a.riskIndex ?? '--' },
             { label: 'Perf', value: a.performanceIndex ?? '--' },
-            { label: 'CSI-C', value: a.consistencyIndex ?? '--' },
+            { label: 'Cons', value: a.consistencyIndex ?? '--' },
           ].map(s => (
             <div key={s.label} className="text-center p-2 rounded-lg bg-[#1C2333]">
               <p className="text-sm font-black text-white">{s.value}</p>
@@ -333,16 +672,19 @@ function AthleteVerifyCard({
           </Button>
           <Button
             size="sm"
+            onClick={onView}
+            className="flex-1 bg-[#FF6D00] hover:bg-[#FF6D00]/90 text-white font-black text-[10px] uppercase h-8 gap-1"
+          >
+            <Edit3 className="h-3 w-3" /> Review & Verify
+          </Button>
+          <Button
+            size="sm"
             onClick={onVerify}
             disabled={loading}
-            className="flex-1 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase h-8 gap-1"
+            className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase h-8 gap-1 px-3"
+            title="Quick verify without reviewing stats"
           >
-            {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-3 w-3" />
-            )}
-            Verify
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
           </Button>
         </div>
       </CardContent>

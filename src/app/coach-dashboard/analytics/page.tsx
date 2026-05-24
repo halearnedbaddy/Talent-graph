@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   BarChart3, TrendingUp, TrendingDown, Minus, Users,
-  Loader2, Star, AlertTriangle, Activity, Target, Shield, Printer
+  Loader2, Star, AlertTriangle, Activity, Target, Shield, Printer,
+  Brain, Dumbbell, Zap, ChevronRight
 } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -20,6 +21,7 @@ import {
 } from 'recharts';
 import type { ClubMember, AthleteProfile, ClubMatch } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
+import { format, parseISO } from 'date-fns';
 
 function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(' '); }
 
@@ -60,7 +62,7 @@ export default function CoachAnalyticsPage() {
     return athletes.find(a => a.uid === selectedAthleteId) ?? null;
   }, [athletes, selectedAthleteId]);
 
-  // Squad aggregate radar data
+  // Squad aggregate radar
   const squadRadarData = useMemo(() => {
     if (!athletes || athletes.length === 0) return [];
     const metrics = ['performanceIndex', 'efficiencyIndex', 'consistencyIndex', 'contextIndex', 'developmentIndex'];
@@ -70,7 +72,7 @@ export default function CoachAnalyticsPage() {
     }));
   }, [athletes]);
 
-  // Individual radar data
+  // Individual high-level radar (index scores)
   const individualRadarData = useMemo(() => {
     if (!selectedAthlete) return [];
     return [
@@ -82,7 +84,26 @@ export default function CoachAnalyticsPage() {
     ];
   }, [selectedAthlete]);
 
-  // Match history bar chart
+  // Tabbed attribute radars — Technical, Mental, Physical
+  const technicalRadar = useMemo(() => {
+    const attrs = selectedAthlete?.detailedAttributes?.Technical;
+    if (!attrs) return [];
+    return Object.entries(attrs).map(([k, v]) => ({ subject: k.replace(/([A-Z])/g, ' $1').trim(), value: Number(v) || 0 }));
+  }, [selectedAthlete]);
+
+  const mentalRadar = useMemo(() => {
+    const attrs = selectedAthlete?.detailedAttributes?.Mental;
+    if (!attrs) return [];
+    return Object.entries(attrs).map(([k, v]) => ({ subject: k.replace(/([A-Z])/g, ' $1').trim(), value: Number(v) || 0 }));
+  }, [selectedAthlete]);
+
+  const physicalRadar = useMemo(() => {
+    const attrs = selectedAthlete?.detailedAttributes?.Physical;
+    if (!attrs) return [];
+    return Object.entries(attrs).map(([k, v]) => ({ subject: k.replace(/([A-Z])/g, ' $1').trim(), value: Number(v) || 0 }));
+  }, [selectedAthlete]);
+
+  // Match history charts
   const matchHistoryData = useMemo(() => {
     if (!selectedAthlete?.matchHistory) return [];
     return [...(selectedAthlete.matchHistory)]
@@ -92,16 +113,56 @@ export default function CoachAnalyticsPage() {
         rating: m.rating ?? 0,
         goals: m.goals ?? 0,
         assists: m.assists ?? 0,
+        yellowCards: m.yellowCards ?? 0,
+        redCards: m.redCards ?? 0,
+        minutes: m.minutes ?? 0,
+        competition: m.competition,
+        opponent: m.opponent,
       }));
   }, [selectedAthlete]);
 
-  // Squad CSI ranking
+  // Discipline timeline — matches with cards
+  const disciplineTimeline = useMemo(() => {
+    if (!selectedAthlete?.matchHistory) return [];
+    return [...(selectedAthlete.matchHistory)]
+      .filter(m => (m.yellowCards ?? 0) > 0 || (m.redCards ?? 0) > 0)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [selectedAthlete]);
+
+  // Consistency metrics
+  const consistencyStats = useMemo(() => {
+    const history = selectedAthlete?.matchHistory ?? [];
+    if (history.length < 2) return null;
+    const ratings = history.map(m => m.rating ?? 0).filter(r => r > 0);
+    if (ratings.length < 2) return null;
+    const mean = ratings.reduce((s, r) => s + r, 0) / ratings.length;
+    const variance = ratings.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / ratings.length;
+    const stdDev = Math.sqrt(variance);
+    const above7 = ratings.filter(r => r >= 7).length;
+    const below6 = ratings.filter(r => r < 6).length;
+    return {
+      mean: mean.toFixed(1),
+      stdDev: stdDev.toFixed(2),
+      above7: Math.round(above7 / ratings.length * 100),
+      below6: Math.round(below6 / ratings.length * 100),
+      totalApps: history.length,
+    };
+  }, [selectedAthlete]);
+
+  // Squad ranking + most improved (need previous benchmarks — use developmentIndex as proxy)
   const squadRanking = useMemo(() => {
     if (!athletes) return [];
     return [...athletes].sort((a, b) => (b.compositeScoutingIndex ?? 0) - (a.compositeScoutingIndex ?? 0));
   }, [athletes]);
 
-  // Squad match form (last 5 matches)
+  const mostImproved = useMemo(() => {
+    if (!athletes) return [];
+    return [...athletes]
+      .filter(a => (a.developmentIndex ?? 0) > 0)
+      .sort((a, b) => (b.developmentIndex ?? 0) - (a.developmentIndex ?? 0))
+      .slice(0, 3);
+  }, [athletes]);
+
   const recentForm = useMemo(() => {
     if (!matches) return [];
     return [...matches]
@@ -119,25 +180,23 @@ export default function CoachAnalyticsPage() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; color: black !important; }
-          .print-root { color: black !important; }
         }
         @page { size: A4 landscape; margin: 1.2cm; }
       `}</style>
+
       <div className="flex items-start justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase">Performance Analytics</h1>
           <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">
-            Individual · Squad · Trends
+            Individual · Squad · Discipline Timeline
           </p>
         </div>
         <Button
-          size="sm"
-          variant="outline"
+          size="sm" variant="outline"
           className="gap-2 border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-bold text-xs"
           onClick={() => window.print()}
         >
-          <Printer className="w-3.5 h-3.5" />
-          Export PDF
+          <Printer className="w-3.5 h-3.5" /> Export PDF
         </Button>
       </div>
 
@@ -168,6 +227,11 @@ export default function CoachAnalyticsPage() {
               <p className="text-sm font-black text-white">{selectedAthlete.firstName} {selectedAthlete.lastName}</p>
               <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{selectedAthlete.position} · {selectedAthlete.age}y</p>
             </div>
+            {selectedAthlete.isVerified && (
+              <Badge className="bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30 font-black text-[9px] gap-1">
+                <Shield className="h-3 w-3" /> Verified
+              </Badge>
+            )}
           </div>
         )}
       </div>
@@ -175,9 +239,9 @@ export default function CoachAnalyticsPage() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-[#00C853]" /></div>
       ) : selectedAthleteId === 'squad' ? (
-        /* Squad View */
+
+        /* ─── SQUAD VIEW ─── */
         <div className="space-y-5">
-          {/* Squad KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: 'Squad Size', value: athletes?.length ?? 0, color: 'text-white' },
@@ -194,7 +258,7 @@ export default function CoachAnalyticsPage() {
             ))}
           </div>
 
-          {/* Match form */}
+          {/* Recent form */}
           {recentForm.length > 0 && (
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
@@ -213,12 +277,8 @@ export default function CoachAnalyticsPage() {
                     )}>
                       <span className={cn('text-xl font-black',
                         m.result === 'W' ? 'text-[#00C853]' : m.result === 'L' ? 'text-red-400' : 'text-[#94A3B8]'
-                      )}>
-                        {m.result}
-                      </span>
-                      <span className="text-[8px] font-bold text-[#94A3B8] truncate max-w-full text-center">
-                        {m.score ?? '—'}
-                      </span>
+                      )}>{m.result}</span>
+                      <span className="text-[8px] font-bold text-[#94A3B8] truncate max-w-full">{m.score ?? '—'}</span>
                     </div>
                   ))}
                 </div>
@@ -226,11 +286,11 @@ export default function CoachAnalyticsPage() {
             </Card>
           )}
 
-          {/* Radar + Ranking */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Squad radar */}
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
-                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Squad Avg Radar</CardTitle>
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Squad Avg Index Radar</CardTitle>
               </CardHeader>
               <CardContent className="p-4 h-56">
                 {squadRadarData.length > 0 ? (
@@ -249,38 +309,69 @@ export default function CoachAnalyticsPage() {
               </CardContent>
             </Card>
 
+            {/* CSI Ranking */}
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
                 <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">CSI Ranking</CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-2">
                 {squadRanking.slice(0, 5).map((a, i) => (
-                  <div key={a.uid} className="flex items-center gap-3">
-                    <span className={cn('text-[10px] font-black w-5 shrink-0', i === 0 ? 'text-[#00C853]' : 'text-[#94A3B8]')}>
-                      #{i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
+                  <button
+                    key={a.uid}
+                    onClick={() => setSelectedAthleteId(a.uid)}
+                    className="w-full flex items-center gap-3 hover:bg-[#1C2333] rounded-lg px-1 py-0.5 transition-colors"
+                  >
+                    <span className={cn('text-[10px] font-black w-5 shrink-0', i === 0 ? 'text-[#00C853]' : 'text-[#94A3B8]')}>#{i + 1}</span>
+                    <div className="flex-1 min-w-0 text-left">
                       <p className="text-sm font-black text-white truncate">{a.firstName} {a.lastName}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="h-1.5 w-20 rounded-full bg-[#1E293B] overflow-hidden">
-                        <div
-                          className="h-full bg-[#00C853] rounded-full"
-                          style={{ width: `${Math.min((a.compositeScoutingIndex ?? 0), 100)}%` }}
-                        />
+                        <div className="h-full bg-[#00C853] rounded-full" style={{ width: `${Math.min(a.compositeScoutingIndex ?? 0, 100)}%` }} />
                       </div>
-                      <span className="text-sm font-black text-[#00C853] w-8 text-right">
-                        {a.compositeScoutingIndex ?? 0}
-                      </span>
+                      <span className="text-sm font-black text-[#00C853] w-8 text-right">{a.compositeScoutingIndex ?? 0}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
-                {squadRanking.length === 0 && (
-                  <p className="text-[#94A3B8] text-sm text-center py-4">No athletes yet</p>
-                )}
+                {squadRanking.length === 0 && <p className="text-[#94A3B8] text-sm text-center py-4">No athletes yet</p>}
               </CardContent>
             </Card>
           </div>
+
+          {/* Most Improved */}
+          {mostImproved.length > 0 && (
+            <Card className="border border-[#1E293B] bg-[#111827]">
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-[#00C853]" /> Most Improved (by Development Index)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {mostImproved.map((a, i) => (
+                    <button
+                      key={a.uid}
+                      onClick={() => setSelectedAthleteId(a.uid)}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-[#1C2333] hover:bg-[#1C2333]/80 text-left transition-colors border border-[#1E293B] hover:border-[#00C853]/30"
+                    >
+                      <span className={cn('text-[10px] font-black w-4 shrink-0', i === 0 ? 'text-[#00C853]' : 'text-[#94A3B8]')}>#{i + 1}</span>
+                      <Avatar className="h-8 w-8 rounded-xl shrink-0">
+                        <AvatarImage src={a.photoUrl} className="object-cover" />
+                        <AvatarFallback className="rounded-xl bg-[#0A0E1A] text-[#94A3B8] text-xs font-black">
+                          {a.firstName[0]}{a.lastName[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-white truncate">{a.firstName} {a.lastName}</p>
+                        <p className="text-[9px] font-bold text-[#94A3B8]">Dev Index: <span className="text-[#00C853]">{a.developmentIndex}</span></p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-[#94A3B8] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Full squad table */}
           <Card className="border border-[#1E293B] bg-[#111827]">
@@ -300,9 +391,7 @@ export default function CoachAnalyticsPage() {
                   <tbody className="divide-y divide-[#1E293B]">
                     {squadRanking.map(a => (
                       <tr key={a.uid} className="hover:bg-[#1C2333] transition-colors cursor-pointer" onClick={() => setSelectedAthleteId(a.uid)}>
-                        <td className="py-2 px-2">
-                          <span className="font-black text-white">{a.firstName} {a.lastName}</span>
-                        </td>
+                        <td className="py-2 px-2"><span className="font-black text-white">{a.firstName} {a.lastName}</span></td>
                         <td className="py-2 px-2 text-[#94A3B8] font-bold">{a.position ?? '—'}</td>
                         <td className="py-2 px-2 text-[#94A3B8] font-bold">{a.age}</td>
                         {[a.compositeScoutingIndex, a.performanceIndex, a.efficiencyIndex, a.consistencyIndex, a.developmentIndex].map((v, i) => (
@@ -317,24 +406,24 @@ export default function CoachAnalyticsPage() {
                     ))}
                   </tbody>
                 </table>
-                {squadRanking.length === 0 && (
-                  <p className="text-center text-[#94A3B8] text-sm py-8">No athletes in squad</p>
-                )}
+                {squadRanking.length === 0 && <p className="text-center text-[#94A3B8] text-sm py-8">No athletes in squad</p>}
               </div>
             </CardContent>
           </Card>
         </div>
+
       ) : selectedAthlete ? (
-        /* Individual View */
+
+        /* ─── INDIVIDUAL VIEW ─── */
         <div className="space-y-5">
-          {/* Individual KPIs */}
+          {/* KPI Cards */}
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {[
               { label: 'CSI', value: selectedAthlete.compositeScoutingIndex ?? '--', color: 'text-[#00C853]' },
               { label: 'Performance', value: selectedAthlete.performanceIndex ?? '--', color: 'text-white' },
               { label: 'Efficiency', value: selectedAthlete.efficiencyIndex ?? '--', color: 'text-white' },
               { label: 'Consistency', value: selectedAthlete.consistencyIndex ?? '--', color: 'text-white' },
-              { label: 'Development', value: selectedAthlete.developmentIndex ?? '--', color: 'text-white' },
+              { label: 'Development', value: selectedAthlete.developmentIndex ?? '--', color: 'text-[#00C853]' },
               { label: 'Risk', value: selectedAthlete.riskIndex ?? '--', color: (selectedAthlete.riskIndex ?? 0) >= 60 ? 'text-red-400' : 'text-[#94A3B8]' },
             ].map(s => (
               <Card key={s.label} className="border border-[#1E293B] bg-[#111827]">
@@ -347,7 +436,7 @@ export default function CoachAnalyticsPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Radar */}
+            {/* High-level performance radar */}
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
                 <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Performance Radar</CardTitle>
@@ -370,7 +459,7 @@ export default function CoachAnalyticsPage() {
               </CardContent>
             </Card>
 
-            {/* Match history */}
+            {/* Match rating history */}
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
                 <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Match Rating History</CardTitle>
@@ -396,7 +485,7 @@ export default function CoachAnalyticsPage() {
             </Card>
           </div>
 
-          {/* Goals/Assists bar */}
+          {/* Goals/Assists */}
           {matchHistoryData.length > 0 && (
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
@@ -418,38 +507,232 @@ export default function CoachAnalyticsPage() {
             </Card>
           )}
 
-          {/* Detailed attributes */}
+          {/* ── ATTRIBUTE RADARS — Technical / Mental / Physical tabs ── */}
           {selectedAthlete.detailedAttributes && (
             <Card className="border border-[#1E293B] bg-[#111827]">
               <CardHeader className="p-4 pb-0">
-                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Detailed Attributes</CardTitle>
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                  <Target className="h-4 w-4 text-[#00C853]" /> Detailed Attribute Radars
+                </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 space-y-4">
-                {Object.entries(selectedAthlete.detailedAttributes).map(([cat, attrs]) => (
-                  <div key={cat}>
-                    <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-2">{cat}</p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {Object.entries(attrs).map(([attr, val]) => {
-                        const numVal = Number(val) || 0;
-                        return (
-                          <div key={attr} className="flex items-center justify-between p-2 rounded-lg bg-[#1C2333]">
-                            <span className="text-[10px] font-bold text-[#94A3B8]">{attr}</span>
-                            <div className="flex items-center gap-2">
-                              <div className="h-1.5 w-12 rounded-full bg-[#1E293B] overflow-hidden">
-                                <div className="h-full bg-[#00C853] rounded-full" style={{ width: `${Math.min(numVal, 100)}%` }} />
-                              </div>
-                              <span className="text-[10px] font-black text-white w-5 text-right">{numVal}</span>
-                            </div>
+              <CardContent className="p-4">
+                <Tabs defaultValue="technical" className="space-y-4">
+                  <TabsList className="bg-[#1C2333] border border-[#1E293B] p-1">
+                    <TabsTrigger
+                      value="technical"
+                      className="data-[state=active]:bg-blue-500 data-[state=active]:text-white font-black text-[10px] uppercase gap-1.5"
+                    >
+                      <Zap className="h-3 w-3" /> Technical
+                      {technicalRadar.length > 0 && (
+                        <span className="ml-1 text-[9px] opacity-70">
+                          avg {Math.round(technicalRadar.reduce((s, d) => s + d.value, 0) / technicalRadar.length)}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="mental"
+                      className="data-[state=active]:bg-purple-500 data-[state=active]:text-white font-black text-[10px] uppercase gap-1.5"
+                    >
+                      <Brain className="h-3 w-3" /> Mental
+                      {mentalRadar.length > 0 && (
+                        <span className="ml-1 text-[9px] opacity-70">
+                          avg {Math.round(mentalRadar.reduce((s, d) => s + d.value, 0) / mentalRadar.length)}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="physical"
+                      className="data-[state=active]:bg-[#FF6D00] data-[state=active]:text-white font-black text-[10px] uppercase gap-1.5"
+                    >
+                      <Dumbbell className="h-3 w-3" /> Physical
+                      {physicalRadar.length > 0 && (
+                        <span className="ml-1 text-[9px] opacity-70">
+                          avg {Math.round(physicalRadar.reduce((s, d) => s + d.value, 0) / physicalRadar.length)}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {[
+                    { key: 'technical', data: technicalRadar, color: '#3B82F6', label: 'Technical', icon: Zap },
+                    { key: 'mental', data: mentalRadar, color: '#A855F7', label: 'Mental', icon: Brain },
+                    { key: 'physical', data: physicalRadar, color: '#FF6D00', label: 'Physical', icon: Dumbbell },
+                  ].map(({ key, data, color, label }) => (
+                    <TabsContent key={key} value={key} className="space-y-4">
+                      {data.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* Radar */}
+                          <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <RadarChart data={data}>
+                                <PolarGrid stroke="#1E293B" />
+                                <PolarAngleAxis
+                                  dataKey="subject"
+                                  tick={{ fill: '#94A3B8', fontSize: 9, fontWeight: 700 }}
+                                />
+                                <Radar
+                                  name={label}
+                                  dataKey="value"
+                                  stroke={color}
+                                  fill={color}
+                                  fillOpacity={0.15}
+                                  strokeWidth={2}
+                                />
+                              </RadarChart>
+                            </ResponsiveContainer>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                          {/* Bar list */}
+                          <div className="space-y-2">
+                            {[...data].sort((a, b) => b.value - a.value).map(d => (
+                              <div key={d.subject} className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-[#94A3B8]">{d.subject}</span>
+                                  <span className="text-[10px] font-black text-white">{d.value}</span>
+                                </div>
+                                <div className="h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{ width: `${Math.min(d.value, 100)}%`, backgroundColor: color }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-10 gap-2">
+                          <BarChart3 className="h-10 w-10 text-[#94A3B8] opacity-30" />
+                          <p className="text-[#94A3B8] text-sm font-bold">No {label.toLowerCase()} attributes recorded</p>
+                          <p className="text-[#94A3B8] text-xs">Verify the athlete's profile to populate these stats.</p>
+                        </div>
+                      )}
+                    </TabsContent>
+                  ))}
+                </Tabs>
               </CardContent>
             </Card>
           )}
+
+          {/* ── CONSISTENCY DEEP DIVE ── */}
+          {consistencyStats && (
+            <Card className="border border-[#1E293B] bg-[#111827]">
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-[#00C853]" /> Consistency Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Apps Analysed', value: `${consistencyStats.totalApps}`, color: 'text-white' },
+                    { label: 'Avg Rating', value: consistencyStats.mean, color: Number(consistencyStats.mean) >= 7 ? 'text-[#00C853]' : 'text-[#FF6D00]' },
+                    { label: 'Rating StdDev', value: consistencyStats.stdDev, color: Number(consistencyStats.stdDev) <= 1 ? 'text-[#00C853]' : 'text-[#FF6D00]' },
+                    { label: 'Rated 7+', value: `${consistencyStats.above7}%`, color: consistencyStats.above7 >= 60 ? 'text-[#00C853]' : 'text-[#94A3B8]' },
+                  ].map(s => (
+                    <div key={s.label} className="p-3 rounded-xl bg-[#1C2333] text-center">
+                      <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                      <p className="text-[8px] font-black text-[#94A3B8] uppercase tracking-widest mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 p-3 rounded-xl bg-[#1C2333] border border-[#1E293B]">
+                  <p className="text-[10px] text-[#94A3B8]">
+                    {Number(consistencyStats.stdDev) <= 0.8
+                      ? '✓ Highly consistent performer — rating variance is very low.'
+                      : Number(consistencyStats.stdDev) <= 1.5
+                        ? '~ Moderate consistency — some match-to-match variation.'
+                        : '⚠ High variance — performance fluctuates significantly between matches.'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── DISCIPLINE TIMELINE ── */}
+          <Card className="border border-[#1E293B] bg-[#111827]">
+            <CardHeader className="p-4 pb-0">
+              <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-[#FF6D00]" /> Discipline Timeline
+                {disciplineTimeline.length > 0 && (
+                  <Badge className="bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/30 font-black text-[9px]">
+                    {disciplineTimeline.reduce((s, m) => s + (m.yellowCards ?? 0), 0)}Y ·{' '}
+                    {disciplineTimeline.reduce((s, m) => s + (m.redCards ?? 0), 0)}R
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              {disciplineTimeline.length === 0 ? (
+                <div className="text-center py-8">
+                  <Shield className="h-8 w-8 text-[#00C853] mx-auto mb-2 opacity-60" />
+                  <p className="text-[#94A3B8] text-sm font-bold">Clean discipline record</p>
+                  <p className="text-[#94A3B8] text-xs mt-1">No yellow or red cards on record.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Summary bar */}
+                  <div className="flex items-center gap-4 p-3 rounded-xl bg-[#1C2333]">
+                    <div className="text-center">
+                      <p className="text-2xl font-black text-yellow-400">
+                        {disciplineTimeline.reduce((s, m) => s + (m.yellowCards ?? 0), 0)}
+                      </p>
+                      <p className="text-[9px] font-black text-[#94A3B8] uppercase">Yellow Cards</p>
+                    </div>
+                    <div className="w-px h-10 bg-[#1E293B]" />
+                    <div className="text-center">
+                      <p className="text-2xl font-black text-red-400">
+                        {disciplineTimeline.reduce((s, m) => s + (m.redCards ?? 0), 0)}
+                      </p>
+                      <p className="text-[9px] font-black text-[#94A3B8] uppercase">Red Cards</p>
+                    </div>
+                    <div className="w-px h-10 bg-[#1E293B]" />
+                    <div className="flex-1">
+                      <p className="text-xs text-[#94A3B8]">
+                        Across <span className="text-white font-black">{disciplineTimeline.length}</span> match{disciplineTimeline.length !== 1 ? 'es' : ''} with disciplinary incidents
+                        out of <span className="text-white font-black">{selectedAthlete.matchHistory?.length ?? 0}</span> total appearances.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Timeline cards */}
+                  <div className="space-y-0">
+                    {disciplineTimeline.map((m, i) => (
+                      <div key={i} className="flex items-start gap-3 py-2.5">
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full bg-[#FF6D00] mt-1.5 shrink-0" />
+                          {i < disciplineTimeline.length - 1 && (
+                            <div className="w-px flex-1 bg-[#1E293B] mt-1" style={{ minHeight: '14px' }} />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 pb-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-black text-white">
+                              {m.opponent ? `vs ${m.opponent}` : m.competition}
+                            </p>
+                            {(m.yellowCards ?? 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-yellow-400/15 text-yellow-400 border border-yellow-400/30">
+                                🟨 ×{m.yellowCards}
+                              </span>
+                            )}
+                            {(m.redCards ?? 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-red-500/15 text-red-400 border border-red-500/30">
+                                🟥 ×{m.redCards}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-[#94A3B8] font-bold mt-0.5">
+                            {m.competition} · {m.minutes ?? 0} mins
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
+
       ) : (
         <div className="text-center py-16">
           <BarChart3 className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
