@@ -12,8 +12,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   MessageSquare, Send, Search, Inbox, Bell, Users, Shield,
-  Loader2, CheckCheck, Clock, ChevronRight, Plus, X
+  Loader2, CheckCheck, Clock, ChevronRight, Plus, X, Hash
 } from 'lucide-react';
+import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
@@ -51,7 +52,7 @@ export default function CoachCommunicationsPage() {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'squad' | 'staff' | 'announcements' | 'compose'>('inbox');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'squad' | 'staff' | 'announcements' | 'compose' | 'club-chat'>('inbox');
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
@@ -311,6 +312,9 @@ export default function CoachCommunicationsPage() {
           </TabsTrigger>
           <TabsTrigger value="announcements" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
             <Bell className="h-3 w-3" /> Announce
+          </TabsTrigger>
+          <TabsTrigger value="club-chat" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
+            <Hash className="h-3 w-3" /> Club Chat
           </TabsTrigger>
           <TabsTrigger value="compose" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
             <Plus className="h-3 w-3" /> New Message
@@ -619,6 +623,21 @@ export default function CoachCommunicationsPage() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* CLUB CHAT */}
+        <TabsContent value="club-chat">
+          {clubId ? (
+            <div className="rounded-2xl overflow-hidden border border-[#1E293B]">
+              <SquadChatWidget clubId={clubId} scrollHeight="420px" />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <Hash className="h-10 w-10 text-[#94A3B8] opacity-30" />
+              <p className="text-white font-black">Not linked to a club</p>
+              <p className="text-[#94A3B8] text-sm">You need to be an active member of a club to access Club Chat.</p>
+            </div>
+          )}
         </TabsContent>
 
         {/* COMPOSE */}

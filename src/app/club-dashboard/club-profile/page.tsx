@@ -100,17 +100,37 @@ export default function ClubProfilePage() {
     });
   }, [club]);
 
+  const sanitisePayload = (obj: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+
   const handleSave = async () => {
     if (!firestore || !clubId) return;
     setIsSaving(true);
     try {
+      const payload = sanitisePayload({
+        clubName: form.clubName,
+        location: form.location,
+        county: form.county,
+        contactEmail: form.contactEmail,
+        contactPhone: form.contactPhone,
+        venue: form.venue,
+        league: form.league,
+        founded: form.founded,
+        bio: form.bio,
+        charges: form.charges,
+        winningAllowance: form.winningAllowance,
+        gameAllowance: form.gameAllowance,
+        ...(form.websiteLinks.length > 0 ? { websiteLinks: form.websiteLinks } : {}),
+        ...(form.sportFocus.length > 0 ? { sportFocus: form.sportFocus } : {}),
+      });
       await updateDoc(doc(firestore, 'clubs', clubId), {
-        ...form,
+        ...payload,
         updatedAt: new Date().toISOString(),
       });
-      toast({ title: 'Club profile updated', description: 'Your club information has been saved.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to update club profile.' });
+      toast({ title: 'Club profile saved', description: 'Your club information has been updated successfully.' });
+    } catch (err: any) {
+      console.error('[ClubProfile] update error:', err?.code, err?.message);
+      toast({ variant: 'destructive', title: 'Update failed', description: err?.message ?? 'Check your connection and try again.' });
     } finally {
       setIsSaving(false);
     }

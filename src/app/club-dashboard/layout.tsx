@@ -46,7 +46,6 @@ const navItems = [
   { href: '/club-dashboard/coaching-staff', label: 'Coaching Staff', icon: GraduationCap },
   { href: '/club-dashboard/scouts', label: 'Scouts', icon: UserPlus },
   { href: '/club-dashboard/squad-chat', label: 'Chat', icon: MessageSquare },
-  { href: '/chat', label: 'DM', icon: MessageSquareShare },
   { href: '/club-dashboard/matches', label: 'Matches', icon: Trophy },
   { href: '/club-dashboard/live-match', label: 'Live', icon: Radio, badge: 'LIVE' },
   { href: '/club-dashboard/practices', label: 'Training', icon: Activity },

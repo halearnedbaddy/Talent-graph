@@ -34,19 +34,27 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
-      await sendPasswordResetEmail(auth, values.email);
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      await sendPasswordResetEmail(auth, values.email, {
+        url: `${appUrl}/login`,
+        handleCodeInApp: false,
+      });
       toast({
-        title: "Password reset link sent!",
-        description: "If an account exists for this email, a reset link has been sent.",
+        title: "Reset link sent",
+        description: "If this email is registered, a reset link has been sent. Check your inbox.",
       });
       setEmailSent(true);
     } catch (error: any) {
-       // To prevent user enumeration, we show a generic success message even on error.
-       toast({
-        title: "Password reset link sent!",
-        description: "If an account exists for this email, a reset link has been sent.",
-      });
-      setEmailSent(true);
+      if (error?.code === 'auth/invalid-email') {
+        toast({ variant: 'destructive', title: 'Invalid email', description: 'Please enter a valid email address.' });
+      } else {
+        // Generic response to prevent user enumeration
+        toast({
+          title: "Reset link sent",
+          description: "If this email is registered, a reset link has been sent. Check your inbox.",
+        });
+        setEmailSent(true);
+      }
     } finally {
       setIsLoading(false);
     }

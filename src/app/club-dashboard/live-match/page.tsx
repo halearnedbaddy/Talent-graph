@@ -70,6 +70,10 @@ const STAT_ROWS: { label: string; homeKey: keyof LiveMatchStatSnapshot; awayKey:
   { label: '1 v 1', homeKey: 'homeOneVOne', awayKey: 'awayOneVOne', color: 'bg-rose-500', section: 'Goalkeeping' },
 ];
 
+function sanitiseEvent(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined));
+}
+
 export default function LiveMatchPage() {
   const { user } = useUser();
   const firestore = useFirestore();
@@ -249,17 +253,18 @@ export default function LiveMatchPage() {
       const isHome = goalForm.team === 'home';
       const newHomeScore = isHome ? activeLive.homeScore + 1 : activeLive.homeScore;
       const newAwayScore = isHome ? activeLive.awayScore : activeLive.awayScore + 1;
-      await addDoc(collection(firestore, 'live_match_events'), {
-        id: crypto.randomUUID(), matchId: activeLive.id, type: 'goal',
+      await addDoc(collection(firestore, 'live_match_events'), sanitiseEvent({
+        matchId: activeLive.id, type: 'goal',
         minute: goalForm.minute, team: goalForm.team,
-        playerName: goalForm.playerName,
-        assistPlayerName: goalForm.assistPlayerName || null,
-        goalType: goalForm.goalType, goalBodyPart: goalForm.goalBodyPart,
-        goalDistance: goalForm.goalDistance || null,
+        playerName: goalForm.playerName || undefined,
+        assistPlayerName: goalForm.assistPlayerName || undefined,
+        goalType: goalForm.goalType || undefined,
+        goalBodyPart: goalForm.goalBodyPart || undefined,
+        goalDistance: goalForm.goalDistance || undefined,
         offsideFlag: goalForm.offsideFlag,
         statSnapshot: { homeGoals: newHomeScore, awayGoals: newAwayScore },
         createdAt: new Date().toISOString(),
-      });
+      }));
       await updateDoc(doc(firestore, 'live_matches', activeLive.id), {
         homeScore: newHomeScore, awayScore: newAwayScore, currentMinute: goalForm.minute,
       });
@@ -312,12 +317,13 @@ export default function LiveMatchPage() {
     if (!firestore || !activeLive) return;
     setIsSaving(true);
     try {
-      await addDoc(collection(firestore, 'live_match_events'), {
-        id: crypto.randomUUID(), matchId: activeLive.id, type: cardForm.type,
+      await addDoc(collection(firestore, 'live_match_events'), sanitiseEvent({
+        matchId: activeLive.id, type: cardForm.type,
         minute: cardForm.minute, team: cardForm.team,
-        playerName: cardForm.playerName, cardReason: cardForm.cardReason,
+        playerName: cardForm.playerName || undefined,
+        cardReason: cardForm.cardReason || undefined,
         createdAt: new Date().toISOString(),
-      });
+      }));
       toast({ title: `${cardForm.type === 'yellow_card' ? 'Yellow' : 'Red'} Card`, description: `${cardForm.playerName} — ${cardForm.minute}'` });
       setEventDialog(null);
       setCardForm(f => ({ ...f, playerName: '', cardReason: '' }));
@@ -332,13 +338,14 @@ export default function LiveMatchPage() {
     if (!firestore || !activeLive || !subForm.offPlayerName || !subForm.onPlayerName) return;
     setIsSaving(true);
     try {
-      await addDoc(collection(firestore, 'live_match_events'), {
-        id: crypto.randomUUID(), matchId: activeLive.id, type: 'substitution',
+      await addDoc(collection(firestore, 'live_match_events'), sanitiseEvent({
+        matchId: activeLive.id, type: 'substitution',
         minute: subForm.minute, team: subForm.team,
-        offPlayerName: subForm.offPlayerName, onPlayerName: subForm.onPlayerName,
-        substitutionReason: subForm.substitutionReason,
+        offPlayerName: subForm.offPlayerName || undefined,
+        onPlayerName: subForm.onPlayerName || undefined,
+        substitutionReason: subForm.substitutionReason || undefined,
         createdAt: new Date().toISOString(),
-      });
+      }));
       toast({ title: 'Substitution', description: `Off: ${subForm.offPlayerName} / On: ${subForm.onPlayerName}` });
       setEventDialog(null);
       setSubForm(f => ({ ...f, offPlayerName: '', onPlayerName: '', substitutionReason: '' }));
