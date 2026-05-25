@@ -84,20 +84,21 @@ export default function CoachVerifyPage() {
     if (!firestore || !clubId || !user) return;
     setProcessingId(a.uid);
     try {
+      const now = new Date().toISOString();
+      const coachName = user.displayName || user.email || 'Coach';
       await updateDoc(doc(firestore, 'athletes', a.uid), {
         isVerified: approve,
         attributesVerified: approve,
-        verifiedBy: approve ? (user.displayName || user.email || 'Coach') : null,
-        verifiedAt: approve ? new Date().toISOString() : null,
-        updatedAt: new Date().toISOString(),
+        verifiedBy: approve ? coachName : null,
+        verifiedAt: approve ? now : null,
+        updatedAt: now,
       });
       if (approve) {
-        // Write to verifications/ collection
         await addDoc(collection(firestore, 'verifications'), {
           athleteId: a.uid,
           athleteName: `${a.firstName} ${a.lastName}`,
           coachId: user.uid,
-          coachName: user.displayName || user.email || 'Coach',
+          coachName,
           clubId,
           statsSnapshot: {
             compositeScoutingIndex: a.compositeScoutingIndex,
@@ -109,8 +110,19 @@ export default function CoachVerifyPage() {
           },
           corrections: [],
           notes: 'Quick verification — no stat corrections',
-          verifiedAt: new Date().toISOString(),
+          verifiedAt: now,
         });
+        try {
+          await addDoc(collection(firestore, 'notifications', a.uid, 'items'), {
+            type: 'verification',
+            title: 'Profile Verified ✓',
+            body: `Your profile has been verified by ${coachName}. Your stats are now institutional truth visible to scouts.`,
+            coachId: user.uid,
+            coachName,
+            isRead: false,
+            createdAt: now,
+          });
+        } catch { }
         smsSend('match-verified', {
           athletePhone: a.phone,
           athleteName: a.firstName,
@@ -198,6 +210,19 @@ export default function CoachVerifyPage() {
         notes: verifyNotes,
         verifiedAt: new Date().toISOString(),
       });
+
+      const coachNameFull = user.displayName || user.email || 'Coach';
+      try {
+        await addDoc(collection(firestore, 'notifications', viewAthlete.uid, 'items'), {
+          type: 'verification',
+          title: 'Profile Verified ✓',
+          body: `Your profile has been verified by ${coachNameFull}${correctionList.length > 0 ? ` with ${correctionList.length} correction${correctionList.length !== 1 ? 's' : ''}` : ''}. Your stats are now institutional truth visible to scouts.`,
+          coachId: user.uid,
+          coachName: coachNameFull,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch { }
 
       smsSend('match-verified', {
         athletePhone: viewAthlete.phone,

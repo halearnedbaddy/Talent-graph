@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
   collection, query, where, doc, addDoc, updateDoc,
-  serverTimestamp, orderBy, getDoc
+  serverTimestamp, orderBy, getDoc, getDocs, writeBatch
 } from 'firebase/firestore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -370,14 +370,13 @@ export default function LiveMatchPage() {
       )}
 
       {isMatchOver && (
-        <div className="rounded-2xl bg-[#1C2333] border border-[#1E293B] p-6 text-center space-y-2">
-          <CheckCircle2 className="h-10 w-10 text-[#00C853] mx-auto" />
-          <p className="text-[15px] font-black text-white">Match Completed</p>
-          <p className="text-[12px] text-[#94A3B8]">Final score: {activeLiveMatch.homeTeam} {activeLiveMatch.homeScore} – {activeLiveMatch.awayScore} {activeLiveMatch.awayTeam}</p>
-          <Button onClick={() => setView('lobby')} variant="outline" className="mt-2 border-[#1E293B] text-[#94A3B8] hover:text-white">
-            Back to Lobby
-          </Button>
-        </div>
+        <MatchCompleteCard
+          match={activeLiveMatch}
+          events={events ?? []}
+          clubId={clubId ?? ''}
+          onBack={() => setView('lobby')}
+          firestore={firestore}
+        />
       )}
 
       {/* Event entry modal */}
@@ -468,6 +467,134 @@ export default function LiveMatchPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MatchCompleteCard({
+  match, events, clubId, onBack, firestore,
+}: {
+  match: LiveMatch;
+  events: LiveMatchEvent[];
+  clubId: string;
+  onBack: () => void;
+  firestore: ReturnType<typeof useFirestore>;
+}) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSaveToProfiles() {
+    if (!firestore || !clubId) return;
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const homeScore = match.homeScore ?? 0;
+      const awayScore = match.awayScore ?? 0;
+      const resultStr = homeScore > awayScore ? 'W' : homeScore < awayScore ? 'L' : 'D';
+
+      // Get goals, cards by player name
+      const goalsByPlayer: Record<string, number> = {};
+      const yellowsByPlayer: Record<string, number> = {};
+      const redsByPlayer: Record<string, number> = {};
+      events.forEach(ev => {
+        if (ev.team !== 'home') return;
+        if (ev.type === 'goal' && ev.playerName) goalsByPlayer[ev.playerName] = (goalsByPlayer[ev.playerName] ?? 0) + 1;
+        if (ev.type === 'yellow_card' && ev.playerName) yellowsByPlayer[ev.playerName] = (yellowsByPlayer[ev.playerName] ?? 0) + 1;
+        if (ev.type === 'red_card' && ev.playerName) redsByPlayer[ev.playerName] = (redsByPlayer[ev.playerName] ?? 0) + 1;
+      });
+
+      const playerNames = new Set([...Object.keys(goalsByPlayer), ...Object.keys(yellowsByPlayer), ...Object.keys(redsByPlayer)]);
+      if (playerNames.size === 0) {
+        toast({ title: 'No home player events to sync', description: 'Log goals, cards or subs first.' });
+        setSaving(false);
+        return;
+      }
+
+      // Load athletes for this club
+      const athletesSnap = await getDocs(
+        query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId))
+      );
+      const athletes = athletesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+      const normalise = (s: string) => s.trim().toLowerCase();
+
+      const batch = writeBatch(firestore);
+      let matched = 0;
+
+      for (const name of playerNames) {
+        const athlete = athletes.find((a: any) => {
+          const full = `${a.firstName ?? ''} ${a.lastName ?? ''}`;
+          return normalise(full) === normalise(name) ||
+            normalise(a.lastName ?? '') === normalise(name) ||
+            normalise(a.firstName ?? '') === normalise(name);
+        });
+        if (!athlete) continue;
+
+        const existing: any[] = athlete.matchHistory ?? [];
+        const newEntry = {
+          id: `live-${match.id}-${Date.now()}`,
+          date: match.startedAt?.slice(0, 10) ?? now.slice(0, 10),
+          opponent: match.awayTeam,
+          result: resultStr,
+          minutesPlayed: 90,
+          goals: goalsByPlayer[name] ?? 0,
+          assists: 0,
+          yellowCards: yellowsByPlayer[name] ?? 0,
+          redCards: redsByPlayer[name] ?? 0,
+          cleanSheet: awayScore === 0,
+          competition: 'Live Match',
+          source: 'live_match',
+          liveMatchId: match.id,
+        };
+        const updated = [...existing, newEntry];
+        batch.update(doc(firestore, 'athletes', athlete.id), { matchHistory: updated, updatedAt: now });
+        matched++;
+      }
+
+      if (matched === 0) {
+        toast({ title: 'No athletes matched', description: 'Player names in events did not match any squad member names.' });
+        setSaving(false);
+        return;
+      }
+
+      await batch.commit();
+      setSaved(true);
+      toast({ title: `Profiles updated ✓`, description: `${matched} athlete${matched !== 1 ? 's' : ''} synced from this match.` });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Sync failed', description: e?.message ?? 'Could not update profiles.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-[#1C2333] border border-[#1E293B] p-6 text-center space-y-3">
+      <CheckCircle2 className="h-10 w-10 text-[#00C853] mx-auto" />
+      <p className="text-[15px] font-black text-white">Match Completed</p>
+      <p className="text-[12px] text-[#94A3B8]">
+        Final score: {match.homeTeam} {match.homeScore} – {match.awayScore} {match.awayTeam}
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2 justify-center pt-1">
+        {!saved ? (
+          <Button
+            onClick={handleSaveToProfiles}
+            disabled={saving}
+            className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+            Save to Athlete Profiles
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2 justify-center">
+            <CheckCircle2 className="h-4 w-4 text-[#00C853]" />
+            <span className="text-[11px] font-black text-[#00C853] uppercase">Profiles Updated</span>
+          </div>
+        )}
+        <Button onClick={onBack} variant="outline" className="border-[#1E293B] text-[#94A3B8] hover:text-white font-black text-xs uppercase">
+          Back to Lobby
+        </Button>
+      </div>
     </div>
   );
 }

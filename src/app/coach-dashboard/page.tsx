@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Users, ShieldCheck, Trophy, TrendingUp, AlertTriangle,
   CheckCircle2, Plus, ChevronRight, Calendar, Activity, Star,
-  Loader2, Building2, Dumbbell, Clock, MessageSquare
+  Loader2, Building2, Dumbbell, Clock, MessageSquare, Settings
 } from 'lucide-react';
 import Link from 'next/link';
 import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile } from '@/lib/types';
@@ -191,10 +191,54 @@ export default function CoachOverviewPage() {
 
   if (!clubId) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
-        <Building2 className="h-12 w-12 text-[#94A3B8]" />
-        <p className="text-white font-black">Not affiliated with a club yet.</p>
-        <p className="text-[#94A3B8] text-sm">Contact your club admin to be added to a club.</p>
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-white uppercase">Coach Overview</h1>
+          <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">Command Centre</p>
+        </div>
+        <div className="rounded-2xl border border-[#00C853]/30 bg-[#00C853]/5 p-8 flex flex-col items-center gap-4 text-center">
+          <div className="h-16 w-16 rounded-2xl bg-[#00C853]/15 flex items-center justify-center">
+            <Building2 className="h-8 w-8 text-[#00C853]" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-white font-black text-lg">You're not affiliated with a club yet</p>
+            <p className="text-[#94A3B8] text-sm max-w-xs">
+              Browse clubs and send a join request, or ask your club admin to share the invite link.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link href="/coach-dashboard/find-club">
+              <Button className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2">
+                <Users className="h-4 w-4" /> Browse Clubs
+              </Button>
+            </Link>
+            <Link href="/coach-dashboard/settings">
+              <Button variant="outline" className="border-[#1E293B] text-[#94A3B8] hover:text-white font-black text-xs uppercase gap-2">
+                <Settings className="h-4 w-4" /> Settings
+              </Button>
+            </Link>
+          </div>
+        </div>
+        <div className="rounded-xl border border-[#1E293B] bg-[#111827] p-5">
+          <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-3">What happens next?</p>
+          <div className="space-y-3">
+            {[
+              { step: '1', title: 'Find your club', desc: 'Browse the directory and submit a join request as a coach.' },
+              { step: '2', title: 'Admin approves', desc: 'The club admin reviews and approves your application.' },
+              { step: '3', title: 'Full access', desc: 'Manage your squad, verify athletes, enter match data, and more.' },
+            ].map(s => (
+              <div key={s.step} className="flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#00C853]/15 text-[#00C853] flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">
+                  {s.step}
+                </div>
+                <div>
+                  <p className="text-sm font-black text-white">{s.title}</p>
+                  <p className="text-[11px] text-[#94A3B8]">{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

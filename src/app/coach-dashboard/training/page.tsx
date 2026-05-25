@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dumbbell, Plus, Loader2, CheckCircle2, Clock,
-  Users, BookOpen, ChevronRight, X, Check, AlertTriangle
+  Users, BookOpen, ChevronRight, X, Check, AlertTriangle, PenLine
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -77,6 +77,13 @@ export default function CoachTrainingPage() {
   const [selectedDrills, setSelectedDrills] = useState<string[]>([]);
   const [attendanceSession, setAttendanceSession] = useState<TrainingSession | null>(null);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [customDrills, setCustomDrills] = useState<DrillTemplate[]>([]);
+  const [addDrillOpen, setAddDrillOpen] = useState(false);
+  const [savingDrill, setSavingDrill] = useState(false);
+  const [newDrill, setNewDrill] = useState({
+    name: '', category: 'Technical', duration: '15',
+    players: 'Any', description: '', equipment: '',
+  });
 
   const [form, setForm] = useState({
     title: '', date: new Date().toISOString().slice(0, 10),
@@ -101,10 +108,64 @@ export default function CoachTrainingPage() {
   ), [firestore, clubId]);
   const { data: athletes } = useCollection<AthleteProfile>(athletesQuery);
 
-  const filteredDrills = categoryFilter === 'All' ? DRILL_LIBRARY : DRILL_LIBRARY.filter(d => d.category === categoryFilter);
+  // Load custom drills from Firestore when clubId is ready
+  useEffect(() => {
+    if (!firestore || !clubId) return;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(firestore, 'clubs', clubId, 'drill_library'));
+        const drills: DrillTemplate[] = snap.docs.map(d => ({
+          id: d.id,
+          name: (d.data() as any).name || '',
+          category: (d.data() as any).category || 'Custom',
+          duration: (d.data() as any).duration || 15,
+          players: (d.data() as any).players || 'Any',
+          description: (d.data() as any).description || '',
+          equipment: (d.data() as any).equipment || [],
+          custom: true,
+        } as DrillTemplate & { custom: boolean }));
+        setCustomDrills(drills);
+      } catch { }
+    })();
+  }, [firestore, clubId]);
+
+  const allDrills = [...DRILL_LIBRARY, ...customDrills];
+  const filteredDrills = categoryFilter === 'All' ? allDrills : allDrills.filter(d => d.category === categoryFilter);
 
   const toggleDrill = (id: string) => {
     setSelectedDrills(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
+  };
+
+  const handleSaveCustomDrill = async () => {
+    if (!firestore || !clubId || !newDrill.name.trim()) return;
+    setSavingDrill(true);
+    try {
+      const ref = await addDoc(collection(firestore, 'clubs', clubId, 'drill_library'), {
+        name: newDrill.name.trim(),
+        category: newDrill.category,
+        duration: Number(newDrill.duration) || 15,
+        players: newDrill.players || 'Any',
+        description: newDrill.description,
+        equipment: newDrill.equipment.split(',').map(s => s.trim()).filter(Boolean),
+        createdAt: new Date().toISOString(),
+      });
+      setCustomDrills(prev => [...prev, {
+        id: ref.id,
+        name: newDrill.name.trim(),
+        category: newDrill.category,
+        duration: Number(newDrill.duration) || 15,
+        players: newDrill.players || 'Any',
+        description: newDrill.description,
+        equipment: newDrill.equipment.split(',').map(s => s.trim()).filter(Boolean),
+      }]);
+      toast({ title: 'Drill saved ✓', description: `${newDrill.name} added to your club library.` });
+      setNewDrill({ name: '', category: 'Technical', duration: '15', players: 'Any', description: '', equipment: '' });
+      setAddDrillOpen(false);
+    } catch {
+      toast({ title: 'Error', description: 'Could not save drill.', variant: 'destructive' });
+    } finally {
+      setSavingDrill(false);
+    }
   };
 
   const handleCreateSession = async () => {
@@ -232,8 +293,9 @@ export default function CoachTrainingPage() {
 
         {/* Drill Library */}
         <TabsContent value="library" className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            {['All', ...Object.keys(CATEGORY_COLORS)].map(cat => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex gap-2 flex-wrap flex-1">
+              {['All', ...Object.keys(CATEGORY_COLORS)].map(cat => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat)}
@@ -247,6 +309,14 @@ export default function CoachTrainingPage() {
                 {cat}
               </button>
             ))}
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setAddDrillOpen(true)}
+              className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-1.5 h-8 shrink-0"
+            >
+              <PenLine className="h-3.5 w-3.5" /> Add Drill
+            </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {filteredDrills.map(drill => (
@@ -391,6 +461,90 @@ export default function CoachTrainingPage() {
       </Dialog>
 
       {/* Attendance Dialog */}
+      {/* Add Custom Drill Dialog */}
+      <Dialog open={addDrillOpen} onOpenChange={setAddDrillOpen}>
+        <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-black uppercase tracking-wide">Add Custom Drill</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Drill Name *</Label>
+              <Input
+                placeholder="e.g. Pressing Drill v2"
+                value={newDrill.name}
+                onChange={e => setNewDrill(d => ({ ...d, name: e.target.value }))}
+                className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Category</Label>
+                <Select value={newDrill.category} onValueChange={v => setNewDrill(d => ({ ...d, category: v }))}>
+                  <SelectTrigger className="bg-[#1C2333] border-[#1E293B] text-white h-9 font-bold text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1C2333] border-[#1E293B]">
+                    {['Technical','Tactical','Physical','Attacking','Defensive','Set Pieces','Custom'].map(c => (
+                      <SelectItem key={c} value={c} className="text-white font-bold text-xs">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Duration (min)</Label>
+                <Input
+                  type="number" value={newDrill.duration}
+                  onChange={e => setNewDrill(d => ({ ...d, duration: e.target.value }))}
+                  className="bg-[#1C2333] border-[#1E293B] text-white focus:border-[#00C853]"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Players</Label>
+              <Input
+                placeholder="e.g. All, DEF/MID, GK"
+                value={newDrill.players}
+                onChange={e => setNewDrill(d => ({ ...d, players: e.target.value }))}
+                className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Description</Label>
+              <Textarea
+                placeholder="What does this drill train and how?"
+                value={newDrill.description}
+                onChange={e => setNewDrill(d => ({ ...d, description: e.target.value }))}
+                rows={3}
+                className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853] resize-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Equipment (comma-separated)</Label>
+              <Input
+                placeholder="e.g. Cones, Balls, Bibs"
+                value={newDrill.equipment}
+                onChange={e => setNewDrill(d => ({ ...d, equipment: e.target.value }))}
+                className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setAddDrillOpen(false)} className="border-[#1E293B] text-[#94A3B8] font-black text-[10px] uppercase">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCustomDrill}
+              disabled={savingDrill || !newDrill.name.trim()}
+              className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-2"
+            >
+              {savingDrill ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              Save Drill
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {attendanceSession && (
         <Dialog open onOpenChange={() => setAttendanceSession(null)}>
           <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-md max-h-[80vh] overflow-y-auto">

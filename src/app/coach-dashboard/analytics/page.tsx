@@ -196,7 +196,7 @@ export default function CoachAnalyticsPage() {
           className="gap-2 border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-bold text-xs"
           onClick={() => window.print()}
         >
-          <Printer className="w-3.5 h-3.5" /> Export PDF
+          <Printer className="w-3.5 h-3.5" /> Print / Save PDF
         </Button>
       </div>
 

@@ -160,8 +160,12 @@ export default function CoachMatchEntryPage() {
           const userSnap = await getDoc(doc(firestore, 'users', ps.athleteId));
           const userAccount = (userSnap.exists() ? userSnap.data() : {}) as UserAccount;
           scoreUpdates = calculateTalentGraphScore({ ...athlete, matchHistory: updatedHistory }, userAccount);
-        } catch {
-          // Score recalc failed silently — stats still saved
+        } catch (csiErr: any) {
+          toast({
+            title: 'Score recalculation failed',
+            description: `Match stats saved, but CSI score could not be updated for ${ps.name}: ${csiErr?.message ?? 'unknown error'}`,
+            variant: 'destructive',
+          });
         }
 
         await updateDoc(doc(firestore, 'athletes', ps.athleteId), {

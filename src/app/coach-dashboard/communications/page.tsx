@@ -144,6 +144,17 @@ export default function CoachCommunicationsPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedThreadMsgs]);
 
+  // Auto-open compose tab when ?compose=uid is in the URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const composeUid = params.get('compose');
+    if (composeUid) {
+      setActiveTab('compose');
+      setComposeForm(f => ({ ...f, recipient: composeUid }));
+    }
+  }, []);
+
   const handleSelectThread = async (threadId: string) => {
     setSelectedThread(threadId);
     // Mark as read

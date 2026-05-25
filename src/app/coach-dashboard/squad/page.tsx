@@ -539,7 +539,7 @@ function AthleteRow({ athlete: a, removing, onRemove }: {
               <ShieldCheck className="h-3.5 w-3.5" />
             </Button>
           </Link>
-          <Link href={`/coach-dashboard/communications`} title="Message Athlete">
+          <Link href={`/coach-dashboard/communications?compose=${a.uid}`} title="Message Athlete">
             <Button variant="ghost" size="icon" className="h-7 w-7 text-[#94A3B8] hover:text-[#00C853] hover:bg-[#00C853]/10">
               <MessageSquare className="h-3.5 w-3.5" />
             </Button>

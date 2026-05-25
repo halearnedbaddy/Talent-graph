@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, MessageSquare, Building2, Settings, LogOut,
-  Menu, X, Zap, ChevronRight, Radio
+  Menu, X, Zap, ChevronRight, Radio, Search
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,7 @@ const navItems = [
   { href: '/coach-dashboard/communications', label: 'Communications', icon: MessageSquare },
   { href: '/coach-dashboard/club', label: 'Club Dashboard', icon: Building2 },
   { href: '/coach-dashboard/settings', label: 'Settings', icon: Settings },
+  { href: '/coach-dashboard/find-club', label: 'Find Club', icon: Search, noClubOnly: true },
 ];
 
 export default function CoachDashboardLayout({ children }: { children: React.ReactNode }) {
@@ -128,7 +129,7 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
       {/* Nav */}
       <nav className="flex-1 overflow-auto py-3 px-2 space-y-0.5">
-        {navItems.map((item) => {
+        {navItems.filter(item => !('noClubOnly' in item && item.noClubOnly) || !clubId).map((item) => {
           const active = isActive(item);
           return (
             <Link

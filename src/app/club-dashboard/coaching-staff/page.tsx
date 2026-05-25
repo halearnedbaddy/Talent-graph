@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -105,7 +105,24 @@ export default function CoachingStaffPage() {
     if (!firestore) return;
     setUpdatingId(memberId);
     try {
-      await updateDoc(doc(firestore, 'club_members', memberId), { status: 'active' });
+      const member = allMembers?.find(m => m.id === memberId);
+      await updateDoc(doc(firestore, 'club_members', memberId), {
+        status: 'active',
+        joinedAt: new Date().toISOString(),
+      });
+      if (member?.userId) {
+        try {
+          await addDoc(collection(firestore, 'notifications', member.userId, 'items'), {
+            type: 'club_approved',
+            title: 'Club Application Approved',
+            body: `Your application to join ${clubName || 'the club'} has been approved. You now have full access to the coach dashboard.`,
+            clubId,
+            clubName: clubName || '',
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch { }
+      }
       toast({ title: 'Staff approved', description: 'They now have access to the club dashboard.' });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to approve.' });
@@ -117,7 +134,21 @@ export default function CoachingStaffPage() {
   const handleReject = async (memberId: string) => {
     if (!firestore) return;
     try {
+      const member = allMembers?.find(m => m.id === memberId);
       await updateDoc(doc(firestore, 'club_members', memberId), { status: 'rejected' });
+      if (member?.userId) {
+        try {
+          await addDoc(collection(firestore, 'notifications', member.userId, 'items'), {
+            type: 'club_rejected',
+            title: 'Club Application Declined',
+            body: `Your application to join ${clubName || 'the club'} was not approved. Please contact the club admin for more information.`,
+            clubId,
+            clubName: clubName || '',
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch { }
+      }
       toast({ title: 'Request rejected.' });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to reject.' });
