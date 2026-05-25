@@ -38,6 +38,11 @@ service cloud.firestore {
       return exists(memberPath) && get(memberPath).data.status == 'active';
     }
 
+    // Check if the current user owns the club associated with a match
+    function isClubOwnerOfMatch() {
+      return isClubAdmin() && resource.data.clubId == 'club_' + request.auth.uid;
+    }
+
     // ----------------------------------------------------------------------
     // Standard Collection Rules
     // ----------------------------------------------------------------------
@@ -119,12 +124,19 @@ service cloud.firestore {
           (resource.data.status == 'pending' || resource.data.status == 'club_invited'));
     }
 
-    // Matches: owner can create/update/delete their own; others can read
+    // Matches: athletes own their match entries; club admins own club fixtures
     match /matches/{matchId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.athleteId == request.auth.uid;
+      // Athletes create their own match entries; club admins create club fixtures (no athleteId)
+      allow create: if isSignedIn() && (
+        request.resource.data.athleteId == request.auth.uid ||
+        (isClubAdmin() && request.resource.data.clubId == 'club_' + request.auth.uid)
+      );
+      // Athletes update their own entries; club admins update their club's fixtures; admins update all
       allow update, delete: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid || isAdmin()
+        resource.data.athleteId == request.auth.uid ||
+        isClubOwnerOfMatch() ||
+        isAdmin()
       );
     }
 
@@ -141,6 +153,7 @@ service cloud.firestore {
     match /match_invitations/{inviteId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
+      allow update: if isSignedIn();
       allow delete: if isSignedIn();
     }
 

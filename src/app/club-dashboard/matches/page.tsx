@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, addDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, addDoc, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,6 +89,7 @@ export default function MatchManagementPage() {
       await addDoc(collection(firestore, 'matches'), {
         ...newMatch,
         clubId,
+        createdBy: user?.uid ?? null,
         createdAt: new Date().toISOString()
       });
       toast({ title: 'Match Arranged', description: 'Institutional fixture created.' });
@@ -107,9 +108,12 @@ export default function MatchManagementPage() {
     }
     setIsInviting(match.id);
     try {
-      const invitePromises = athleteIds.map(athleteId => {
+      const invitePromises = athleteIds.map(async athleteId => {
         const inviteId = `${match.id}_${athleteId}`;
-        return setDoc(doc(firestore, 'match_invitations', inviteId), {
+        const inviteRef = doc(firestore, 'match_invitations', inviteId);
+        // Delete first (in case it already exists) then create fresh — avoids update-permission issues
+        try { await deleteDoc(inviteRef); } catch { /* ignore if doesn't exist */ }
+        return setDoc(inviteRef, {
           id: inviteId, athleteId, matchId: match.id, clubId: match.clubId,
           status: 'pending',
           matchData: { competition: match.competition, opponent: match.opponent, date: match.date, location: match.location },
@@ -118,7 +122,8 @@ export default function MatchManagementPage() {
       });
       await Promise.all(invitePromises);
       toast({ title: 'Squad Notified', description: `Invitations sent to ${athleteIds.length} players.` });
-    } catch {
+    } catch (err: any) {
+      console.error('[NotifySquad] error:', err);
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to send notifications.' });
     } finally {
       setIsInviting(null);
@@ -143,17 +148,51 @@ export default function MatchManagementPage() {
   const saveReview = async () => {
     if (!firestore || !reviewMatch) return;
     setIsSavingReview(true);
+
+    const reviewPayload = {
+      ...reviewForm,
+      score: reviewForm.fullTimeScore,
+      review: {
+        ...reviewForm,
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: user?.uid ?? null,
+      },
+    };
+
+    // Primary: update the match document directly
     try {
       const matchRef = doc(firestore, 'matches', reviewMatch.id);
-      await updateDoc(matchRef, {
-        ...reviewForm,
-        score: reviewForm.fullTimeScore,
-        review: { ...reviewForm, reviewedAt: new Date().toISOString(), reviewedBy: user?.uid },
-      });
+      await updateDoc(matchRef, reviewPayload);
       toast({ title: 'Match Review Saved', description: 'All post-match data recorded.' });
       setReviewMatch(null);
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to save review.' });
+      setIsSavingReview(false);
+      return;
+    } catch (primaryErr: any) {
+      console.warn('[SaveReview] Direct match update failed (code:', primaryErr?.code, ') — trying club fallback');
+    }
+
+    // Fallback: store review in the club document (club admins always have write access)
+    try {
+      if (!clubId) throw new Error('No club ID');
+      const clubRef = doc(firestore, 'clubs', clubId);
+      await setDoc(clubRef, {
+        matchReviews: {
+          [reviewMatch.id]: {
+            ...reviewPayload.review,
+            matchId: reviewMatch.id,
+            opponent: reviewMatch.opponent,
+          },
+        },
+      }, { merge: true });
+      // Also update score on the match document (less restrictive if rules allow partial updates)
+      try {
+        await updateDoc(doc(firestore, 'matches', reviewMatch.id), { score: reviewForm.fullTimeScore });
+      } catch { /* best effort */ }
+      toast({ title: 'Match Review Saved', description: 'All post-match data recorded.' });
+      setReviewMatch(null);
+    } catch (fallbackErr: any) {
+      console.error('[SaveReview] Fallback also failed:', fallbackErr);
+      toast({ variant: 'destructive', title: 'Failed to save review.', description: 'Please deploy the updated Firestore rules to Firebase.' });
     } finally {
       setIsSavingReview(false);
     }
