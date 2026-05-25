@@ -83,7 +83,7 @@ export default function CoachCommunicationsPage() {
 
   const announcementsQuery = useMemoFirebase(() => (
     firestore && clubId
-      ? query(collection(firestore, 'announcements'), where('clubId', '==', clubId), orderBy('createdAt', 'desc'))
+      ? query(collection(firestore, 'announcements', clubId, 'posts'), orderBy('createdAt', 'desc'))
       : null
   ), [firestore, clubId]);
   const { data: announcements } = useCollection<Announcement>(announcementsQuery);
@@ -107,11 +107,13 @@ export default function CoachCommunicationsPage() {
     return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [inbox, sent]);
 
-  // Group by thread
+  // Group by thread — use deterministic participant-pair key for messages without a threadId
+  // so all 1:1 messages between two users collapse into one thread
   const threads = useMemo(() => {
     const threadMap = new Map<string, Message[]>();
     allMessages.forEach(m => {
-      const key = m.threadId ?? m.id;
+      const participantKey = [m.senderId, m.recipientId].sort().join('_');
+      const key = m.threadId ?? participantKey;
       if (!threadMap.has(key)) threadMap.set(key, []);
       threadMap.get(key)!.push(m);
     });
@@ -144,16 +146,31 @@ export default function CoachCommunicationsPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedThreadMsgs]);
 
-  // Auto-open compose tab when ?compose=uid is in the URL
+  // Auto-open DM when ?compose=uid is in the URL:
+  // If an existing thread with that counterpart exists, jump straight to it.
+  // Otherwise fall back to pre-populating the compose form.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const composeUid = params.get('compose');
-    if (composeUid) {
+    if (!composeUid) return;
+
+    // Try to find an existing 1-1 thread with this counterpart
+    const existingThread = threads.find(t =>
+      t.messages.some(
+        m => (m.senderId === composeUid || m.recipientId === composeUid)
+      )
+    );
+
+    if (existingThread) {
+      setActiveTab('inbox');
+      setSelectedThread(existingThread.id);
+    } else {
       setActiveTab('compose');
       setComposeForm(f => ({ ...f, recipient: composeUid }));
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads]);
 
   const handleSelectThread = async (threadId: string) => {
     setSelectedThread(threadId);
@@ -200,7 +217,9 @@ export default function CoachCommunicationsPage() {
       const recipientName = athlete
         ? `${athlete.firstName} ${athlete.lastName}`
         : staffMember?.displayName ?? composeForm.recipient;
-      const msgId = `msg-${Date.now()}`;
+      // Use a deterministic thread key so all 1:1 messages between these two users
+      // are grouped together, even across multiple compose sessions.
+      const deterministicThreadId = [user.uid, composeForm.recipient].sort().join('_');
       const now = new Date().toISOString();
       await addDoc(collection(firestore, 'messages'), {
         senderId: user.uid,
@@ -211,7 +230,7 @@ export default function CoachCommunicationsPage() {
         subject: composeForm.subject,
         content: composeForm.content,
         isRead: false,
-        threadId: msgId,
+        threadId: deterministicThreadId,
         createdAt: now,
       });
       // Create notification for recipient
@@ -222,7 +241,7 @@ export default function CoachCommunicationsPage() {
           body: composeForm.subject ? `${composeForm.subject}: ${composeForm.content.slice(0, 80)}` : composeForm.content.slice(0, 100),
           senderId: user.uid,
           senderName: user.displayName || 'Coach',
-          threadId: msgId,
+          threadId: deterministicThreadId,
           isRead: false,
           createdAt: now,
         });
@@ -241,7 +260,7 @@ export default function CoachCommunicationsPage() {
     if (!firestore || !user || !clubId || !announcement.title.trim() || !announcement.content.trim()) return;
     setSending(true);
     try {
-      await addDoc(collection(firestore, 'announcements'), {
+      await addDoc(collection(firestore, 'announcements', clubId, 'posts'), {
         clubId,
         authorId: user.uid,
         authorName: user.displayName || user.email || 'Coach',
