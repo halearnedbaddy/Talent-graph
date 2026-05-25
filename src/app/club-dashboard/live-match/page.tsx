@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, doc, updateDoc, setDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,10 +104,15 @@ export default function LiveMatchPage() {
   ), [firestore, clubId]);
   const { data: liveMatches } = useCollection<LiveMatch>(liveMatchQuery);
 
+  // Bug #06 Fix: removed orderBy from Firestore query to avoid composite index requirement.
+  // Sorting is done client-side after fetching.
   const eventsQuery = useMemoFirebase(() => (
-    firestore && activeLive ? query(collection(firestore, 'live_match_events'), where('matchId', '==', activeLive.id), orderBy('minute', 'asc')) : null
+    firestore && activeLive ? query(collection(firestore, 'live_match_events'), where('matchId', '==', activeLive.id)) : null
   ), [firestore, activeLive?.id]);
-  const { data: events } = useCollection<LiveMatchEvent>(eventsQuery);
+  const { data: rawEvents } = useCollection<LiveMatchEvent>(eventsQuery);
+  const events = useMemo(() =>
+    [...(rawEvents ?? [])].sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0)),
+  [rawEvents]);
 
   // Fetch all squad athlete phones for SMS broadcasts
   const connectionsQuery = useMemoFirebase(() => (

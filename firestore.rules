@@ -69,7 +69,12 @@ service cloud.firestore {
     match /clubs/{clubId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && clubId == ('club_' + request.auth.uid);
-      allow update: if isSignedIn() && (clubId == ('club_' + request.auth.uid) || isAdmin());
+      // Bug #03 Fix: allow club admin members to update their own club profile
+      allow update: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) ||
+        isActiveMemberOfClub(clubId) ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
 
       // Squad Chat Subcollection
@@ -129,14 +134,29 @@ service cloud.firestore {
       // Athletes create their own match entries; club admins create club fixtures (no athleteId)
       allow create: if isSignedIn() && (
         request.resource.data.athleteId == request.auth.uid ||
-        (isClubAdmin() && request.resource.data.clubId == 'club_' + request.auth.uid)
+        (isClubAdmin() && request.resource.data.clubId == 'club_' + request.auth.uid) ||
+        isActiveMemberOfClub(request.resource.data.clubId)
       );
       // Athletes update their own entries; club admins update their club's fixtures; admins update all
       allow update, delete: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
         isClubOwnerOfMatch() ||
+        isActiveMemberOfClub(resource.data.clubId) ||
         isAdmin()
       );
+
+      // Bug #05 Fix: Match reviews sub-collection — coaches/analysts/club admins can submit
+      match /reviews/{reviewId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && (
+          isClubAdmin() ||
+          isActiveMemberOfClub(get(/databases/$(database)/documents/matches/$(matchId)).data.clubId) ||
+          isAdmin()
+        );
+        allow update: if isSignedIn() && (
+          resource.data.submittedBy == request.auth.uid || isAdmin()
+        );
+      }
     }
 
     match /live_matches/{matchId} {

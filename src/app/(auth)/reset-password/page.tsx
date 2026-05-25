@@ -79,10 +79,15 @@ function ResetPasswordForm() {
       toast({ title: 'Password updated', description: 'You can now sign in with your new password.' });
       setTimeout(() => router.push('/login'), 3000);
     } catch (err: any) {
-      if (err?.code === 'auth/expired-action-code') {
+      const code = err?.code ?? '';
+      if (code === 'auth/expired-action-code') {
         toast({ variant: 'destructive', title: 'Link expired', description: 'This reset link has expired. Please request a new one.' });
+      } else if (code === 'auth/invalid-action-code') {
+        toast({ variant: 'destructive', title: 'Link already used', description: 'This reset link has already been used or is invalid. Request a new one.' });
+      } else if (code === 'auth/unauthorized-continue-uri' || code === 'auth/invalid-continue-uri') {
+        toast({ variant: 'destructive', title: 'Domain not authorised', description: 'Add this domain to your Firebase project\'s authorised domains list.' });
       } else {
-        toast({ variant: 'destructive', title: 'Reset failed', description: 'Invalid or expired link. Please request a new reset link.' });
+        toast({ variant: 'destructive', title: 'Reset failed', description: 'Unable to reset password. Please request a new reset link.' });
       }
     } finally {
       setSaving(false);

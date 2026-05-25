@@ -2,18 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, updateDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, MessageSquare, Send, Plus, Search, Info } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, MessageSquare, Send, Plus, Info, Hash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { ClubMember } from '@/lib/types';
 import { format } from 'date-fns';
+import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 
 interface Message {
   id: string;
@@ -167,16 +169,33 @@ export default function AnalystMessagesPage() {
 
   return (
     <div className="space-y-5 pb-24">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight uppercase">Communications</h1>
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Message coaching staff & club admin</p>
-        </div>
-        <Button onClick={() => setComposeOpen(!composeOpen)} className="self-start sm:self-auto font-black uppercase tracking-widest h-11 gap-2">
-          <Plus className="w-4 h-4" /> New Message
-        </Button>
+      <div>
+        <h1 className="text-2xl font-black tracking-tight uppercase">Communications</h1>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Message coaching staff & squad chat</p>
       </div>
 
+      <Tabs defaultValue="messages">
+        <TabsList className="mb-4">
+          <TabsTrigger value="messages" className="font-black text-[10px] uppercase gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5" /> Messages
+            {unreadCount > 0 && <Badge className="h-4 min-w-4 text-[9px] font-black ml-1">{unreadCount}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="squad-chat" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
+            <Hash className="w-3.5 h-3.5" /> Squad Chat
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="squad-chat">
+          <SquadChatWidget />
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Staff Messages</p>
+            <Button onClick={() => setComposeOpen(!composeOpen)} size="sm" className="font-black uppercase tracking-widest gap-2">
+              <Plus className="w-4 h-4" /> New Message
+            </Button>
+          </div>
       {/* Role notice */}
       <Card className="border border-blue-500/20 bg-blue-500/5">
         <CardContent className="p-3 flex items-center gap-2">
@@ -320,6 +339,8 @@ export default function AnalystMessagesPage() {
           )}
         </Card>
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
