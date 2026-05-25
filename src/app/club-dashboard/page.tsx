@@ -140,11 +140,21 @@ export default function ClubOverviewPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight uppercase">Squad Command</h1>
-          <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest">
-            {clubProfile?.clubName || 'Organization'}{clubProfile?.location ? ` • ${clubProfile.location}` : ''}
-          </p>
+        <div className="flex items-center gap-4">
+          {clubProfile?.logoUrl && (
+            <Avatar className="h-14 w-14 rounded-xl shrink-0 border shadow-sm">
+              <AvatarImage src={clubProfile.logoUrl} alt={clubProfile.clubName} className="object-cover rounded-xl" />
+              <AvatarFallback className="rounded-xl bg-primary/10 font-black text-primary text-lg uppercase">
+                {clubProfile.clubName?.[0] ?? 'C'}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          <div>
+            <h1 className="text-2xl font-black tracking-tight uppercase">Squad Command</h1>
+            <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest">
+              {clubProfile?.clubName || 'Organization'}{clubProfile?.location ? ` • ${clubProfile.location}` : ''}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={posFilter} onValueChange={setPosFilter}>
