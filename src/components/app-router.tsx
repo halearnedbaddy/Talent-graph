@@ -44,7 +44,9 @@ export function AppRouter() {
             return;
         }
 
-        if (!user.emailVerified) {
+        // Allow through if Firebase Auth says verified OR the Firestore users doc marks it
+        // as verified (covers admin-created staff who skip self-registration flow)
+        if (!user.emailVerified && !userAccount?.isEmailVerified) {
             router.push('/verify-email');
             setDestination('redirect');
             return;
