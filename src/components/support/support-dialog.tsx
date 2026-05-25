@@ -44,10 +44,10 @@ export function SupportDialog({ open: externalOpen, onOpenChange: externalOnOpen
   const [newMessage, setNewMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. Fetch available admins
+  // 1. Fetch available admins (only when authenticated)
   const adminsQuery = useMemoFirebase(() => (
-    firestore ? query(collection(firestore, 'users'), where('role', '==', 'admin')) : null
-  ), [firestore]);
+    firestore && user ? query(collection(firestore, 'users'), where('role', '==', 'admin')) : null
+  ), [firestore, user]);
   const { data: admins, isLoading: isAdminsLoading } = useCollection<UserAccount>(adminsQuery);
 
   // 2. Track existing thread with selected admin
