@@ -99,7 +99,7 @@ export default function CoachCommunicationsPage() {
       : null
   ), [firestore, clubId]);
   const { data: staffMembers } = useCollection<ClubMember>(staffQuery);
-  const otherStaff = (staffMembers ?? []).filter(m => m.userId !== user?.uid && m.role !== 'athlete');
+  const otherStaff = (staffMembers ?? []).filter(m => m.userId !== user?.uid && (m.role as string) !== 'athlete');
 
   const allMessages = useMemo(() => {
     const combined = [...(inbox ?? []), ...(sent ?? [])];

@@ -1,20 +1,36 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { ScoutProfile, ScoutConnection, AthleteProfile } from '@/lib/types';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, addDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Send, Plus, Loader2, Clock, CheckCircle, ArrowRight, Search } from 'lucide-react';
+import {
+  MessageSquare, Send, Plus, Loader2, Clock, CheckCircle,
+  ArrowRight, Search, X, ChevronLeft
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import Image from 'next/image';
+import { formatDistanceToNow } from 'date-fns';
+
+interface ScoutMsg {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  content?: string;
+  text?: string;
+  timestamp?: string;
+  createdAt?: any;
+}
 
 interface Props {
   scoutProfile: ScoutProfile;
@@ -31,11 +47,29 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
   const [messageText, setMessageText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'accepted' | 'pending'>('all');
+  const [activeChatConn, setActiveChatConn] = useState<ScoutConnection | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [isReplying, setIsReplying] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const connectionsQuery = useMemoFirebase(() => (
     firestore ? query(collection(firestore, 'scout_connections'), where('scoutId', '==', scoutProfile.uid)) : null
   ), [firestore, scoutProfile.uid]);
   const { data: connections, isLoading: connectionsLoading } = useCollection<ScoutConnection>(connectionsQuery);
+
+  const activeChatMessagesQuery = useMemoFirebase(() => (
+    firestore && activeChatConn
+      ? query(
+          collection(firestore, 'scout_connections', activeChatConn.id, 'messages'),
+          orderBy('timestamp', 'asc')
+        )
+      : null
+  ), [firestore, activeChatConn?.id]);
+  const { data: activeChatMessages } = useCollection<ScoutMsg>(activeChatMessagesQuery);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activeChatMessages]);
 
   const athletesSearchQuery = useMemoFirebase(() => (
     firestore && athleteSearch.length > 1 ? collection(firestore, 'athletes') : null
@@ -74,28 +108,42 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
   async function handleSendMessage() {
     const target = selectedAthlete || composeTarget;
     if (!firestore || !target || !messageText.trim()) return;
-    if (connectionAthleteIds.has(target.uid)) {
-      toast({ variant: 'destructive', title: 'Message already sent', description: 'Wait for this athlete to reply before messaging again.' });
+    const existing = connections?.find(c => c.athleteId === target.uid);
+    if (existing && existing.status === 'pending') {
+      toast({ variant: 'destructive', title: 'Awaiting reply', description: 'This athlete has not replied yet.' });
       return;
     }
     setIsSending(true);
     try {
       const connId = `${target.uid}_${scoutProfile.uid}`;
+      const now = new Date().toISOString();
       await setDoc(doc(firestore, 'scout_connections', connId), {
         id: connId,
         scoutId: scoutProfile.uid,
         athleteId: target.uid,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        status: existing?.status === 'accepted' ? 'accepted' : 'pending',
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
       });
       await addDoc(collection(firestore, 'scout_connections', connId, 'messages'), {
         senderId: scoutProfile.uid,
         senderName: scoutProfile.name,
         senderRole: 'scout',
-        text: messageText.trim(),
-        createdAt: serverTimestamp(),
+        content: messageText.trim(),
+        timestamp: now,
       });
+      // Notify athlete
+      try {
+        await addDoc(collection(firestore, 'notifications', target.uid, 'items'), {
+          type: 'scout_message',
+          actorName: scoutProfile.name,
+          message: `sent you a message: "${messageText.trim().slice(0, 60)}${messageText.length > 60 ? '…' : ''}"`,
+          senderId: scoutProfile.uid,
+          connectionId: connId,
+          isRead: false,
+          createdAt: now,
+        });
+      } catch { /* non-critical */ }
       toast({ title: 'Message sent!', description: `Your message to ${target.firstName} has been sent.` });
       setComposeOpen(false);
       setSelectedAthlete(null);
@@ -103,9 +151,38 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
       setAthleteSearch('');
       onComposeClose?.();
     } catch (err) {
-      console.error(err);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not send message. Please try again.' });
     } finally { setIsSending(false); }
+  }
+
+  async function handleReply() {
+    if (!firestore || !activeChatConn || !replyText.trim()) return;
+    setIsReplying(true);
+    const now = new Date().toISOString();
+    try {
+      await addDoc(collection(firestore, 'scout_connections', activeChatConn.id, 'messages'), {
+        senderId: scoutProfile.uid,
+        senderName: scoutProfile.name,
+        senderRole: 'scout',
+        content: replyText.trim(),
+        timestamp: now,
+      });
+      // Notify athlete
+      try {
+        await addDoc(collection(firestore, 'notifications', activeChatConn.athleteId, 'items'), {
+          type: 'scout_message',
+          actorName: scoutProfile.name,
+          message: replyText.trim().slice(0, 80),
+          senderId: scoutProfile.uid,
+          connectionId: activeChatConn.id,
+          isRead: false,
+          createdAt: now,
+        });
+      } catch { /* non-critical */ }
+      setReplyText('');
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not send reply.' });
+    } finally { setIsReplying(false); }
   }
 
   const openComposeWith = (a: AthleteProfile) => {
@@ -117,6 +194,103 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
 
   const pendingCount = connections?.filter(c => c.status === 'pending').length ?? 0;
   const acceptedCount = connections?.filter(c => c.status === 'accepted').length ?? 0;
+
+  // ── Inline chat view ──
+  if (activeChatConn) {
+    const athlete = athleteMap[activeChatConn.athleteId];
+    return (
+      <div className="flex flex-col h-[600px]">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-3 border-b bg-muted/30 rounded-t-xl shrink-0">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setActiveChatConn(null)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          {athlete?.photoUrl ? (
+            <Image src={athlete.photoUrl} alt="" width={32} height={32} className="rounded-full object-cover w-8 h-8 border" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+              {athlete?.firstName?.[0]}{athlete?.lastName?.[0]}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm truncate">
+              {athlete ? `${athlete.firstName} ${athlete.lastName}` : 'Athlete'}
+            </p>
+            <p className="text-[10px] text-muted-foreground uppercase">{athlete?.position}</p>
+          </div>
+          <Badge
+            variant={activeChatConn.status === 'accepted' ? 'default' : 'secondary'}
+            className="text-[9px] shrink-0"
+          >
+            {activeChatConn.status === 'accepted' ? '✓ Active' : 'Pending reply'}
+          </Badge>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {!activeChatMessages?.length ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <MessageSquare className="h-10 w-10 text-muted-foreground/30 mb-2" />
+              <p className="text-sm font-bold text-muted-foreground">No messages yet</p>
+            </div>
+          ) : (
+            activeChatMessages.map(msg => {
+              const isMine = msg.senderId === scoutProfile.uid;
+              const content = msg.content || (msg as any).text || '';
+              const time = msg.timestamp
+                ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })
+                : msg.createdAt?.toDate
+                ? formatDistanceToNow(msg.createdAt.toDate(), { addSuffix: true })
+                : '';
+              return (
+                <div key={msg.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${
+                    isMine
+                      ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                      : 'bg-muted rounded-tl-sm'
+                  }`}>
+                    {content}
+                    <p className={`text-[10px] mt-1 ${isMine ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                      {time}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Reply box */}
+        <div className="border-t p-3 shrink-0">
+          {activeChatConn.status !== 'accepted' ? (
+            <p className="text-xs text-center text-muted-foreground py-2 bg-muted/40 rounded-lg">
+              Waiting for athlete to accept before you can continue the conversation.
+            </p>
+          ) : (
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Type a message…"
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
+                rows={1}
+                className="resize-none text-sm flex-1"
+              />
+              <Button
+                size="icon"
+                className="h-10 w-10 shrink-0"
+                onClick={handleReply}
+                disabled={isReplying || !replyText.trim()}
+              >
+                {isReplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -176,7 +350,9 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
           {filteredConnections.map(conn => {
             const athlete = athleteMap[conn.athleteId];
             return (
-              <Card key={conn.id} className="overflow-hidden hover:shadow-md transition-shadow">
+              <Card key={conn.id} className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => setActiveChatConn(conn)}
+              >
                 <CardContent className="p-3 flex items-center gap-3">
                   <div className="flex-shrink-0">
                     {athlete?.photoUrl ? (
@@ -203,19 +379,7 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
                       <p className="text-xs text-muted-foreground">{athlete.position} · {athlete.country || 'Kenya'}</p>
                     )}
                   </div>
-                  <div className="flex-shrink-0">
-                    {conn.status === 'accepted' ? (
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" asChild>
-                        <Link href={`/messages/${conn.id}`}>
-                          <ArrowRight className="w-4 h-4" />
-                        </Link>
-                      </Button>
-                    ) : conn.status === 'pending' ? (
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <XIcon className="w-4 h-4 text-destructive" />
-                    )}
-                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 </CardContent>
               </Card>
             );
@@ -247,11 +411,12 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
                 {filteredSearchAthletes.length > 0 && (
                   <div className="mt-2 space-y-1 max-h-48 overflow-y-auto border rounded-md p-1">
                     {filteredSearchAthletes.map(a => {
-                      const alreadySent = connectionAthleteIds.has(a.uid);
+                      const existing = connections?.find(c => c.athleteId === a.uid);
+                      const isPending = existing?.status === 'pending';
                       return (
                         <button
                           key={a.uid}
-                          disabled={alreadySent}
+                          disabled={isPending}
                           onClick={() => { setSelectedAthlete(a); setAthleteSearch(''); }}
                           className="w-full flex items-center gap-2 p-2 rounded hover:bg-muted text-left disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -262,7 +427,7 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
                             <p className="text-xs font-medium truncate">{a.firstName} {a.lastName}</p>
                             <p className="text-[10px] text-muted-foreground">{a.position} · {a.country}</p>
                           </div>
-                          {alreadySent && <Badge variant="secondary" className="text-[10px]">Sent</Badge>}
+                          {isPending && <Badge variant="secondary" className="text-[10px]">Pending</Badge>}
                         </button>
                       );
                     })}
@@ -311,13 +476,5 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function XIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
   );
 }

@@ -18,14 +18,12 @@ import { Loader2, Search, UserPlus, CheckCircle2, ExternalLink } from 'lucide-re
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
   clubId: string;
   clubName: string;
-  /** UIDs of scouts/coaches already in the club as active members or already invited */
-  existingUserIds: string[];
-  /** UIDs of scouts/coaches who have an inbound pending join request */
-  pendingRequestIds: string[];
+  existingUserIds?: string[];
+  pendingRequestIds?: string[];
 }
 
 function getInitials(name: string) {
@@ -37,8 +35,10 @@ function getInitials(name: string) {
 }
 
 export function InviteStaffDialog({
-  open, onClose, clubId, clubName, existingUserIds, pendingRequestIds,
+  open: openProp, onClose, clubId, clubName, existingUserIds = [], pendingRequestIds = [],
 }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -152,10 +152,25 @@ export function InviteStaffDialog({
     setResults([]);
     setHasSearched(false);
     setInvitedIds(new Set());
-    onClose();
+    setInternalOpen(false);
+    onClose?.();
   };
 
+  const trigger = openProp === undefined ? (
+    <Button
+      size="sm"
+      variant="outline"
+      className="gap-1.5 font-bold text-xs h-9"
+      onClick={() => setInternalOpen(true)}
+    >
+      <UserPlus className="h-4 w-4" />
+      Invite Staff
+    </Button>
+  ) : null;
+
   return (
+    <>
+      {trigger}
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -285,5 +300,6 @@ export function InviteStaffDialog({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
