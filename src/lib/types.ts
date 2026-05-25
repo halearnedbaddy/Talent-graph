@@ -183,6 +183,37 @@ export interface AthleteNotification {
   createdAt: string;
 }
 
+export interface MatchConfirmation {
+  id: string;
+  athleteId: string;
+  matchId: string;
+  clubId: string;
+  opponent: string;
+  competition: string;
+  date: string;
+  category: string;
+  stats: {
+    goals: number;
+    assists: number;
+    minutes: number;
+    rating: number;
+    yellowCards: number;
+    redCards: number;
+    shots: number;
+    duelsWon: number;
+    fouls: number;
+    saves: number;
+    cleanSheet: boolean;
+    manOfTheMatch: boolean;
+  };
+  status: 'pending' | 'confirmed' | 'flagged';
+  disputeNote?: string;
+  enteredBy: string;
+  enteredByRole: 'coach' | 'analyst';
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface ScoutProfile {
   uid: string;
   name: string;

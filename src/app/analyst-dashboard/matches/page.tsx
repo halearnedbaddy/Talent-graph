@@ -229,6 +229,39 @@ export default function AnalystMatchesPage() {
             ...scoreUpdates,
             updatedAt: new Date().toISOString(),
           });
+
+          // Create a pending confirmation so the athlete can verify/dispute their stats
+          try {
+            await addDoc(collection(firestore, 'match_confirmations'), {
+              athleteId: ps.athleteId,
+              matchId: matchRef.id,
+              clubId,
+              opponent: details.opponent,
+              competition: details.competition,
+              date: details.date,
+              category: details.category,
+              stats: {
+                goals: ps.goals,
+                assists: ps.assists,
+                minutes: ps.minutesPlayed,
+                rating: ps.rating,
+                yellowCards: ps.yellowCards,
+                redCards: ps.redCards,
+                shots: ps.shots,
+                duelsWon: ps.duelsWon,
+                fouls: ps.fouls,
+                saves: ps.saves,
+                cleanSheet: ps.cleanSheet,
+                manOfTheMatch: ps.manOfTheMatch,
+              },
+              status: 'pending',
+              enteredBy: user.uid,
+              enteredByRole: 'analyst',
+              createdAt: new Date().toISOString(),
+            });
+          } catch {
+            // Confirmation write failed silently — stats already saved
+          }
         } catch (err) {
           console.error(`Failed to update athlete ${ps.athleteId}:`, err);
         }

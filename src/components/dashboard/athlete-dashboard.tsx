@@ -122,7 +122,19 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const { data: clubAnnouncements } = useCollection<{
     id: string; title: string; content: string; authorName: string; audience: string; createdAt: string;
   }>(announcementsQuery);
-  const unreadCount = unreadNotifs?.length ?? 0;
+
+  // Pending match stat confirmations (coach/analyst logged — athlete hasn't confirmed yet)
+  const pendingConfirmQuery = useMemoFirebase(() => (
+    firestore && athleteProfile ? query(
+      collection(firestore, 'match_confirmations'),
+      where('athleteId', '==', athleteProfile.uid),
+      where('status', '==', 'pending')
+    ) : null
+  ), [firestore, athleteProfile?.uid]);
+  const { data: pendingConfirmations } = useCollection<{ id: string }>(pendingConfirmQuery);
+
+  // Total badge = unread notifications + pending match confirmations awaiting athlete sign-off
+  const unreadCount = (unreadNotifs?.length ?? 0) + (pendingConfirmations?.length ?? 0);
 
   const handleMarkAllRead = async () => {
     if (!firestore || !athleteProfile || !unreadNotifs?.length) return;

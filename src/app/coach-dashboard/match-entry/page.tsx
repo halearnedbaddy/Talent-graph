@@ -169,6 +169,39 @@ export default function CoachMatchEntryPage() {
           ...scoreUpdates,
           updatedAt: new Date().toISOString(),
         });
+
+        // Create a pending confirmation request so the athlete can verify their stats
+        try {
+          await addDoc(collection(firestore, 'match_confirmations'), {
+            athleteId: ps.athleteId,
+            matchId: matchRef.id,
+            clubId,
+            opponent: details.opponent,
+            competition: details.competition,
+            date: details.date,
+            category: details.category,
+            stats: {
+              goals: ps.goals,
+              assists: ps.assists,
+              minutes: ps.minutesPlayed,
+              rating: ps.rating,
+              yellowCards: ps.yellowCards,
+              redCards: ps.redCards,
+              shots: 0,
+              duelsWon: 0,
+              fouls: 0,
+              saves: 0,
+              cleanSheet: false,
+              manOfTheMatch: ps.manOfTheMatch,
+            },
+            status: 'pending',
+            enteredBy: user!.uid,
+            enteredByRole: 'coach',
+            createdAt: new Date().toISOString(),
+          });
+        } catch {
+          // Confirmation write failed silently — stats already saved
+        }
       }
 
       toast({ title: 'Match Saved ✓', description: `Match data logged. ${playerStats.length} player profile${playerStats.length !== 1 ? 's' : ''} updated.` });
