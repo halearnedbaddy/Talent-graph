@@ -109,33 +109,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
 
-    const adminMemberUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/club_members?key=${FIREBASE_API_KEY}&pageSize=1`;
-    const adminCheckRes = await fetch(
-      `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          structuredQuery: {
-            from: [{ collectionId: 'club_members' }],
-            where: {
-              compositeFilter: {
-                op: 'AND',
-                filters: [
-                  { fieldFilter: { field: { fieldPath: 'userId' }, op: 'EQUAL', value: { stringValue: adminUid } } },
-                  { fieldFilter: { field: { fieldPath: 'clubId' }, op: 'EQUAL', value: { stringValue: clubId } } },
-                  { fieldFilter: { field: { fieldPath: 'role' }, op: 'EQUAL', value: { stringValue: 'admin' } } },
-                  { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
-                ],
-              },
-            },
-            limit: 1,
-          },
-        }),
+    // Strategy 1: The club owner's UID IS the clubId (most common — club registered as a user,
+    // their Firebase Auth UID becomes the clubs/{clubId} document ID).
+    const isDirectOwner = adminUid === clubId;
+
+    // Strategy 2: Check users/{adminUid}.role === 'club' (they are a club account type)
+    // and their associated clubId matches, OR they own any club (role=club is enough for now).
+    let isClubRoleUser = false;
+    if (!isDirectOwner) {
+      const userDoc = await firestoreGet('users', adminUid);
+      const userRole = userDoc?.fields?.role?.stringValue;
+      const userClubId = userDoc?.fields?.clubId?.stringValue;
+      // Accept if role is 'club' and either their clubId matches or no clubId stored yet
+      if (userRole === 'club' && (!userClubId || userClubId === clubId)) {
+        isClubRoleUser = true;
       }
-    );
-    const adminCheckData = await adminCheckRes.json();
-    const isAdmin = Array.isArray(adminCheckData) && adminCheckData.some((r: any) => r.document);
+    }
+
+    // Strategy 3: Explicit admin entry in club_members (for promoted admins)
+    let isClubMemberAdmin = false;
+    if (!isDirectOwner && !isClubRoleUser) {
+      const adminCheckRes = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: 'club_members' }],
+              where: {
+                compositeFilter: {
+                  op: 'AND',
+                  filters: [
+                    { fieldFilter: { field: { fieldPath: 'userId' }, op: 'EQUAL', value: { stringValue: adminUid } } },
+                    { fieldFilter: { field: { fieldPath: 'clubId' }, op: 'EQUAL', value: { stringValue: clubId } } },
+                    { fieldFilter: { field: { fieldPath: 'role' }, op: 'EQUAL', value: { stringValue: 'admin' } } },
+                    { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
+                  ],
+                },
+              },
+              limit: 1,
+            },
+          }),
+        }
+      );
+      const adminCheckData = await adminCheckRes.json();
+      isClubMemberAdmin = Array.isArray(adminCheckData) && adminCheckData.some((r: any) => r.document);
+    }
+
+    const isAdmin = isDirectOwner || isClubRoleUser || isClubMemberAdmin;
     if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden: you are not an admin of this club' }, { status: 403 });
     }
