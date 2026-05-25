@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  doc, collection, query, orderBy, addDoc, updateDoc, getDoc,
+  doc, collection, query, orderBy, addDoc, updateDoc, getDoc, getDocs, where, writeBatch,
 } from 'firebase/firestore';
 import type { Conversation, DirectMessage } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -109,6 +109,28 @@ export default function ConversationPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Mark new_message notifications for this conversation as read when the user opens it
+  useEffect(() => {
+    if (!firestore || !user?.uid || !conversationId) return;
+    (async () => {
+      try {
+        const q = query(
+          collection(firestore, 'notifications', user.uid, 'items'),
+          where('type', '==', 'new_message'),
+          where('conversationId', '==', conversationId),
+          where('isRead', '==', false)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) return;
+        const batch = writeBatch(firestore);
+        snap.docs.forEach(d => batch.update(d.ref, { isRead: true }));
+        await batch.commit();
+      } catch {
+        // Non-critical — don't surface errors
+      }
+    })();
+  }, [firestore, user?.uid, conversationId]);
+
   const otherParticipantId = conversation?.participants.find(p => p !== user?.uid);
   const otherInfo = otherParticipantId ? conversation?.participantInfo?.[otherParticipantId] : null;
 
@@ -133,6 +155,25 @@ export default function ConversationPage() {
         lastSenderId: user.uid,
         updatedAt: now,
       });
+
+      // Notify the other participant so they see the message in their Alerts tab
+      const recipientId = conversation?.participants.find(p => p !== user.uid);
+      if (recipientId) {
+        try {
+          await addDoc(collection(firestore, 'notifications', recipientId, 'items'), {
+            type: 'new_message',
+            actorName: currentUserName || user.displayName || 'Someone',
+            actorRole: 'user',
+            message: content.length > 100 ? content.slice(0, 100) + '…' : content,
+            conversationId,
+            url: `/chat/${conversationId}`,
+            isRead: false,
+            createdAt: now,
+          });
+        } catch {
+          // Notification failure is non-critical — don't block the message send
+        }
+      }
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
       setNewMessage(content);
@@ -140,7 +181,7 @@ export default function ConversationPage() {
       setIsSending(false);
       inputRef.current?.focus();
     }
-  }, [firestore, user, newMessage, isSending, currentUserName, conversationId, toast]);
+  }, [firestore, user, newMessage, isSending, currentUserName, conversationId, conversation, toast]);
 
   // Edit message
   const handleEdit = useCallback(async (messageId: string, newContent: string) => {

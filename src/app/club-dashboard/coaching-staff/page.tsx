@@ -16,6 +16,7 @@ import type { ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { InviteStaffDialog } from '@/components/club/invite-staff-dialog';
 import { AddStaffDirectDialog } from '@/components/club/add-staff-direct-dialog';
+import { InviteLinkDialog } from '@/components/club/invite-link-dialog';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
@@ -157,7 +158,7 @@ export default function CoachingStaffPage() {
             Manage coaches, analysts and technical staff
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => setAddDirectOpen(true)}
             className="bg-primary hover:bg-primary/90 font-black text-xs uppercase gap-2 h-9"
@@ -165,6 +166,7 @@ export default function CoachingStaffPage() {
             <UserPlus className="h-4 w-4" /> Add Directly
           </Button>
           <InviteStaffDialog clubId={clubId} clubName={clubName} />
+          <InviteLinkDialog clubId={clubId} clubName={clubName} />
         </div>
       </div>
 

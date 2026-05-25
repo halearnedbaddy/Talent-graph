@@ -108,6 +108,9 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   ), [firestore, athleteProfile?.uid]);
   const { data: unreadNotifs } = useCollection<{ id: string; isRead: boolean }>(notifsQuery);
 
+  // Unread direct message count — derived from already-fetched unreadNotifs (no extra query needed)
+  const unreadDMCount = (unreadNotifs ?? []).filter((n: any) => n.type === 'new_message').length;
+
   // Club announcements
   const announcementsQuery = useMemoFirebase(() => (
     firestore && athleteProfile?.affiliatedClubId && athleteProfile.clubStatus === 'active'
@@ -334,6 +337,22 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                   </span>
                 )}
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9"
+                asChild
+                aria-label="Messages"
+              >
+                <Link href="/chat">
+                  <MessageSquare className="h-4 w-4" />
+                  {unreadDMCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                      {unreadDMCount > 9 ? '9+' : unreadDMCount}
+                    </span>
+                  )}
+                </Link>
+              </Button>
               <SupportDialog />
               <EditProfileMediaDialog profile={athleteProfile} />
               <Button variant="outline" size="sm" asChild>
@@ -518,6 +537,19 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 )}
               </button>
             ))}
+            {/* Messages — standalone link (not a tab, routes to /chat) */}
+            <Link
+              href="/chat"
+              className="flex items-center gap-2 whitespace-nowrap px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              Messages
+              {unreadDMCount > 0 && (
+                <span className="ml-0.5 text-[10px] bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center font-black shrink-0">
+                  {unreadDMCount > 9 ? '9+' : unreadDMCount}
+                </span>
+              )}
+            </Link>
           </div>
         </div>
       </div>
@@ -998,8 +1030,54 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               )}
             </div>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-4">
-            <ProfileViewsCard athleteId={athleteProfile.uid} />
+          <div className="flex-1 overflow-y-auto divide-y">
+            {/* Notification items */}
+            {(unreadNotifs && unreadNotifs.length > 0) ? (
+              (unreadNotifs as any[]).map((n: any) => {
+                const isMsg = n.type === 'new_message';
+                return (
+                  <div key={n.id} className="flex items-start gap-3 p-4 hover:bg-muted/30 transition-colors">
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : 'bg-muted'}`}>
+                      {isMsg
+                        ? <MessageSquare className="h-4 w-4 text-primary" />
+                        : <Bell className="h-4 w-4 text-muted-foreground" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {n.actorName && (
+                        <p className="text-xs font-black uppercase tracking-wide truncate">{n.actorName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{n.message}</p>
+                      {n.createdAt && (
+                        <p className="text-[10px] text-muted-foreground mt-1 font-bold">
+                          {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
+                        </p>
+                      )}
+                      {n.url && (
+                        <Link
+                          href={n.url}
+                          onClick={() => setActiveTab('home')}
+                          className="inline-block mt-1.5 text-[10px] font-black text-primary uppercase tracking-widest hover:underline"
+                        >
+                          {isMsg ? 'Reply →' : 'View →'}
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center gap-3">
+                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="font-bold text-sm text-muted-foreground">All caught up!</p>
+                <p className="text-xs text-muted-foreground">No unread notifications.</p>
+              </div>
+            )}
+            <div className="p-4">
+              <ProfileViewsCard athleteId={athleteProfile.uid} />
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -1165,7 +1243,14 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           href="/chat"
           className="flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative text-muted-foreground hover:text-primary"
         >
-          <MessageSquare className="h-5 w-5" />
+          <div className="relative">
+            <MessageSquare className="h-5 w-5" />
+            {unreadDMCount > 0 && (
+              <span className="absolute -top-1 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-black text-primary-foreground">
+                {unreadDMCount > 9 ? '9+' : unreadDMCount}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] font-bold uppercase tracking-wide">
             Messages
           </span>

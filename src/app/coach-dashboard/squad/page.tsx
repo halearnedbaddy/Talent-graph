@@ -124,20 +124,35 @@ export default function CoachSquadPage() {
     if (!firestore || !athleteSearch.trim()) return;
     setSearching(true);
     try {
-      const term = athleteSearch.trim();
-      const termEnd = term + '\uf8ff';
-      const [byFirst, byLast] = await Promise.all([
-        getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', term), where('firstName', '<=', termEnd), limit(10))),
-        getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', term), where('lastName', '<=', termEnd), limit(10))),
-      ]);
+      const raw = athleteSearch.trim();
+      // Build search variants to handle case differences (Firestore range queries are case-sensitive)
+      const variants = Array.from(new Set([
+        raw,
+        raw.toLowerCase(),
+        raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase(),
+        raw.toUpperCase(),
+      ]));
+
+      const querySnaps = await Promise.all(
+        variants.flatMap(term => {
+          const termEnd = term + '\uf8ff';
+          return [
+            getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', term), where('firstName', '<=', termEnd), limit(10))),
+            getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', term), where('lastName', '<=', termEnd), limit(10))),
+          ];
+        })
+      );
+
       const seen = new Set<string>();
       const results: AthleteProfile[] = [];
-      [...byFirst.docs, ...byLast.docs].forEach(d => {
-        if (!seen.has(d.id)) {
-          seen.add(d.id);
-          const a = { uid: d.id, ...d.data() } as AthleteProfile;
-          if (a.affiliatedClubId !== clubId) results.push(a);
-        }
+      querySnaps.forEach(snap => {
+        snap.docs.forEach(d => {
+          if (!seen.has(d.id)) {
+            seen.add(d.id);
+            const a = { uid: d.id, ...d.data() } as AthleteProfile;
+            if (a.affiliatedClubId !== clubId) results.push(a);
+          }
+        });
       });
       setSearchResults(results.slice(0, 10));
     } catch (err: any) {

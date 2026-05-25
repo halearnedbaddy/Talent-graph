@@ -71,9 +71,11 @@ async function firestorePost(collection: string, data: Record<string, unknown>) 
   return res.json();
 }
 
-async function firestoreGet(collection: string, docId: string) {
+async function firestoreGet(collection: string, docId: string, bearerToken?: string) {
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
-  const res = await fetch(url);
+  const headers: Record<string, string> = {};
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`;
+  const res = await fetch(url, { headers });
   if (!res.ok) return null;
   return res.json();
 }
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
     // and their associated clubId matches, OR they own any club (role=club is enough for now).
     let isClubRoleUser = false;
     if (!isDirectOwner) {
-      const userDoc = await firestoreGet('users', adminUid);
+      const userDoc = await firestoreGet('users', adminUid, idToken);
       const userRole = userDoc?.fields?.role?.stringValue;
       const userClubId = userDoc?.fields?.clubId?.stringValue;
       // Accept if role is 'club' and either their clubId matches or no clubId stored yet
@@ -133,7 +135,7 @@ export async function POST(request: NextRequest) {
         `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
           body: JSON.stringify({
             structuredQuery: {
               from: [{ collectionId: 'club_members' }],
