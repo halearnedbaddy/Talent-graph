@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Trophy, Plus, ChevronLeft, ChevronRight, Loader2,
-  CheckCircle2, Calendar, MapPin, Users, BarChart3, Star
+  CheckCircle2, Calendar, MapPin, Users, BarChart3, Star, UserCheck
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile, ClubMatch } from '@/lib/types';
+import type { ClubMember, AthleteProfile, ClubMatch, UserAccount } from '@/lib/types';
+import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
 
@@ -126,7 +127,7 @@ export default function CoachMatchEntryPage() {
 
       const matchRef = await addDoc(collection(firestore, 'matches'), matchData);
 
-      // Update athlete match histories
+      // Update athlete match histories + recalculate CSI scores
       for (const ps of playerStats) {
         if (!athletes) continue;
         const athlete = athletes.find(a => a.uid === ps.athleteId);
@@ -147,16 +148,30 @@ export default function CoachMatchEntryPage() {
           redCards: ps.redCards,
           manOfTheMatch: ps.manOfTheMatch,
           isVerified: true,
+          statsLogged: true,
           updatedAt: new Date().toISOString(),
           clubMatchId: matchRef.id,
         };
+        const updatedHistory = [...existing, newEntry];
+
+        // Recalculate CSI
+        let scoreUpdates: Record<string, any> = {};
+        try {
+          const userSnap = await getDoc(doc(firestore, 'users', ps.athleteId));
+          const userAccount = (userSnap.exists() ? userSnap.data() : {}) as UserAccount;
+          scoreUpdates = calculateTalentGraphScore({ ...athlete, matchHistory: updatedHistory }, userAccount);
+        } catch {
+          // Score recalc failed silently — stats still saved
+        }
+
         await updateDoc(doc(firestore, 'athletes', ps.athleteId), {
-          matchHistory: [...existing, newEntry],
+          matchHistory: updatedHistory,
+          ...scoreUpdates,
           updatedAt: new Date().toISOString(),
         });
       }
 
-      toast({ title: 'Match Saved ✓', description: 'Match data and player stats have been recorded.' });
+      toast({ title: 'Match Saved ✓', description: `Match data logged. ${playerStats.length} player profile${playerStats.length !== 1 ? 's' : ''} updated.` });
       setShowForm(false);
       setStep(0);
       setDetails({ opponent: '', competition: '', category: 'league', date: new Date().toISOString().slice(0, 10), location: '', venue: '', result: '', score: '', halfTimeScore: '' });

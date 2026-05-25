@@ -10,10 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, ArrowLeft, Trophy, Save, Star, ShieldCheck } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, ArrowLeft, Trophy, Save, Star, ShieldCheck, Users, Building2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { AthleteProfile, MatchEntry, UserAccount } from '@/lib/types';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
+import Link from 'next/link';
 
 export default function AddMatchPage() {
   const { user, isUserLoading } = useUser();
@@ -118,7 +120,78 @@ export default function AddMatchPage() {
     }
   };
 
-  if (isUserLoading || isProfileLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || isProfileLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  }
+
+  // ── Club athlete block ──────────────────────────────────────────────────────
+  // Once an athlete joins a club, match data is the coach/analyst's responsibility
+  const isClubMember = profile?.clubStatus === 'active' && !!profile?.affiliatedClubId;
+  // Allow editing a club-assigned match that was pushed by the coach (has clubMatchId)
+  const isClubMatch = !!existingMatch?.clubMatchId;
+
+  if (isClubMember && !pendingMatchId) {
+    return (
+      <div className="min-h-screen bg-muted/40 p-4 sm:p-8 flex items-center justify-center">
+        <div className="max-w-md w-full space-y-4">
+          <Button variant="ghost" onClick={() => router.back()} className="gap-2 -ml-2">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Button>
+          <Card className="border-none shadow-2xl">
+            <CardHeader className="bg-neutral-900 text-white rounded-t-xl pb-5">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Club Member</CardTitle>
+                  <CardDescription className="text-neutral-400 text-xs mt-0.5">
+                    Your match data is managed by your club
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                <Building2 className="h-5 w-5 text-primary shrink-0" />
+                <div>
+                  <p className="font-black text-sm">{profile.clubName}</p>
+                  <Badge variant="outline" className="text-[9px] font-black mt-1 border-primary/30 text-primary">
+                    Active Squad Member
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                <p>
+                  <strong className="text-foreground">Independent match logging is for unattached athletes only.</strong>
+                </p>
+                <p>
+                  Since you're an active member of <strong className="text-foreground">{profile.clubName}</strong>, your match statistics are entered by your club's coach or analyst. This keeps your data verified and consistent.
+                </p>
+                <p>
+                  After each fixture, your coach/analyst logs the match and your stats — goals, assists, minutes played, rating, and Man of the Match — automatically reflect on your profile.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-300/30">
+                <p className="text-xs font-bold text-amber-700">
+                  Not seeing recent match data? Ask your coach or club analyst to log the match from their dashboard.
+                </p>
+              </div>
+
+              <Button asChild className="w-full font-black uppercase tracking-widest gap-2">
+                <Link href="/">
+                  Back to Dashboard
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/40 p-4 sm:p-8">
@@ -133,14 +206,14 @@ export default function AddMatchPage() {
               <Trophy className="w-6 h-6 text-primary" />
               <div>
                 <CardTitle>
-                  {existingMatch?.clubMatchId
+                  {isClubMatch
                     ? 'Finalise Club Match Stats'
                     : pendingMatchId
                     ? 'Edit Match Performance'
                     : 'Log Independent Match'}
                 </CardTitle>
                 <CardDescription className="text-neutral-400">
-                  {existingMatch?.clubMatchId
+                  {isClubMatch
                     ? 'Record your stats for this institutional fixture to update your Talent Graph.'
                     : pendingMatchId
                     ? 'Update your stats for this match. Changes will recalculate your indices.'
@@ -157,7 +230,7 @@ export default function AddMatchPage() {
                   placeholder="e.g. National Premier League"
                   value={formData.competition}
                   onChange={e => setFormData({ ...formData, competition: e.target.value })}
-                  disabled={!!(existingMatch?.clubMatchId)}
+                  disabled={isClubMatch}
                   className="font-bold h-10"
                 />
               </div>
@@ -182,6 +255,7 @@ export default function AddMatchPage() {
                   placeholder="e.g. Arsenal FC"
                   value={formData.opponent}
                   onChange={e => setFormData({ ...formData, opponent: e.target.value })}
+                  disabled={isClubMatch}
                   className="font-bold h-10"
                 />
               </div>
