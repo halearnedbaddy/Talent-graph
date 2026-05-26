@@ -29,6 +29,10 @@ service cloud.firestore {
       return isSignedIn() && getUserData().role == 'scout';
     }
 
+    function isStaffRole() {
+      return isSignedIn() && getUserData().role in ['coach', 'assistant_coach', 'analyst', 'gk_coach'];
+    }
+
     function isMemberOfClub(clubId) {
       return exists(/databases/$(database)/documents/club_members/$(request.auth.uid + '_' + clubId));
     }
@@ -56,7 +60,8 @@ service cloud.firestore {
     match /athletes/{athleteId} {
       allow read: if isSignedIn();
       allow create: if isOwner(athleteId);
-      allow update: if isOwner(athleteId) || isScoutRole() || isClubAdmin() || isAdmin();
+      allow update: if isOwner(athleteId) || isScoutRole() || isClubAdmin() || isAdmin() ||
+        isStaffRole();
       allow delete: if isOwner(athleteId) || isAdmin();
     }
     
@@ -69,7 +74,6 @@ service cloud.firestore {
     match /clubs/{clubId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && clubId == ('club_' + request.auth.uid);
-      // Bug #03 Fix: allow club admin members to update their own club profile
       allow update: if isSignedIn() && (
         clubId == ('club_' + request.auth.uid) ||
         isActiveMemberOfClub(clubId) ||
@@ -118,6 +122,16 @@ service cloud.firestore {
         (
           isClubAdmin() &&
           request.resource.data.status == 'club_invited'
+        ) ||
+        // Club admins directly adding athletes or staff (immediate active status)
+        (
+          isClubAdmin() &&
+          request.resource.data.status == 'active'
+        ) ||
+        // Club admins directly adding athletes with athlete role
+        (
+          isClubAdmin() &&
+          request.resource.data.role == 'athlete'
         )
       );
       // Club admins and system admins can approve/reject/update any record
@@ -131,13 +145,11 @@ service cloud.firestore {
     // Matches: athletes own their match entries; club admins own club fixtures
     match /matches/{matchId} {
       allow read: if isSignedIn();
-      // Athletes create their own match entries; club admins create club fixtures (no athleteId)
       allow create: if isSignedIn() && (
         request.resource.data.athleteId == request.auth.uid ||
         (isClubAdmin() && request.resource.data.clubId == 'club_' + request.auth.uid) ||
         isActiveMemberOfClub(request.resource.data.clubId)
       );
-      // Athletes update their own entries; club admins update their club's fixtures; admins update all
       allow update, delete: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
         isClubOwnerOfMatch() ||
@@ -145,7 +157,6 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Bug #05 Fix: Match reviews sub-collection — coaches/analysts/club admins can submit
       match /reviews/{reviewId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && (
@@ -178,20 +189,29 @@ service cloud.firestore {
 
     match /practices/{practiceId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin() ||
+      allow create: if isClubAdmin() || isAdmin() || isStaffRole() ||
         (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
+      allow update: if isClubAdmin() || isAdmin() || isStaffRole() ||
+        (isSignedIn() && isActiveMemberOfClub(resource.data.clubId));
+      allow delete: if isClubAdmin() || isAdmin();
     }
 
     match /drills/{drillId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin() ||
+      allow create: if isClubAdmin() || isAdmin() || isStaffRole() ||
         (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
+      allow update: if isClubAdmin() || isAdmin() || isStaffRole() ||
+        (isSignedIn() && isActiveMemberOfClub(resource.data.clubId));
+      allow delete: if isClubAdmin() || isAdmin();
     }
 
     match /training_sessions/{sessionId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin() ||
+      allow create: if isClubAdmin() || isAdmin() || isStaffRole() ||
         (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
+      allow update: if isClubAdmin() || isAdmin() || isStaffRole() ||
+        (isSignedIn() && isActiveMemberOfClub(resource.data.clubId));
+      allow delete: if isClubAdmin() || isAdmin();
     }
 
     match /scout_connections/{connectionId} {
@@ -373,7 +393,8 @@ service cloud.firestore {
       allow write: if isSignedIn() && (
         clubId == ('club_' + request.auth.uid) ||
         isActiveMemberOfClub(clubId) ||
-        isAdmin()
+        isAdmin() ||
+        isStaffRole()
       );
     }
 
