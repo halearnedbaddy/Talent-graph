@@ -60,6 +60,7 @@ import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import { AthleteClubInvitations } from '@/components/club/athlete-club-invitations';
 import { DmSheet } from '@/components/messaging/dm-sheet';
+import { AthleteTrainingSessions } from './athlete-training-sessions';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
 import { ShareProfileCard } from './share-profile-card';
@@ -968,6 +969,10 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             <ProfileViewsCard athleteId={athleteProfile.uid} />
             <ActivitySummary userAccount={userAccount} athleteProfile={athleteProfile} />
             <ScoutRequests athleteId={athleteProfile.uid} />
+            <AthleteTrainingSessions
+              athleteId={athleteProfile.uid}
+              affiliatedClubId={athleteProfile.affiliatedClubId}
+            />
 
             <Card className="bg-neutral-900 text-white border-none shadow-2xl">
               <CardHeader className="pb-3">

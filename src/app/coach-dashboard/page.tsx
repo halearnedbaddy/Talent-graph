@@ -14,6 +14,7 @@ import {
 import Link from 'next/link';
 import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile } from '@/lib/types';
 import { ClubInvitationsCard } from '@/components/scout/club-invitations-card';
+import { CoachClubInvitations } from '@/components/coach/club-invitations';
 import { useMemo } from 'react';
 import { format, parseISO, formatDistanceToNow, isAfter } from 'date-fns';
 
@@ -198,6 +199,7 @@ export default function CoachOverviewPage() {
           <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">Command Centre</p>
         </div>
         <ClubInvitationsCard />
+        <CoachClubInvitations coachUid={user?.uid ?? ''} coachName={userAccount ? `${(userAccount as any).firstName || ''} ${(userAccount as any).lastName || ''}`.trim() : 'Coach'} />
         <div className="rounded-2xl border border-[#00C853]/30 bg-[#00C853]/5 p-8 flex flex-col items-center gap-4 text-center">
           <div className="h-16 w-16 rounded-2xl bg-[#00C853]/15 flex items-center justify-center">
             <Building2 className="h-8 w-8 text-[#00C853]" />

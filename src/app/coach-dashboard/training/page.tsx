@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,15 +13,19 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
 import {
   Dumbbell, Plus, Loader2, CheckCircle2, Clock,
-  Users, BookOpen, ChevronRight, X, Check, AlertTriangle, PenLine
+  Users, BookOpen, X, Check, PenLine,
+  TrendingUp, AlertCircle, XCircle, BarChart3, Calendar
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isBefore, startOfToday } from 'date-fns';
 
 function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(' '); }
+
+type AttendanceStatus = 'present' | 'late' | 'absent';
 
 interface TrainingSession {
   id: string;
@@ -33,6 +37,7 @@ interface TrainingSession {
   drills: string[];
   notes?: string;
   attendees: string[];
+  attendance?: Record<string, AttendanceStatus>;
   createdAt: string;
 }
 
@@ -44,6 +49,7 @@ interface DrillTemplate {
   players: string;
   description: string;
   equipment: string[];
+  custom?: boolean;
 }
 
 const DRILL_LIBRARY: DrillTemplate[] = [
@@ -65,7 +71,39 @@ const CATEGORY_COLORS: Record<string, string> = {
   Attacking: 'bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30',
   Defensive: 'bg-red-500/10 text-red-400 border-red-500/30',
   'Set Pieces': 'bg-[#94A3B8]/10 text-[#94A3B8] border-[#94A3B8]/30',
+  Mixed: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
 };
+
+function StatusButton({
+  status,
+  current,
+  onClick,
+}: {
+  status: AttendanceStatus;
+  current: AttendanceStatus;
+  onClick: () => void;
+}) {
+  const config = {
+    present: { label: 'Present', icon: CheckCircle2, active: 'bg-[#00C853] border-[#00C853] text-black', inactive: 'border-[#1E293B] text-[#94A3B8] hover:border-[#00C853]/50 hover:text-[#00C853]' },
+    late: { label: 'Late', icon: AlertCircle, active: 'bg-yellow-500 border-yellow-500 text-black', inactive: 'border-[#1E293B] text-[#94A3B8] hover:border-yellow-500/50 hover:text-yellow-400' },
+    absent: { label: 'Absent', icon: XCircle, active: 'bg-red-500 border-red-500 text-white', inactive: 'border-[#1E293B] text-[#94A3B8] hover:border-red-500/50 hover:text-red-400' },
+  };
+  const c = config[status];
+  const Icon = c.icon;
+  const isActive = current === status;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase transition-all',
+        isActive ? c.active : c.inactive
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {c.label}
+    </button>
+  );
+}
 
 export default function CoachTrainingPage() {
   const { user } = useUser();
@@ -76,7 +114,8 @@ export default function CoachTrainingPage() {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [selectedDrills, setSelectedDrills] = useState<string[]>([]);
   const [attendanceSession, setAttendanceSession] = useState<TrainingSession | null>(null);
-  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [savingAttendance, setSavingAttendance] = useState(false);
   const [customDrills, setCustomDrills] = useState<DrillTemplate[]>([]);
   const [addDrillOpen, setAddDrillOpen] = useState(false);
   const [savingDrill, setSavingDrill] = useState(false);
@@ -108,7 +147,6 @@ export default function CoachTrainingPage() {
   ), [firestore, clubId]);
   const { data: athletes } = useCollection<AthleteProfile>(athletesQuery);
 
-  // Load custom drills from Firestore when clubId is ready
   useEffect(() => {
     if (!firestore || !clubId) return;
     (async () => {
@@ -123,7 +161,7 @@ export default function CoachTrainingPage() {
           description: (d.data() as any).description || '',
           equipment: (d.data() as any).equipment || [],
           custom: true,
-        } as DrillTemplate & { custom: boolean }));
+        }));
         setCustomDrills(drills);
       } catch { }
     })();
@@ -131,6 +169,36 @@ export default function CoachTrainingPage() {
 
   const allDrills = [...DRILL_LIBRARY, ...customDrills];
   const filteredDrills = categoryFilter === 'All' ? allDrills : allDrills.filter(d => d.category === categoryFilter);
+
+  const today = startOfToday();
+
+  const { upcomingSessions, pastSessions } = useMemo(() => {
+    if (!sessions) return { upcomingSessions: [], pastSessions: [] };
+    const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+    return {
+      pastSessions: sorted.filter(s => { try { return isBefore(parseISO(s.date), today); } catch { return false; } }),
+      upcomingSessions: sorted.filter(s => { try { return !isBefore(parseISO(s.date), today); } catch { return true; } }).reverse(),
+    };
+  }, [sessions, today]);
+
+  // Per-athlete attendance stats across all past sessions
+  const athleteStats = useMemo(() => {
+    if (!athletes || !pastSessions.length) return {};
+    const stats: Record<string, { present: number; late: number; absent: number; total: number }> = {};
+    athletes.forEach(a => {
+      stats[a.uid] = { present: 0, late: 0, absent: 0, total: pastSessions.length };
+    });
+    pastSessions.forEach(s => {
+      athletes.forEach(a => {
+        const status = s.attendance?.[a.uid];
+        const legacy = s.attendees.includes(a.uid);
+        if (status === 'present' || (!status && legacy)) stats[a.uid].present++;
+        else if (status === 'late') stats[a.uid].late++;
+        else stats[a.uid].absent++;
+      });
+    });
+    return stats;
+  }, [athletes, pastSessions]);
 
   const toggleDrill = (id: string) => {
     setSelectedDrills(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
@@ -150,13 +218,11 @@ export default function CoachTrainingPage() {
         createdAt: new Date().toISOString(),
       });
       setCustomDrills(prev => [...prev, {
-        id: ref.id,
-        name: newDrill.name.trim(),
-        category: newDrill.category,
-        duration: Number(newDrill.duration) || 15,
-        players: newDrill.players || 'Any',
+        id: ref.id, name: newDrill.name.trim(), category: newDrill.category,
+        duration: Number(newDrill.duration) || 15, players: newDrill.players || 'Any',
         description: newDrill.description,
         equipment: newDrill.equipment.split(',').map(s => s.trim()).filter(Boolean),
+        custom: true,
       }]);
       toast({ title: 'Drill saved ✓', description: `${newDrill.name} added to your club library.` });
       setNewDrill({ name: '', category: 'Technical', duration: '15', players: 'Any', description: '', equipment: '' });
@@ -173,15 +239,10 @@ export default function CoachTrainingPage() {
     setSaving(true);
     try {
       await addDoc(collection(firestore, 'training_sessions'), {
-        clubId,
-        title: form.title,
-        date: form.date,
-        duration: Number(form.duration),
-        focus: form.focus,
-        drills: selectedDrills,
-        notes: form.notes,
-        attendees: [],
-        createdAt: new Date().toISOString(),
+        clubId, title: form.title, date: form.date,
+        duration: Number(form.duration), focus: form.focus,
+        drills: selectedDrills, notes: form.notes,
+        attendees: [], attendance: {}, createdAt: new Date().toISOString(),
       });
       toast({ title: 'Session Created ✓', description: `${form.title} has been scheduled.` });
       setShowCreate(false);
@@ -196,21 +257,53 @@ export default function CoachTrainingPage() {
 
   const handleSaveAttendance = async () => {
     if (!firestore || !attendanceSession) return;
-    const attendees = Object.entries(attendance).filter(([, v]) => v).map(([k]) => k);
-    await updateDoc(doc(firestore, 'training_sessions', attendanceSession.id), { attendees });
-    toast({ title: 'Attendance Saved ✓' });
-    setAttendanceSession(null);
-    setAttendance({});
+    setSavingAttendance(true);
+    try {
+      // Legacy attendees array (present + late = attended)
+      const attendees = Object.entries(attendance)
+        .filter(([, v]) => v === 'present' || v === 'late')
+        .map(([k]) => k);
+
+      await updateDoc(doc(firestore, 'training_sessions', attendanceSession.id), {
+        attendees,
+        attendance,
+        updatedAt: new Date().toISOString(),
+      });
+      toast({ title: 'Attendance Saved ✓', description: `${attendees.length} athletes marked.` });
+      setAttendanceSession(null);
+      setAttendance({});
+    } catch {
+      toast({ title: 'Error', description: 'Could not save attendance.', variant: 'destructive' });
+    } finally {
+      setSavingAttendance(false);
+    }
   };
 
   const openAttendance = (s: TrainingSession) => {
     setAttendanceSession(s);
-    const init: Record<string, boolean> = {};
-    athletes?.forEach(a => { init[a.uid] = s.attendees.includes(a.uid); });
+    const init: Record<string, AttendanceStatus> = {};
+    athletes?.forEach(a => {
+      init[a.uid] = s.attendance?.[a.uid] ?? (s.attendees.includes(a.uid) ? 'present' : 'absent');
+    });
     setAttendance(init);
   };
 
-  const sortedSessions = sessions ? [...sessions].sort((a, b) => b.date.localeCompare(a.date)) : [];
+  const setAthleteStatus = (uid: string, status: AttendanceStatus) => {
+    setAttendance(prev => ({ ...prev, [uid]: status }));
+  };
+
+  const markAll = (status: AttendanceStatus) => {
+    const next: Record<string, AttendanceStatus> = {};
+    athletes?.forEach(a => { next[a.uid] = status; });
+    setAttendance(next);
+  };
+
+  const attendanceSummary = useMemo(() => {
+    const present = Object.values(attendance).filter(v => v === 'present').length;
+    const late = Object.values(attendance).filter(v => v === 'late').length;
+    const absent = Object.values(attendance).filter(v => v === 'absent').length;
+    return { present, late, absent };
+  }, [attendance]);
 
   return (
     <div className="space-y-5">
@@ -234,60 +327,131 @@ export default function CoachTrainingPage() {
           <TabsTrigger value="sessions" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
             <Clock className="h-3 w-3" /> Sessions
           </TabsTrigger>
+          <TabsTrigger value="squad" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
+            <BarChart3 className="h-3 w-3" /> Squad Stats
+          </TabsTrigger>
           <TabsTrigger value="library" className="data-[state=active]:bg-[#00C853] data-[state=active]:text-black font-black text-[10px] uppercase gap-1.5">
             <BookOpen className="h-3 w-3" /> Drill Library
           </TabsTrigger>
         </TabsList>
 
         {/* Sessions */}
-        <TabsContent value="sessions" className="space-y-3">
+        <TabsContent value="sessions" className="space-y-4">
           {sessionsLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-[#00C853]" /></div>
-          ) : sortedSessions.length === 0 ? (
+          ) : (
+            <>
+              {/* Upcoming */}
+              {upcomingSessions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-1.5">
+                    <Calendar className="h-3 w-3" /> Upcoming
+                  </p>
+                  {upcomingSessions.map(s => (
+                    <SessionCard key={s.id} s={s} athletes={athletes} onAttendance={openAttendance} upcoming />
+                  ))}
+                </div>
+              )}
+
+              {/* Past */}
+              {pastSessions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-1.5 mt-2">
+                    <TrendingUp className="h-3 w-3" /> Past Sessions
+                  </p>
+                  {pastSessions.map(s => (
+                    <SessionCard key={s.id} s={s} athletes={athletes} onAttendance={openAttendance} />
+                  ))}
+                </div>
+              )}
+
+              {upcomingSessions.length === 0 && pastSessions.length === 0 && (
+                <div className="text-center py-16">
+                  <Dumbbell className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+                  <p className="text-white font-black">No training sessions yet</p>
+                  <p className="text-[#94A3B8] text-sm mt-1">Create your first session to get started.</p>
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Squad Attendance Stats */}
+        <TabsContent value="squad" className="space-y-3">
+          {!athletes || athletes.length === 0 ? (
             <div className="text-center py-16">
-              <Dumbbell className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
-              <p className="text-white font-black">No training sessions yet</p>
-              <p className="text-[#94A3B8] text-sm mt-1">Create your first session to get started.</p>
+              <Users className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+              <p className="text-white font-black">No athletes in squad</p>
+              <p className="text-[#94A3B8] text-sm mt-1">Add athletes to your club squad first.</p>
+            </div>
+          ) : pastSessions.length === 0 ? (
+            <div className="text-center py-16">
+              <BarChart3 className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+              <p className="text-white font-black">No session data yet</p>
+              <p className="text-[#94A3B8] text-sm mt-1">Run sessions and take attendance to see stats.</p>
             </div>
           ) : (
-            sortedSessions.map(s => (
-              <Card key={s.id} className="border border-[#1E293B] bg-[#111827] hover:border-[#00C853]/30 transition-colors">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <p className="text-sm font-black text-white">{s.title}</p>
-                        <Badge className={cn('font-black text-[8px] border', CATEGORY_COLORS[s.focus] ?? 'bg-[#1C2333] text-[#94A3B8] border-[#1E293B]')}>
-                          {s.focus}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-[9px] font-bold text-[#94A3B8] flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {(() => { try { return format(parseISO(s.date), 'dd MMM yyyy'); } catch { return s.date; } })()}
-                        </span>
-                        <span className="text-[9px] font-bold text-[#94A3B8]">{s.duration} min</span>
-                        <span className="text-[9px] font-bold text-[#94A3B8] flex items-center gap-1">
-                          <Users className="h-3 w-3" /> {s.attendees.length} / {athletes?.length ?? 0} present
-                        </span>
-                      </div>
-                      {s.drills.length > 0 && (
-                        <p className="text-[9px] text-[#94A3B8] mt-1">
-                          {s.drills.length} drill{s.drills.length !== 1 ? 's' : ''} planned
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      size="sm" variant="outline"
-                      onClick={() => openAttendance(s)}
-                      className="border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-black text-[10px] uppercase h-7 gap-1 shrink-0"
-                    >
-                      <Users className="h-3 w-3" /> Attendance
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <Card className="border-[#1E293B] bg-[#111827] text-center p-3">
+                  <p className="text-2xl font-black text-white">{pastSessions.length}</p>
+                  <p className="text-[9px] font-bold text-[#94A3B8] uppercase">Sessions</p>
+                </Card>
+                <Card className="border-[#00C853]/20 bg-[#00C853]/5 text-center p-3">
+                  <p className="text-2xl font-black text-[#00C853]">
+                    {athletes.length > 0 && pastSessions.length > 0
+                      ? Math.round(Object.values(athleteStats).reduce((sum, s) => sum + (s.present + s.late) / s.total, 0) / athletes.length * 100)
+                      : 0}%
+                  </p>
+                  <p className="text-[9px] font-bold text-[#94A3B8] uppercase">Avg Rate</p>
+                </Card>
+                <Card className="border-[#1E293B] bg-[#111827] text-center p-3">
+                  <p className="text-2xl font-black text-white">{athletes.length}</p>
+                  <p className="text-[9px] font-bold text-[#94A3B8] uppercase">Athletes</p>
+                </Card>
+              </div>
+
+              {athletes
+                .slice()
+                .sort((a, b) => {
+                  const rA = athleteStats[a.uid];
+                  const rB = athleteStats[b.uid];
+                  const pA = rA ? (rA.present + rA.late) / rA.total : 0;
+                  const pB = rB ? (rB.present + rB.late) / rB.total : 0;
+                  return pB - pA;
+                })
+                .map(a => {
+                  const s = athleteStats[a.uid] ?? { present: 0, late: 0, absent: 0, total: pastSessions.length };
+                  const rate = s.total > 0 ? Math.round(((s.present + s.late) / s.total) * 100) : 0;
+                  const color = rate >= 80 ? '#00C853' : rate >= 60 ? '#FACC15' : '#EF4444';
+                  return (
+                    <Card key={a.uid} className="border-[#1E293B] bg-[#111827]">
+                      <CardContent className="p-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 rounded-lg shrink-0">
+                            <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-xs font-black">
+                              {a.firstName?.[0]}{a.lastName?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="text-sm font-black text-white truncate">{a.firstName} {a.lastName}</p>
+                              <span className="text-sm font-black shrink-0" style={{ color }}>{rate}%</span>
+                            </div>
+                            <Progress value={rate} className="h-1.5 bg-[#1E293B]" style={{ ['--progress-color' as any]: color }} />
+                            <div className="flex gap-3 mt-1.5">
+                              <span className="text-[9px] font-bold text-[#00C853]">{s.present} present</span>
+                              <span className="text-[9px] font-bold text-yellow-400">{s.late} late</span>
+                              <span className="text-[9px] font-bold text-red-400">{s.absent} absent</span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              }
+            </>
           )}
         </TabsContent>
 
@@ -296,19 +460,19 @@ export default function CoachTrainingPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="flex gap-2 flex-wrap flex-1">
               {['All', ...Object.keys(CATEGORY_COLORS)].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className={cn(
-                  'px-3 py-1 rounded-full text-[10px] font-black uppercase border transition-all',
-                  categoryFilter === cat
-                    ? 'bg-[#00C853] text-black border-[#00C853]'
-                    : 'border-[#1E293B] text-[#94A3B8] hover:border-[#94A3B8] hover:text-white'
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+                <button
+                  key={cat}
+                  onClick={() => setCategoryFilter(cat)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-[10px] font-black uppercase border transition-all',
+                    categoryFilter === cat
+                      ? 'bg-[#00C853] text-black border-[#00C853]'
+                      : 'border-[#1E293B] text-[#94A3B8] hover:border-[#94A3B8] hover:text-white'
+                  )}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
             <Button
               size="sm"
@@ -335,6 +499,9 @@ export default function CoachTrainingPage() {
                         <Badge className="bg-[#1C2333] text-[#94A3B8] border-[#1E293B] font-black text-[8px]">
                           <Users className="h-2.5 w-2.5 mr-1" />{drill.players}
                         </Badge>
+                        {drill.custom && (
+                          <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/30 font-black text-[8px]">Custom</Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -460,7 +627,6 @@ export default function CoachTrainingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Attendance Dialog */}
       {/* Add Custom Drill Dialog */}
       <Dialog open={addDrillOpen} onOpenChange={setAddDrillOpen}>
         <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-md">
@@ -485,7 +651,7 @@ export default function CoachTrainingPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1C2333] border-[#1E293B]">
-                    {['Technical','Tactical','Physical','Attacking','Defensive','Set Pieces','Custom'].map(c => (
+                    {['Technical', 'Tactical', 'Physical', 'Attacking', 'Defensive', 'Set Pieces', 'Custom'].map(c => (
                       <SelectItem key={c} value={c} className="text-white font-bold text-xs">{c}</SelectItem>
                     ))}
                   </SelectContent>
@@ -545,61 +711,179 @@ export default function CoachTrainingPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Attendance Dialog — 3-state */}
       {attendanceSession && (
-        <Dialog open onOpenChange={() => setAttendanceSession(null)}>
-          <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-md max-h-[80vh] overflow-y-auto">
+        <Dialog open onOpenChange={() => { setAttendanceSession(null); setAttendance({}); }}>
+          <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-black uppercase tracking-wide">
                 Attendance — {attendanceSession.title}
               </DialogTitle>
+              <p className="text-[11px] text-[#94A3B8]">
+                {(() => { try { return format(parseISO(attendanceSession.date), 'EEEE, dd MMMM yyyy'); } catch { return attendanceSession.date; } })()}
+                {' · '}{attendanceSession.duration} min
+              </p>
             </DialogHeader>
-            <div className="space-y-2">
+
+            {/* Summary bar */}
+            <div className="flex gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00C853]/10 border border-[#00C853]/20">
+                <CheckCircle2 className="h-3.5 w-3.5 text-[#00C853]" />
+                <span className="text-[11px] font-black text-[#00C853]">{attendanceSummary.present} Present</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <AlertCircle className="h-3.5 w-3.5 text-yellow-400" />
+                <span className="text-[11px] font-black text-yellow-400">{attendanceSummary.late} Late</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                <XCircle className="h-3.5 w-3.5 text-red-400" />
+                <span className="text-[11px] font-black text-red-400">{attendanceSummary.absent} Absent</span>
+              </div>
+              <div className="ml-auto flex gap-1.5">
+                <button
+                  onClick={() => markAll('present')}
+                  className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase border border-[#00C853]/30 text-[#00C853] hover:bg-[#00C853]/10 transition-colors"
+                >
+                  All Present
+                </button>
+                <button
+                  onClick={() => markAll('absent')}
+                  className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  All Absent
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 mt-1">
               {athletes && athletes.length > 0 ? (
-                athletes.map(a => (
-                  <button
-                    key={a.uid}
-                    onClick={() => setAttendance(prev => ({ ...prev, [a.uid]: !prev[a.uid] }))}
-                    className={cn(
-                      'w-full flex items-center gap-3 p-3 rounded-xl border transition-all',
-                      attendance[a.uid] ? 'border-[#00C853]/50 bg-[#00C853]/5' : 'border-[#1E293B] bg-[#1C2333]'
-                    )}
-                  >
-                    <div className={cn(
-                      'h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0',
-                      attendance[a.uid] ? 'bg-[#00C853] border-[#00C853]' : 'border-[#94A3B8]'
-                    )}>
-                      {attendance[a.uid] && <Check className="h-3 w-3 text-black" />}
+                athletes.map(a => {
+                  const status = attendance[a.uid] ?? 'absent';
+                  return (
+                    <div
+                      key={a.uid}
+                      className={cn(
+                        'flex items-center gap-3 p-3 rounded-xl border transition-all',
+                        status === 'present' ? 'border-[#00C853]/40 bg-[#00C853]/5' :
+                        status === 'late' ? 'border-yellow-500/40 bg-yellow-500/5' :
+                        'border-[#1E293B] bg-[#0A0E1A]'
+                      )}
+                    >
+                      <Avatar className="h-9 w-9 rounded-lg shrink-0">
+                        <AvatarFallback className="rounded-lg bg-[#1C2333] text-[#94A3B8] text-xs font-black">
+                          {a.firstName?.[0]}{a.lastName?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-white truncate">{a.firstName} {a.lastName}</p>
+                        <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{a.position}</p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <StatusButton status="present" current={status} onClick={() => setAthleteStatus(a.uid, 'present')} />
+                        <StatusButton status="late" current={status} onClick={() => setAthleteStatus(a.uid, 'late')} />
+                        <StatusButton status="absent" current={status} onClick={() => setAthleteStatus(a.uid, 'absent')} />
+                      </div>
                     </div>
-                    <Avatar className="h-8 w-8 rounded-lg shrink-0">
-                      <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-xs font-black">
-                        {a.firstName[0]}{a.lastName[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 text-left">
-                      <p className="text-sm font-black text-white">{a.firstName} {a.lastName}</p>
-                      <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{a.position}</p>
-                    </div>
-                    {attendance[a.uid]
-                      ? <Badge className="bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30 font-black text-[8px]">Present</Badge>
-                      : <Badge className="bg-red-500/10 text-red-400 border-red-500/30 font-black text-[8px]">Absent</Badge>
-                    }
-                  </button>
-                ))
+                  );
+                })
               ) : (
-                <p className="text-center text-[#94A3B8] py-4 text-sm">No athletes in squad.</p>
+                <div className="text-center py-8">
+                  <Users className="h-8 w-8 text-[#94A3B8] mx-auto mb-2 opacity-30" />
+                  <p className="text-[#94A3B8] text-sm">No athletes in squad yet.</p>
+                </div>
               )}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAttendanceSession(null)} className="border-[#1E293B] text-[#94A3B8] font-black text-[10px] uppercase">
+
+            <DialogFooter className="mt-2">
+              <Button
+                variant="outline"
+                onClick={() => { setAttendanceSession(null); setAttendance({}); }}
+                className="border-[#1E293B] text-[#94A3B8] font-black text-[10px] uppercase"
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSaveAttendance} className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-2">
-                <CheckCircle2 className="h-4 w-4" /> Save Attendance
+              <Button
+                onClick={handleSaveAttendance}
+                disabled={savingAttendance}
+                className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-2"
+              >
+                {savingAttendance ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Save Attendance
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
     </div>
+  );
+}
+
+function SessionCard({
+  s,
+  athletes,
+  onAttendance,
+  upcoming,
+}: {
+  s: TrainingSession;
+  athletes: AthleteProfile[] | null | undefined;
+  onAttendance: (s: TrainingSession) => void;
+  upcoming?: boolean;
+}) {
+  const presentCount = Object.values(s.attendance || {}).filter(v => v === 'present').length
+    + (s.attendees?.length ?? 0) - Object.keys(s.attendance || {}).filter(k => s.attendees?.includes(k)).length;
+  const realPresent = s.attendance
+    ? Object.values(s.attendance).filter(v => v === 'present').length
+    : s.attendees?.length ?? 0;
+  const lateCount = s.attendance ? Object.values(s.attendance).filter(v => v === 'late').length : 0;
+  const dateStr = (() => { try { return format(parseISO(s.date), 'dd MMM yyyy'); } catch { return s.date; } })();
+
+  return (
+    <Card className={cn(
+      'border transition-colors',
+      upcoming ? 'border-[#00C853]/20 bg-[#00C853]/5' : 'border-[#1E293B] bg-[#111827] hover:border-[#00C853]/30'
+    )}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <p className="text-sm font-black text-white">{s.title}</p>
+              <Badge className={cn('font-black text-[8px] border', CATEGORY_COLORS[s.focus] ?? 'bg-[#1C2333] text-[#94A3B8] border-[#1E293B]')}>
+                {s.focus}
+              </Badge>
+              {upcoming && <Badge className="bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30 font-black text-[8px]">Upcoming</Badge>}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-[9px] font-bold text-[#94A3B8] flex items-center gap-1">
+                <Clock className="h-3 w-3" />{dateStr}
+              </span>
+              <span className="text-[9px] font-bold text-[#94A3B8]">{s.duration} min</span>
+              {!upcoming && (
+                <>
+                  <span className="text-[9px] font-bold text-[#00C853] flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />{realPresent}
+                  </span>
+                  {lateCount > 0 && (
+                    <span className="text-[9px] font-bold text-yellow-400 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />{lateCount} late
+                    </span>
+                  )}
+                  <span className="text-[9px] font-bold text-[#94A3B8]">/ {athletes?.length ?? 0}</span>
+                </>
+              )}
+            </div>
+            {s.drills.length > 0 && (
+              <p className="text-[9px] text-[#94A3B8] mt-1">{s.drills.length} drill{s.drills.length !== 1 ? 's' : ''} planned</p>
+            )}
+          </div>
+          <Button
+            size="sm" variant="outline"
+            onClick={() => onAttendance(s)}
+            className="border-[#1E293B] text-[#94A3B8] hover:text-white hover:bg-[#1C2333] font-black text-[10px] uppercase h-7 gap-1 shrink-0"
+          >
+            <Users className="h-3 w-3" /> {upcoming ? 'Pre-mark' : 'Attendance'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

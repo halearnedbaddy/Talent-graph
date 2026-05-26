@@ -2,7 +2,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
-import { collection, doc, query, where, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, doc, query, where, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
 import type { ScoutConnection, ScoutProfile, ClubProfile, AthleteProfile } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,6 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { smsSend } from '@/hooks/useSMS';
 import Link from 'next/link';
+import { writeRelationshipAndDM, sendInAppNotification } from '@/lib/relationships';
 
 function getInitials(name: string) {
     if (!name) return 'S';
@@ -28,6 +29,9 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
     const firestore = useFirestore();
     const { toast } = useToast();
     const [isProcessing, setIsProcessing] = useState(false);
+    const [dmConvId, setDmConvId] = useState<string | null>(
+        request.status === 'accepted' ? `${[athleteId, request.scoutId].sort().join('_dm_')}` : null
+    );
 
     const scoutDocRef = useMemoFirebase(() => (firestore ? doc(firestore, 'scouts', request.scoutId) : null), [firestore, request.scoutId]);
     const { data: scoutProfile, isLoading: isScoutLoading } = useDoc<ScoutProfile>(scoutDocRef);
@@ -45,8 +49,7 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
             });
 
             if (status === 'accepted') {
-                // AUTOMATED TEAM MEMBERSHIP:
-                // If the scout is part of a club, link the athlete to that club
+                // If scout is part of a club, link athlete to that club
                 if (request.clubId) {
                     const clubDocRef = doc(firestore, 'clubs', request.clubId);
                     const clubDoc = await getDoc(clubDocRef);
@@ -61,10 +64,33 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
                     }
                 }
 
-                // SMS the scout that their request was accepted
+                // Fetch athlete name for notifications
                 const athleteDoc = await getDoc(doc(firestore, 'athletes', athleteId));
                 const aData = athleteDoc.data() as AthleteProfile | undefined;
                 const athleteFullName = aData ? `${aData.firstName} ${aData.lastName}`.trim() : 'An athlete';
+
+                // Write relationship document + pre-create DM conversation
+                const convId = await writeRelationshipAndDM(
+                    firestore,
+                    { uid: athleteId, name: athleteFullName, role: 'athlete', avatar: aData?.photoUrl },
+                    { uid: request.scoutId, name: scoutProfile?.name || 'Scout', role: 'scout', avatar: scoutProfile?.photoUrl },
+                    'scout_athlete',
+                    request.scoutId,
+                );
+                setDmConvId(convId);
+
+                // Notify scout that request was accepted
+                await sendInAppNotification(firestore, request.scoutId, {
+                    type: 'request_accepted',
+                    actorName: athleteFullName,
+                    actorRole: 'athlete',
+                    message: `${athleteFullName} accepted your connection request. You can now message each other.`,
+                    url: `/chat/${convId}`,
+                    conversationId: convId,
+                    actionRequired: false,
+                });
+
+                // SMS the scout
                 smsSend('connection-accepted', {
                     scoutId: request.scoutId,
                     athleteName: athleteFullName,
@@ -74,6 +100,21 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
                     title: 'Connection Accepted',
                     description: `You can now message ${scoutProfile?.name || 'the scout'}.`,
                 });
+            } else {
+                // Notify scout that request was declined
+                const athleteDoc = await getDoc(doc(firestore, 'athletes', athleteId));
+                const aData = athleteDoc.data() as AthleteProfile | undefined;
+                const athleteFullName = aData ? `${aData.firstName} ${aData.lastName}`.trim() : 'An athlete';
+
+                await sendInAppNotification(firestore, request.scoutId, {
+                    type: 'request_declined',
+                    actorName: athleteFullName,
+                    actorRole: 'athlete',
+                    message: `${athleteFullName} declined your connection request.`,
+                    actionRequired: false,
+                });
+
+                toast({ title: 'Request declined' });
             }
         } catch (error) {
              console.error("Error updating request:", error);
@@ -123,7 +164,7 @@ function RequestItem({ request, athleteId }: { request: ScoutConnection, athlete
             )}
              {request.status === 'accepted' && (
                 <Button asChild size="sm" variant="outline">
-                    <Link href={`/messages/${request.id}`}>
+                    <Link href={dmConvId ? `/chat/${dmConvId}` : `/messages/${request.id}`}>
                         <MessageSquare className="h-4 w-4 mr-2" />
                         Message
                     </Link>
