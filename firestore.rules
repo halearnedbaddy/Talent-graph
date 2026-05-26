@@ -178,12 +178,20 @@ service cloud.firestore {
 
     match /practices/{practiceId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin();
+      allow write: if isClubAdmin() || isAdmin() ||
+        (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
     }
 
     match /drills/{drillId} {
       allow read: if isSignedIn();
-      allow write: if isClubAdmin() || isAdmin();
+      allow write: if isClubAdmin() || isAdmin() ||
+        (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
+    }
+
+    match /training_sessions/{sessionId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin() || isAdmin() ||
+        (isSignedIn() && isActiveMemberOfClub(request.resource.data.clubId));
     }
 
     match /scout_connections/{connectionId} {
@@ -350,7 +358,22 @@ service cloud.firestore {
         isAdmin()
       );
       allow write: if isSignedIn() && (
-        clubId == ('club_' + request.auth.uid) || isAdmin()
+        clubId == ('club_' + request.auth.uid) ||
+        isActiveMemberOfClub(clubId) ||
+        isAdmin()
+      );
+    }
+
+    match /clubs/{clubId}/drill_library/{drillId} {
+      allow read: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) ||
+        isActiveMemberOfClub(clubId) ||
+        isAdmin()
+      );
+      allow write: if isSignedIn() && (
+        clubId == ('club_' + request.auth.uid) ||
+        isActiveMemberOfClub(clubId) ||
+        isAdmin()
       );
     }
 

@@ -89,10 +89,11 @@ export default function LiveMatchPage() {
   const currentMinute = Math.floor(elapsedSeconds / 60);
 
   const clubMemberQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
+    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
   ), [firestore, user]);
   const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
-  const clubId = userMemberships?.[0]?.clubId;
+  // Fallback: club admin's clubId = 'club_' + their uid (they may not have a club_members entry)
+  const clubId = userMemberships?.[0]?.clubId ?? (user ? `club_${user.uid}` : undefined);
 
   const matchesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null

@@ -25,6 +25,7 @@ interface Props {
 
 interface SearchResult extends AthleteProfile {
   id: string;
+  email?: string;
 }
 
 function getInitials(first: string, last: string) {
@@ -47,20 +48,29 @@ export function AddAthleteDialog({ open, onClose, clubId, clubName }: Props) {
     setIsSearching(true);
     setHasSearched(true);
     try {
-      const term = searchTerm.trim();
-      const variants = [
-        term,
-        term.toLowerCase(),
-        term.charAt(0).toUpperCase() + term.slice(1).toLowerCase(),
-        term.toUpperCase(),
-      ];
+      const raw = searchTerm.trim();
+      // Build a set of unique words to search — covers "Haruni", "Randu", and the full string
+      const words = raw.split(/\s+/).filter(Boolean);
+      const allTerms = [...new Set([raw, ...words])];
 
-      const snaps = await Promise.all(
-        variants.flatMap(v => [
-          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', v), where('firstName', '<=', v + '\uf8ff'), limit(6))),
-          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', v), where('lastName', '<=', v + '\uf8ff'), limit(6))),
-        ])
-      );
+      const queries: Promise<any>[] = [];
+      for (const w of allTerms) {
+        // Try all case variants for Firestore prefix matching
+        const variants = [
+          w,
+          w.toLowerCase(),
+          w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+          w.toUpperCase(),
+        ];
+        for (const v of variants) {
+          queries.push(
+            getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', v), where('firstName', '<=', v + '\uf8ff'), limit(8))),
+            getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', v), where('lastName', '<=', v + '\uf8ff'), limit(8))),
+          );
+        }
+      }
+
+      const snaps = await Promise.all(queries);
 
       const seen = new Set<string>();
       const merged: SearchResult[] = [];
@@ -68,13 +78,18 @@ export function AddAthleteDialog({ open, onClose, clubId, clubName }: Props) {
         for (const d of snap.docs) {
           if (seen.has(d.id)) continue;
           seen.add(d.id);
-          const data = d.data() as AthleteProfile;
-          if (!data.clubStatus || data.clubStatus !== 'active') {
-            merged.push({ ...data, id: d.id });
-          }
+          merged.push({ ...d.data() as AthleteProfile, id: d.id });
         }
       }
-      setResults(merged.slice(0, 10));
+
+      // Filter: if multi-word search, require both first+last name to contain at least one word
+      const lower = raw.toLowerCase();
+      const filtered = merged.filter(a => {
+        const full = `${a.firstName ?? ''} ${a.lastName ?? ''}`.toLowerCase();
+        return words.every(w => full.includes(w.toLowerCase())) || full.includes(lower);
+      });
+
+      setResults(filtered.length > 0 ? filtered.slice(0, 10) : merged.slice(0, 10));
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Search failed', description: err.message });
     } finally {

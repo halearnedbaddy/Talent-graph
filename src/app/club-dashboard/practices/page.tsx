@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, doc } from 'firebase/firestore';
+import { collection, query, where, addDoc, doc, getDocs } from 'firebase/firestore';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,18 +16,30 @@ import { Badge } from '@/components/ui/badge';
 import { AttendanceDialog } from '@/components/club/attendance-dialog';
 import { PracticePlanner } from '@/components/club/practice-planner';
 
+const CATEGORY_COLORS: Record<string, string> = {
+    Technical: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    Tactical: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+    Physical: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+    Attacking: 'bg-green-500/10 text-green-600 border-green-500/20',
+    Defensive: 'bg-red-500/10 text-red-600 border-red-500/20',
+    'Set Pieces': 'bg-slate-500/10 text-slate-600 border-slate-500/20',
+    Custom: 'bg-primary/10 text-primary border-primary/20',
+};
+
 export default function PracticeManagementPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
     const [isAdding, setIsAdding] = useState(false);
     const [activeTab, setActiveTab] = useState<'sessions' | 'drills'>('sessions');
+    const [libraryDrills, setLibraryDrills] = useState<(Drill & { source: 'library' | 'custom' })[]>([]);
 
     const clubMemberQuery = useMemoFirebase(() => (
-        firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
+        firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
     ), [firestore, user]);
     const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
-    const clubId = userMemberships?.[0]?.clubId;
+    // Club admin fallback: if no club_members entry, use club_{uid}
+    const clubId = userMemberships?.[0]?.clubId ?? (user ? `club_${user.uid}` : undefined);
 
     const sessionsQuery = useMemoFirebase(() => (
         firestore && clubId ? query(collection(firestore, 'practices'), where('clubId', '==', clubId)) : null
@@ -37,7 +49,42 @@ export default function PracticeManagementPage() {
     const drillsQuery = useMemoFirebase(() => (
         firestore && clubId ? query(collection(firestore, 'drills'), where('clubId', '==', clubId)) : null
     ), [firestore, clubId]);
-    const { data: drills } = useCollection<Drill>(drillsQuery);
+    const { data: firestoreDrills } = useCollection<Drill>(drillsQuery);
+
+    // Also load from clubs/{clubId}/drill_library (coach-created drills) 
+    useEffect(() => {
+        if (!firestore || !clubId) return;
+        (async () => {
+            try {
+                const snap = await getDocs(collection(firestore, 'clubs', clubId, 'drill_library'));
+                const items = snap.docs.map(d => ({
+                    id: d.id,
+                    ...(d.data() as any),
+                    source: 'custom' as const,
+                }));
+                setLibraryDrills(items);
+            } catch { }
+        })();
+    }, [firestore, clubId]);
+
+    // Merge: top-level drills (club dashboard created) + library drills (coach-created), dedup by name
+    const allDrills = (() => {
+        const seen = new Set<string>();
+        const merged: (Drill & { source: 'library' | 'custom' })[] = [];
+        for (const d of (firestoreDrills ?? [])) {
+            const key = d.name?.toLowerCase();
+            if (key && seen.has(key)) continue;
+            if (key) seen.add(key);
+            merged.push({ ...d, source: 'library' as const });
+        }
+        for (const d of libraryDrills) {
+            const key = d.name?.toLowerCase();
+            if (key && seen.has(key)) continue;
+            if (key) seen.add(key);
+            merged.push(d);
+        }
+        return merged;
+    })();
 
     const [newSession, setNewSession] = useState({
         name: '',
@@ -237,24 +284,42 @@ export default function PracticeManagementPage() {
                             ))
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {drills?.map(d => (
-                                    <Card key={d.id} className="border-none shadow-sm hover:border-primary transition-all bg-background">
-                                        <CardHeader className="p-4 pb-2">
-                                            <div className="flex items-center justify-between">
-                                                <CardTitle className="text-sm font-black uppercase">{d.name}</CardTitle>
-                                                <Badge className="bg-primary/10 text-primary border-none text-[8px] font-black uppercase">{d.focus}</Badge>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="p-4 pt-0">
-                                            <p className="text-xs text-muted-foreground line-clamp-2 mt-2">{d.description}</p>
-                                            <div className="flex flex-wrap gap-1 mt-4">
-                                                {d.equipment?.map(e => (
-                                                    <Badge key={e} variant="secondary" className="text-[8px] font-bold px-1 py-0">{e}</Badge>
-                                                ))}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                {allDrills.length === 0 ? (
+                                    <div className="col-span-2 text-center py-16 text-muted-foreground">
+                                        <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                                        <p className="font-bold text-sm">No drills in library yet</p>
+                                        <p className="text-xs mt-1">Add a drill using the form on the left, or create one in Training.</p>
+                                    </div>
+                                ) : allDrills.map(d => {
+                                    const focus = (d as any).focus || (d as any).category || 'Custom';
+                                    const colorClass = CATEGORY_COLORS[focus] || CATEGORY_COLORS.Custom;
+                                    return (
+                                        <Card key={d.id} className="border-none shadow-sm hover:border-primary transition-all bg-background">
+                                            <CardHeader className="p-4 pb-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <CardTitle className="text-sm font-black uppercase leading-tight">{d.name}</CardTitle>
+                                                    <Badge className={`border text-[8px] font-black uppercase shrink-0 ${colorClass}`}>{focus}</Badge>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="p-4 pt-0">
+                                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{d.description}</p>
+                                                {(d as any).duration && (
+                                                    <p className="text-[9px] font-bold text-muted-foreground mt-2 uppercase tracking-widest">
+                                                        {(d as any).duration} min &bull; {(d as any).players || 'Any'}
+                                                    </p>
+                                                )}
+                                                <div className="flex flex-wrap gap-1 mt-3">
+                                                    {(Array.isArray(d.equipment) ? d.equipment : (typeof d.equipment === 'string' ? (d.equipment as string).split(',').map((s: string) => s.trim()).filter(Boolean) : [])).map((e: string) => (
+                                                        <Badge key={e} variant="secondary" className="text-[8px] font-bold px-1 py-0">{e}</Badge>
+                                                    ))}
+                                                    {(d as any).source === 'custom' && (
+                                                        <Badge variant="outline" className="text-[8px] font-black px-1 py-0 border-primary/40 text-primary">Coach Library</Badge>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

@@ -59,6 +59,7 @@ import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import { AthleteClubInvitations } from '@/components/club/athlete-club-invitations';
+import { DmSheet } from '@/components/messaging/dm-sheet';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
 import { ShareProfileCard } from './share-profile-card';
@@ -92,6 +93,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [moreOpen, setMoreOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [dmSheetOpen, setDmSheetOpen] = useState(false);
   const [confirmDeleteVideo, setConfirmDeleteVideo] = useState<ShowcaseVideo | null>(null);
   const [isDeletingVideo, setIsDeletingVideo] = useState(false);
   const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
@@ -1097,6 +1099,14 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         </SheetContent>
       </Sheet>
 
+      {/* ── Direct Messages Sheet ── */}
+      <DmSheet
+        open={dmSheetOpen}
+        onClose={() => setDmSheetOpen(false)}
+        athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+        athletePhoto={athleteProfile.photoUrl}
+      />
+
       {/* ── Squad Chat Sheet (active club members only) ── */}
       {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
         <Sheet open={activeTab === 'squad-chat'} onOpenChange={(open) => { if (!open) setActiveTab('home'); }}>
@@ -1253,23 +1263,29 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </span>
         </button>
 
-        {/* Direct Messages — universal messaging */}
-        <Link
-          href="/chat"
-          className="flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative text-muted-foreground hover:text-primary"
+        {/* Direct Messages — inline WhatsApp-style sheet */}
+        <button
+          onClick={() => setDmSheetOpen(true)}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
+            dmSheetOpen ? 'text-primary' : 'text-muted-foreground'
+          )}
         >
+          {dmSheetOpen && (
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
+          )}
           <div className="relative">
-            <MessageSquare className="h-5 w-5" />
+            <MessageSquare className={cn('h-5 w-5 transition-transform', dmSheetOpen && 'scale-110')} />
             {unreadDMCount > 0 && (
               <span className="absolute -top-1 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-black text-primary-foreground">
                 {unreadDMCount > 9 ? '9+' : unreadDMCount}
               </span>
             )}
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-wide">
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', dmSheetOpen && 'font-black')}>
             Messages
           </span>
-        </Link>
+        </button>
 
         {/* Squad Chat — only for active club members */}
         {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (

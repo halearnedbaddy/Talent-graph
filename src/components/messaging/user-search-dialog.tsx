@@ -30,6 +30,8 @@ interface Props {
   currentUserName: string;
   currentUserRole: string;
   currentUserPhoto?: string;
+  /** If provided, called with the conversationId instead of navigating to /chat/{id} */
+  onConversationCreated?: (conversationId: string) => void;
 }
 
 function getInitials(name: string) {
@@ -46,6 +48,7 @@ export function UserSearchDialog({
   currentUserName,
   currentUserRole,
   currentUserPhoto,
+  onConversationCreated,
 }: Props) {
   const firestore = useFirestore();
   const router = useRouter();
@@ -124,7 +127,11 @@ export function UserSearchDialog({
       }
 
       onClose();
-      router.push(`/chat/${conversationId}`);
+      if (onConversationCreated) {
+        onConversationCreated(conversationId);
+      } else {
+        router.push(`/chat/${conversationId}`);
+      }
     } catch (e) {
       console.error('[StartChat]', e);
     } finally {
