@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { InviteStaffDialog } from '@/components/club/invite-staff-dialog';
+import { AddAthleteDialog } from '@/components/club/add-athlete-dialog';
 
 function getInitials(name: string) {
   if (!name) return '??';
@@ -36,6 +37,7 @@ export default function MemberRequestsPage() {
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [processingUid, setProcessingUid] = useState<string | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [addAthleteOpen, setAddAthleteOpen] = useState(false);
 
   // Get this user's active club membership to find clubId
   const clubMemberQuery = useMemoFirebase(() => (
@@ -326,6 +328,21 @@ export default function MemberRequestsPage() {
 
             {/* ── Athlete Requests ── */}
             <TabsContent value="athletes" className="mt-4 space-y-4">
+              {/* Add Athlete Button */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold">Athlete Requests</p>
+                  <p className="text-xs text-muted-foreground">Review inbound requests or add athletes directly.</p>
+                </div>
+                <Button
+                  onClick={() => setAddAthleteOpen(true)}
+                  className="font-black uppercase tracking-widest text-xs h-9 gap-2"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Add Athlete
+                </Button>
+              </div>
+
               {athleteCount === 0 ? (
                 <Card className="border-dashed">
                   <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -334,7 +351,7 @@ export default function MemberRequestsPage() {
                     </div>
                     <p className="font-bold text-lg">No pending athlete requests</p>
                     <p className="text-sm text-muted-foreground max-w-xs">
-                      When an athlete selects your club during registration, they'll appear here.
+                      Use the button above to add athletes directly or send them an invitation.
                     </p>
                   </CardContent>
                 </Card>
@@ -607,6 +624,14 @@ export default function MemberRequestsPage() {
               clubName={clubName}
               existingUserIds={sentInvitationIds}
               pendingRequestIds={pendingRequestIds}
+            />
+          )}
+          {clubId && (
+            <AddAthleteDialog
+              open={addAthleteOpen}
+              onClose={() => setAddAthleteOpen(false)}
+              clubId={clubId}
+              clubName={clubName}
             />
           )}
         </>

@@ -58,6 +58,7 @@ import {
 import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
+import { AthleteClubInvitations } from '@/components/club/athlete-club-invitations';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
 import { ShareProfileCard } from './share-profile-card';
@@ -629,6 +630,12 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </div>
         </div>
 
+        {/* ── Club Invitations (club-initiated invites awaiting athlete response) ── */}
+        <AthleteClubInvitations
+          athleteUid={athleteProfile.uid}
+          athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+        />
+
         {/* ── Club Affiliation Status ── */}
         {athleteProfile?.clubStatus && athleteProfile.clubName && (
           <div className={`rounded-xl border p-4 flex items-center justify-between gap-4 ${
@@ -1035,11 +1042,14 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             {(unreadNotifs && unreadNotifs.length > 0) ? (
               (unreadNotifs as any[]).map((n: any) => {
                 const isMsg = n.type === 'new_message';
+                const isClubInvite = n.type === 'club_invite';
                 return (
-                  <div key={n.id} className="flex items-start gap-3 p-4 hover:bg-muted/30 transition-colors">
-                    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : 'bg-muted'}`}>
+                  <div key={n.id} className={`flex items-start gap-3 p-4 transition-colors ${isClubInvite ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-muted/30'}`}>
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : isClubInvite ? 'bg-primary/15' : 'bg-muted'}`}>
                       {isMsg
                         ? <MessageSquare className="h-4 w-4 text-primary" />
+                        : isClubInvite
+                        ? <Building2 className="h-4 w-4 text-primary" />
                         : <Bell className="h-4 w-4 text-muted-foreground" />
                       }
                     </div>
@@ -1053,7 +1063,12 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                           {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
                         </p>
                       )}
-                      {n.url && (
+                      {isClubInvite && n.clubMemberId && (
+                        <p className="mt-2 text-[10px] text-primary font-black uppercase tracking-widest">
+                          Check your home screen to Accept or Decline
+                        </p>
+                      )}
+                      {!isClubInvite && n.url && (
                         <Link
                           href={n.url}
                           onClick={() => setActiveTab('home')}

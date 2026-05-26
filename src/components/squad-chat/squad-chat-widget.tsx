@@ -201,12 +201,13 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const clubMemberQuery = useMemoFirebase(() => (
-    firestore && user && !propClubId
+    firestore && user
       ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
       : null
-  ), [firestore, user, propClubId]);
+  ), [firestore, user]);
   const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
   const resolvedClubId = propClubId ?? userMemberships?.[0]?.clubId;
+  const myMembership = userMemberships?.find(m => m.clubId === resolvedClubId);
 
   const clubRef = useMemoFirebase(
     () => (firestore && resolvedClubId ? doc(firestore, 'clubs', resolvedClubId) : null),
@@ -231,7 +232,7 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
     e.preventDefault();
     if (!firestore || !user || !resolvedClubId || !newMessage.trim()) return;
 
-    const senderName = user.displayName || 'Squad Member';
+    const senderName = myMembership?.displayName || user.displayName || 'Squad Member';
     const body = newMessage.trim();
     await addDoc(collection(firestore, 'clubs', resolvedClubId, 'squad_messages'), {
       senderId: user.uid,
@@ -244,7 +245,7 @@ export function SquadChatWidget({ clubId: propClubId, scrollHeight = '320px' }: 
       clubId: resolvedClubId,
       title: `${senderName} — Squad Chat`,
       body: body.length > 80 ? body.slice(0, 80) + '…' : body,
-      url: '/club-dashboard/squad-chat',
+      url: `/${myMembership?.role === 'coach' ? 'coach' : myMembership?.role === 'scout' ? 'analyst' : 'club'}-dashboard/squad-chat`,
       tag: 'squad-chat',
       excludeUserId: user.uid,
       firestore,
