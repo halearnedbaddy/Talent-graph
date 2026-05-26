@@ -116,11 +116,20 @@ export function UserSearchDialog({
 
       if (!existing.exists()) {
         await setDoc(convRef, {
+          type: 'direct',
           participants: [currentUserId, other.uid],
           participantInfo: {
             [currentUserId]: { name: currentUserName, role: currentUserRole, photoUrl: currentUserPhoto || null },
             [other.uid]: { name: other.name, role: other.role, photoUrl: other.photoUrl || null },
           },
+          participantRoles: {
+            [currentUserId]: currentUserRole,
+            [other.uid]: other.role,
+          },
+          lastMessage: null,
+          lastMessageAt: null,
+          lastSenderId: null,
+          lastReadAt: {},
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

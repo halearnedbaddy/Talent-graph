@@ -6,6 +6,7 @@ import {
   collection, query, where, getDocs, limit, doc, writeBatch, addDoc, getDoc,
 } from 'firebase/firestore';
 import type { AthleteProfile, ClubProfile } from '@/lib/types';
+import { ensureClubGroupChat, addMemberToClubGroupChat } from '@/lib/club-group-chat';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -134,6 +135,19 @@ export function AddAthleteDialog({ open, onClose, clubId, clubName }: Props) {
       });
 
       await batch.commit();
+
+      // Add the athlete to the club group chat
+      try {
+        await ensureClubGroupChat(firestore, clubId, resolvedClubName);
+        await addMemberToClubGroupChat(firestore, clubId, {
+          userId: athlete.uid,
+          displayName: `${athlete.firstName} ${athlete.lastName}`,
+          role: 'athlete',
+          photoUrl: athlete.photoUrl ?? undefined,
+        });
+      } catch {
+        // Group chat join is non-critical
+      }
 
       await addDoc(collection(firestore, 'notifications', athlete.uid, 'items'), {
         type: 'club_approved',

@@ -241,26 +241,43 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // Universal Direct Messaging (cross-role: scout, athlete, club, coach)
+    // Universal Messaging: Direct Messages + Club Group Chats
     // ----------------------------------------------------------------------
     match /conversations/{conversationId} {
-      allow read: if isSignedIn() &&
-        request.auth.uid in resource.data.participants;
-      allow create: if isSignedIn() &&
-        request.auth.uid in request.resource.data.participants;
-      allow update: if isSignedIn() &&
-        request.auth.uid in resource.data.participants;
+      // Read: must be a participant, OR group chat where user is an active club member
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.participants ||
+        (resource.data.type == 'group' && resource.data.clubId != null &&
+          isActiveMemberOfClub(resource.data.clubId))
+      );
+
+      // Create: participant in new conversation, OR club admin/staff creating a group chat
+      allow create: if isSignedIn() && (
+        request.auth.uid in request.resource.data.participants ||
+        (request.resource.data.type == 'group' && (isClubAdmin() || isStaffRole() || isAdmin()))
+      );
+
+      // Update: must be a participant
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.participants ||
+        (resource.data.type == 'group' && (isClubAdmin() || isStaffRole() || isAdmin()))
+      );
 
       match /messages/{messageId} {
-        allow read: if isSignedIn() &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        allow create: if isSignedIn() &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
+        // Helper: user is participant of the parent conversation
+        function inConv() {
+          return request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        }
+        function inGroupConv() {
+          let convData = get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+          return convData.type == 'group' && convData.clubId != null &&
+            isActiveMemberOfClub(convData.clubId);
+        }
+        allow read: if isSignedIn() && (inConv() || inGroupConv());
+        allow create: if isSignedIn() && (inConv() || inGroupConv()) &&
           request.resource.data.senderId == request.auth.uid;
-        allow update: if isSignedIn() &&
-          resource.data.senderId == request.auth.uid;
-        allow delete: if isSignedIn() &&
-          resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && resource.data.senderId == request.auth.uid;
+        allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
     }
 

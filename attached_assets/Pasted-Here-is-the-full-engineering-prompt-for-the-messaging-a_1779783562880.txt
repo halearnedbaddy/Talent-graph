@@ -1,0 +1,1067 @@
+Here is the full engineering prompt for the messaging and chat system:
+
+---
+
+## Talent Graph — Messaging & Chat System
+### Full Engineering Specification | WhatsApp-Style | All Roles
+
+---
+
+## What We Are Building
+
+Two distinct communication systems that work together:
+
+**System 1 — Club Chat (Group Channel)**
+Every club has one group chat. All club members (admin, coaches, analysts, scouts, athletes) are in it. Messages appear for everyone in real time exactly like a WhatsApp group.
+
+**System 2 — Direct Messages (1-on-1)**
+Any user can message any other user directly. Conversations are private, threaded and organised exactly like WhatsApp — a list of conversations, tap one to open the thread.
+
+Both systems live under a **Messages** tab in every dashboard. Same UI pattern for every role. Simple, fast, real time.
+
+---
+
+## Architecture Overview
+
+```
+Firestore Collections:
+
+conversations/{conversationId}
+  → type: "group" | "direct"
+  → participants: [userId1, userId2, ...]
+  → clubId (for group chats)
+  → lastMessage: { body, senderId, sentAt }
+  → lastMessageAt (for sorting)
+  → createdAt
+
+conversations/{conversationId}/messages/{messageId}
+  → senderId
+  → senderName
+  → senderRole
+  → senderAvatar
+  → body
+  → sentAt: serverTimestamp()
+  → readBy: { userId: timestamp, ... }
+  → isDeleted: false
+
+users/{userId}
+  → conversationIds: [] (array of conversationIds user belongs to)
+```
+
+---
+
+## Part 1 — Club Group Chat
+
+### How It Works
+- One group conversation document per club
+- Created automatically when a club is registered
+- All club members auto-added to participants array when they join
+- All club members auto-removed when they leave
+- Messages appear in real time for all participants
+
+### Step 1 — Create Club Group Chat on Club Registration
+
+```javascript
+// Called once when club is first created
+async function createClubGroupChat(clubId, clubName, adminId) {
+  const conversationRef = doc(db, 'conversations', `club_${clubId}`)
+  
+  await setDoc(conversationRef, {
+    type: 'group',
+    clubId,
+    name: clubName,
+    avatar: null, // club badge URL
+    participants: [adminId],
+    participantRoles: { [adminId]: 'club_admin' },
+    lastMessage: null,
+    lastMessageAt: serverTimestamp(),
+    createdAt: serverTimestamp()
+  })
+
+  // Add conversation to admin's list
+  await updateDoc(doc(db, 'users', adminId), {
+    conversationIds: arrayUnion(`club_${clubId}`)
+  })
+}
+```
+
+### Step 2 — Auto-Add Member to Club Chat When They Join
+
+```javascript
+// Call this every time ANY user joins a club
+// (athlete joins squad, coach linked to club,
+//  analyst linked, scout linked)
+async function addMemberToClubChat(clubId, userId, userRole) {
+  const chatRef = doc(db, 'conversations', `club_${clubId}`)
+  
+  await updateDoc(chatRef, {
+    participants: arrayUnion(userId),
+    [`participantRoles.${userId}`]: userRole
+  })
+
+  // Add to user's conversation list
+  await updateDoc(doc(db, 'users', userId), {
+    conversationIds: arrayUnion(`club_${clubId}`)
+  })
+}
+
+// Call this when user leaves or is removed from club
+async function removeMemberFromClubChat(clubId, userId) {
+  const chatRef = doc(db, 'conversations', `club_${clubId}`)
+  
+  await updateDoc(chatRef, {
+    participants: arrayRemove(userId)
+  })
+
+  await updateDoc(doc(db, 'users', userId), {
+    conversationIds: arrayRemove(`club_${clubId}`)
+  })
+}
+```
+
+### Step 3 — Send a Message to the Group
+
+```javascript
+async function sendGroupMessage(conversationId, sender, body) {
+  const msgRef = doc(collection(db, 'conversations', conversationId, 'messages'))
+  
+  const message = {
+    senderId: sender.uid,
+    senderName: sender.name,
+    senderRole: sender.role,
+    senderAvatar: sender.avatarUrl,
+    body: body.trim(),
+    sentAt: serverTimestamp(),
+    readBy: { [sender.uid]: new Date() },
+    isDeleted: false
+  }
+
+  // Write message + update conversation last message atomically
+  const batch = writeBatch(db)
+  
+  batch.set(msgRef, message)
+  batch.update(doc(db, 'conversations', conversationId), {
+    lastMessage: {
+      body: body.trim(),
+      senderId: sender.uid,
+      senderName: sender.name
+    },
+    lastMessageAt: serverTimestamp()
+  })
+
+  await batch.commit()
+}
+```
+
+### Step 4 — Real-Time Message Listener
+
+```javascript
+function subscribeToMessages(conversationId, onMessages) {
+  const q = query(
+    collection(db, 'conversations', conversationId, 'messages'),
+    orderBy('sentAt', 'asc'),
+    limitToLast(100)
+  )
+
+  return onSnapshot(q, (snap) => {
+    const messages = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }))
+    onMessages(messages)
+  })
+}
+// Returns unsubscribe function — call on component unmount
+```
+
+### Step 5 — Mark Messages as Read
+
+```javascript
+// Call when user opens the conversation
+async function markMessagesRead(conversationId, userId) {
+  const q = query(
+    collection(db, 'conversations', conversationId, 'messages'),
+    where(`readBy.${userId}`, '==', null)
+  )
+  
+  const unread = await getDocs(q)
+  const batch = writeBatch(db)
+  
+  unread.docs.forEach(d => {
+    batch.update(d.ref, {
+      [`readBy.${userId}`]: serverTimestamp()
+    })
+  })
+  
+  await batch.commit()
+}
+```
+
+---
+
+## Part 2 — Direct Messages (1-on-1)
+
+### How It Works
+- Any user can start a DM with any other user they have a relationship with
+- Conversation document is shared between both users
+- Thread is private — only the two participants can read it
+- Conversation list shows all DMs sorted by most recent message
+
+### Step 1 — Start or Open a Direct Message
+
+```javascript
+// Creates conversation if it doesn't exist
+// Returns existing conversation if it does
+async function getOrCreateDirectMessage(userId1, userId2) {
+  // Deterministic ID — always the same for any two users
+  const ids = [userId1, userId2].sort()
+  const conversationId = `dm_${ids[0]}_${ids[1]}`
+  
+  const convRef = doc(db, 'conversations', conversationId)
+  const existing = await getDoc(convRef)
+  
+  if (existing.exists()) {
+    return conversationId
+  }
+
+  // Fetch both user profiles
+  const [user1Doc, user2Doc] = await Promise.all([
+    getDoc(doc(db, 'users', userId1)),
+    getDoc(doc(db, 'users', userId2))
+  ])
+  
+  const user1 = user1Doc.data()
+  const user2 = user2Doc.data()
+
+  await setDoc(convRef, {
+    type: 'direct',
+    participants: [userId1, userId2],
+    participantProfiles: {
+      [userId1]: {
+        name: user1.name,
+        avatar: user1.avatarUrl,
+        role: user1.role
+      },
+      [userId2]: {
+        name: user2.name,
+        avatar: user2.avatarUrl,
+        role: user2.role
+      }
+    },
+    lastMessage: null,
+    lastMessageAt: serverTimestamp(),
+    createdAt: serverTimestamp()
+  })
+
+  // Add to both users' conversation lists
+  await Promise.all([
+    updateDoc(doc(db, 'users', userId1), {
+      conversationIds: arrayUnion(conversationId)
+    }),
+    updateDoc(doc(db, 'users', userId2), {
+      conversationIds: arrayUnion(conversationId)
+    })
+  ])
+
+  return conversationId
+}
+```
+
+### Step 2 — Send a Direct Message
+
+```javascript
+// Same function as group — works for both types
+async function sendDirectMessage(conversationId, sender, body) {
+  await sendGroupMessage(conversationId, sender, body)
+  // Identical logic — conversation type does not change the send function
+}
+```
+
+### Step 3 — Load All Conversations for a User
+
+```javascript
+async function getUserConversations(userId) {
+  const userDoc = await getDoc(doc(db, 'users', userId))
+  const conversationIds = userDoc.data().conversationIds || []
+  
+  if (conversationIds.length === 0) return []
+
+  // Fetch all conversations in parallel
+  const convDocs = await Promise.all(
+    conversationIds.map(id => getDoc(doc(db, 'conversations', id)))
+  )
+
+  return convDocs
+    .filter(d => d.exists())
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => {
+      // Sort by last message time descending
+      const ta = a.lastMessageAt?.toMillis() || 0
+      const tb = b.lastMessageAt?.toMillis() || 0
+      return tb - ta
+    })
+}
+```
+
+---
+
+## Part 3 — Unread Count Per Conversation
+
+```javascript
+function getUnreadCount(conversation, messages, userId) {
+  return messages.filter(msg => 
+    msg.senderId !== userId && 
+    !msg.readBy?.[userId]
+  ).length
+}
+
+// Total unread across all conversations
+function getTotalUnread(conversations, userId) {
+  // Store unread counts in Firestore for efficiency
+  // conversations/{id}/unreadCounts/{userId}: { count: N }
+  // Increment on new message, reset to 0 on markRead
+}
+```
+
+### Efficient Unread Count with Cloud Function
+
+```javascript
+// Cloud Function: runs on every new message
+exports.updateUnreadCounts = functions.firestore
+  .document('conversations/{convId}/messages/{msgId}')
+  .onCreate(async (snap, ctx) => {
+    const message = snap.data()
+    const { convId } = ctx.params
+    
+    const convDoc = await getDoc(doc(db, 'conversations', convId))
+    const participants = convDoc.data().participants
+    
+    const batch = writeBatch(db)
+    
+    // Increment unread count for all participants except sender
+    participants
+      .filter(uid => uid !== message.senderId)
+      .forEach(uid => {
+        const ref = doc(db, 'conversations', convId, 'unreadCounts', uid)
+        batch.set(ref, { count: increment(1) }, { merge: true })
+      })
+    
+    await batch.commit()
+  })
+```
+
+---
+
+## Part 4 — Firestore Security Rules
+
+```javascript
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Conversations — only participants can read/write
+    match /conversations/{convId} {
+      allow read: if request.auth.uid in resource.data.participants;
+      allow create: if request.auth.uid in request.resource.data.participants;
+      allow update: if request.auth.uid in resource.data.participants;
+      
+      // Messages — only participants can read/write
+      match /messages/{msgId} {
+        allow read: if request.auth.uid in 
+          get(/databases/$(database)/documents/conversations/$(convId))
+            .data.participants;
+        allow create: if request.auth.uid in 
+          get(/databases/$(database)/documents/conversations/$(convId))
+            .data.participants
+          && request.resource.data.senderId == request.auth.uid;
+        allow update: if request.auth.uid in
+          get(/databases/$(database)/documents/conversations/$(convId))
+            .data.participants;
+      }
+
+      // Unread counts — participant can only write their own
+      match /unreadCounts/{userId} {
+        allow read: if request.auth.uid == userId;
+        allow write: if false; // Cloud Function only
+      }
+    }
+  }
+}
+```
+
+---
+
+## Part 5 — UI Components
+
+### Messages Tab Layout (All Dashboards — Same Structure)
+
+```
+┌─────────────────────────────────────────┐
+│  Messages                          [✏️]  │  ← compose new DM
+├─────────────────────────────────────────┤
+│  [🔍 Search conversations...]           │
+├─────────────────────────────────────────┤
+│  GROUPS                                 │
+│  ┌─────────────────────────────────────┐│
+│  │ [🏟️] Gor Mahia FC          2m ago  ││
+│  │       Coach: Drills tmrw 4PM    [3] ││  ← unread badge
+│  └─────────────────────────────────────┘│
+│                                         │
+│  DIRECT MESSAGES                        │
+│  ┌─────────────────────────────────────┐│
+│  │ [👤] James Otieno (Athlete) 1h ago  ││
+│  │       "Yes I am available for..."   ││
+│  └─────────────────────────────────────┘│
+│  ┌─────────────────────────────────────┐│
+│  │ [👤] Coach Muhavi         Yesterday ││
+│  │       "Training is confirmed"       ││
+│  └─────────────────────────────────────┘│
+└─────────────────────────────────────────┘
+```
+
+### Conversation List Item Component
+
+```jsx
+function ConversationItem({ conversation, currentUser, onPress }) {
+  const isGroup = conversation.type === 'group'
+  
+  // For DMs: show the OTHER person's name
+  const otherUserId = conversation.participants
+    .find(id => id !== currentUser.uid)
+  const otherProfile = conversation.participantProfiles?.[otherUserId]
+  
+  const displayName = isGroup
+    ? conversation.name
+    : otherProfile?.name || 'Unknown'
+  
+  const displayAvatar = isGroup
+    ? conversation.avatar
+    : otherProfile?.avatar
+  
+  const lastMsg = conversation.lastMessage
+  const preview = lastMsg
+    ? lastMsg.senderId === currentUser.uid
+      ? `You: ${lastMsg.body}`
+      : lastMsg.body
+    : 'No messages yet'
+
+  return (
+    <div onClick={onPress} className="conversation-item">
+      <Avatar src={displayAvatar} name={displayName} isGroup={isGroup} />
+      <div className="conversation-info">
+        <div className="conversation-header">
+          <span className="name">{displayName}</span>
+          <span className="time">
+            {formatTime(conversation.lastMessageAt)}
+          </span>
+        </div>
+        <div className="conversation-preview">
+          <span className="preview-text">{preview}</span>
+          {unreadCount > 0 && (
+            <span className="unread-badge">{unreadCount}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+### Chat Thread Component
+
+```jsx
+function ChatThread({ conversationId, currentUser }) {
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const bottomRef = useRef(null)
+
+  // Subscribe to real-time messages
+  useEffect(() => {
+    const unsub = subscribeToMessages(conversationId, (msgs) => {
+      setMessages(msgs)
+      // Auto-scroll to bottom on new message
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    })
+    
+    // Mark as read when opened
+    markMessagesRead(conversationId, currentUser.uid)
+    
+    return unsub // Cleanup on unmount
+  }, [conversationId])
+
+  async function handleSend() {
+    if (!input.trim()) return
+    const body = input.trim()
+    setInput('') // Clear immediately for responsiveness
+    await sendGroupMessage(conversationId, currentUser, body)
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  return (
+    <div className="chat-thread">
+      {/* Message list */}
+      <div className="messages-scroll">
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isOwn={msg.senderId === currentUser.uid}
+            showSender={conversation.type === 'group'}
+            showAvatar={
+              i === 0 ||
+              messages[i-1].senderId !== msg.senderId
+            }
+          />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input bar */}
+      <div className="input-bar">
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Message..."
+          rows={1}
+        />
+        <button onClick={handleSend} disabled={!input.trim()}>
+          Send
+        </button>
+      </div>
+    </div>
+  )
+}
+```
+
+### Message Bubble Component
+
+```jsx
+function MessageBubble({ message, isOwn, showSender, showAvatar }) {
+  return (
+    <div className={`bubble-wrapper ${isOwn ? 'own' : 'other'}`}>
+      {/* Show avatar for group chats, not own messages */}
+      {!isOwn && showAvatar && (
+        <Avatar src={message.senderAvatar} name={message.senderName} size={28} />
+      )}
+      {!isOwn && !showAvatar && <div className="avatar-spacer" />}
+      
+      <div className={`bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
+        {/* Show sender name in group chats */}
+        {showSender && !isOwn && (
+          <div className="sender-name" style={{ color: getRoleColor(message.senderRole) }}>
+            {message.senderName}
+            <span className="sender-role"> · {message.senderRole}</span>
+          </div>
+        )}
+        
+        <div className="message-body">{message.body}</div>
+        
+        <div className="message-meta">
+          <span className="message-time">
+            {formatMessageTime(message.sentAt)}
+          </span>
+          {/* Read receipts for DMs */}
+          {isOwn && <ReadReceipt message={message} participants={participants} />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Role colors for group chat sender names
+function getRoleColor(role) {
+  const colors = {
+    club_admin: '#00C853',
+    coach:      '#3B82F6',
+    analyst:    '#A855F7',
+    scout:      '#FF6D00',
+    athlete:    '#F9FAFB'
+  }
+  return colors[role] || '#F9FAFB'
+}
+```
+
+### Read Receipts Component
+
+```jsx
+function ReadReceipt({ message, participants }) {
+  const readCount = Object.keys(message.readBy || {}).length - 1 // exclude sender
+  const totalRecipients = participants.length - 1
+  
+  if (readCount === 0) return <span className="receipt">✓</span>          // Sent
+  if (readCount < totalRecipients) return <span className="receipt">✓✓</span>  // Delivered
+  return <span className="receipt read">✓✓</span>                          // Read (blue)
+}
+```
+
+---
+
+## Part 6 — New DM Flow (Compose Button)
+
+```jsx
+// Triggered by the ✏️ compose button on Messages tab
+function NewDirectMessage({ currentUser, onConversationCreated }) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState([])
+
+  // Search users the current user has relationships with
+  async function searchUsers(query) {
+    // Depending on role, search relevant users:
+    // Club admin → all club members
+    // Athlete → squad teammates, coach, scouts who contacted them
+    // Coach → squad athletes, club admin, fellow coaches
+    // Scout → athletes they scouted, club admins
+    const users = await searchRelatedUsers(currentUser, query)
+    setResults(users)
+  }
+
+  async function startChat(targetUser) {
+    const conversationId = await getOrCreateDirectMessage(
+      currentUser.uid,
+      targetUser.uid
+    )
+    onConversationCreated(conversationId)
+  }
+
+  return (
+    <div className="new-dm-modal">
+      <input
+        placeholder="Search by name..."
+        value={search}
+        onChange={e => { setSearch(e.target.value); searchUsers(e.target.value) }}
+      />
+      {results.map(user => (
+        <div key={user.uid} className="user-result" onClick={() => startChat(user)}>
+          <Avatar src={user.avatarUrl} name={user.name} />
+          <div>
+            <div className="user-name">{user.name}</div>
+            <div className="user-role">{user.role}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+```
+
+---
+
+## Part 7 — Who Can Message Whom
+
+```
+CLUB ADMIN
+  → Group chat: all club members
+  → DM: any coach, analyst, scout or athlete in their club
+
+COACH
+  → Group chat: all club members
+  → DM: club admin, fellow coaches, analysts, any athlete in squad
+
+ANALYST
+  → Group chat: all club members
+  → DM: club admin, head coach, fellow analysts
+
+SCOUT
+  → Group chat: all club members (if affiliated with club)
+  → DM: athletes (after scout request accepted), club admin
+
+ATHLETE
+  → Group chat: all club members (if in a club)
+  → DM: coach, club admin, scouts who they accepted requests from,
+         fellow athletes in same squad
+```
+
+```javascript
+// searchRelatedUsers — returns users this person can DM
+async function searchRelatedUsers(currentUser, query) {
+  const role = currentUser.role
+  let userIds = []
+
+  if (role === 'club_admin') {
+    // All members of their club
+    const club = await getDoc(doc(db, 'clubs', currentUser.clubId))
+    userIds = club.data().members || []
+  }
+
+  if (role === 'coach') {
+    // Squad athletes + club admin + fellow coaches
+    const squadAthletes = await getSquadAthleteIds(currentUser.uid)
+    userIds = [...squadAthletes, currentUser.clubAdminId]
+  }
+
+  if (role === 'scout') {
+    // Athletes with accepted scout requests
+    const accepted = await getDocs(query(
+      collection(db, 'scoutRequests'),
+      where('scoutId', '==', currentUser.uid),
+      where('status', '==', 'accepted')
+    ))
+    userIds = accepted.docs.map(d => d.data().athleteId)
+  }
+
+  if (role === 'athlete') {
+    // Coach + club admin + accepted scouts + squad teammates
+    userIds = [
+      currentUser.coachId,
+      currentUser.clubAdminId,
+      ...await getAcceptedScoutIds(currentUser.uid),
+      ...await getSquadTeammateIds(currentUser.uid)
+    ].filter(Boolean)
+  }
+
+  // Filter by search query
+  const users = await Promise.all(userIds.map(id => getDoc(doc(db, 'users', id))))
+  return users
+    .filter(d => d.exists())
+    .map(d => ({ uid: d.id, ...d.data() }))
+    .filter(u => u.name.toLowerCase().includes(query.toLowerCase()))
+}
+```
+
+---
+
+## Part 8 — Notifications for New Messages
+
+```javascript
+// Cloud Function: notify user of new message
+exports.onNewMessage = functions.firestore
+  .document('conversations/{convId}/messages/{msgId}')
+  .onCreate(async (snap, ctx) => {
+    const message = snap.data()
+    const { convId } = ctx.params
+    
+    const convDoc = await getDoc(doc(db, 'conversations', convId))
+    const conv = convDoc.data()
+    
+    // Notify all participants except sender
+    const recipients = conv.participants
+      .filter(uid => uid !== message.senderId)
+    
+    // In-app notifications
+    const batch = writeBatch(db)
+    recipients.forEach(uid => {
+      const notifRef = doc(collection(db, `notifications/${uid}/items`))
+      batch.set(notifRef, {
+        type: 'new_message',
+        conversationId: convId,
+        conversationType: conv.type,
+        senderName: message.senderName,
+        preview: message.body.substring(0, 60),
+        read: false,
+        createdAt: serverTimestamp()
+      })
+    })
+    await batch.commit()
+
+    // SMS for DMs only (not group chat — too noisy)
+    if (conv.type === 'direct') {
+      for (const uid of recipients) {
+        const userDoc = await getDoc(doc(db, 'users', uid))
+        const phone = userDoc.data().phone
+        if (phone) {
+          await sendSMS(phone,
+            `TalentGraph: New message from ${message.senderName}. ` +
+            `"${message.body.substring(0, 50)}..." ` +
+            `Reply at talentgraph.co.ke/messages`
+          )
+        }
+      }
+    }
+  })
+```
+
+---
+
+## Part 9 — CSS Styling (Key Classes)
+
+```css
+/* Dark WhatsApp-style theme matching Talent Graph */
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1E293B;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.conversation-item:hover { background: #111827; }
+
+.bubble-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 2px 16px;
+}
+.bubble-wrapper.own { flex-direction: row-reverse; }
+
+.bubble {
+  max-width: 72%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.bubble-own {
+  background: #00C853;
+  color: #0A0E1A;
+  border-bottom-right-radius: 3px;
+}
+.bubble-other {
+  background: #1C2333;
+  color: #F9FAFB;
+  border-bottom-left-radius: 3px;
+}
+
+.sender-name {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.sender-role {
+  font-weight: 400;
+  color: #94A3B8;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+.message-time { font-size: 10px; color: rgba(255,255,255,0.45); }
+.receipt { font-size: 10px; color: rgba(255,255,255,0.45); }
+.receipt.read { color: #3B82F6; }
+
+.unread-badge {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #00C853;
+  color: #0A0E1A;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.messages-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #1E293B;
+  background: #111827;
+}
+.input-bar textarea {
+  flex: 1;
+  background: #1C2333;
+  border: 1px solid #1E293B;
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: #F9FAFB;
+  font-size: 13px;
+  resize: none;
+  outline: none;
+  max-height: 120px;
+}
+.input-bar button {
+  padding: 8px 18px;
+  background: #00C853;
+  color: #0A0E1A;
+  border: none;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.input-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+```
+
+---
+
+## Part 10 — Messages Tab Integration (Per Dashboard)
+
+Add this to every dashboard sidebar:
+
+```jsx
+// In every dashboard layout
+function MessagesTab({ currentUser }) {
+  const [conversations, setConversations] = useState([])
+  const [activeConv, setActiveConv] = useState(null)
+  const [showNewDM, setShowNewDM] = useState(false)
+
+  useEffect(() => {
+    getUserConversations(currentUser.uid).then(setConversations)
+    
+    // Real-time updates to conversation list
+    const unsub = onSnapshot(
+      query(
+        collection(db, 'conversations'),
+        where('participants', 'array-contains', currentUser.uid),
+        orderBy('lastMessageAt', 'desc')
+      ),
+      snap => setConversations(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    )
+    return unsub
+  }, [])
+
+  // Separate groups from DMs
+  const groups = conversations.filter(c => c.type === 'group')
+  const directs = conversations.filter(c => c.type === 'direct')
+
+  if (activeConv) {
+    return (
+      <ChatThread
+        conversationId={activeConv.id}
+        conversation={activeConv}
+        currentUser={currentUser}
+        onBack={() => setActiveConv(null)}
+      />
+    )
+  }
+
+  return (
+    <div className="messages-tab">
+      <div className="messages-header">
+        <h2>Messages</h2>
+        <button onClick={() => setShowNewDM(true)}>✏️</button>
+      </div>
+
+      <input className="search-bar" placeholder="Search conversations..." />
+
+      {groups.length > 0 && (
+        <>
+          <div className="section-label">GROUPS</div>
+          {groups.map(conv => (
+            <ConversationItem
+              key={conv.id}
+              conversation={conv}
+              currentUser={currentUser}
+              onPress={() => setActiveConv(conv)}
+            />
+          ))}
+        </>
+      )}
+
+      {directs.length > 0 && (
+        <>
+          <div className="section-label">DIRECT MESSAGES</div>
+          {directs.map(conv => (
+            <ConversationItem
+              key={conv.id}
+              conversation={conv}
+              currentUser={currentUser}
+              onPress={() => setActiveConv(conv)}
+            />
+          ))}
+        </>
+      )}
+
+      {showNewDM && (
+        <NewDirectMessage
+          currentUser={currentUser}
+          onConversationCreated={(id) => {
+            setShowNewDM(false)
+            setActiveConv({ id })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+## Build Order for Engineers
+
+```
+Day 1:
+  ✓ Firestore schema setup (conversations collection)
+  ✓ createClubGroupChat() — run for all existing clubs
+  ✓ addMemberToClubChat() — hook into all existing join flows
+  ✓ sendGroupMessage() function
+  ✓ subscribeToMessages() real-time listener
+
+Day 2:
+  ✓ getOrCreateDirectMessage() function
+  ✓ getUserConversations() function
+  ✓ Firestore security rules
+  ✓ Cloud Function: updateUnreadCounts
+
+Day 3:
+  ✓ ConversationItem component
+  ✓ ChatThread component
+  ✓ MessageBubble component
+  ✓ ReadReceipt component
+  ✓ MessagesTab layout
+
+Day 4:
+  ✓ NewDirectMessage compose flow
+  ✓ searchRelatedUsers() per role
+  ✓ markMessagesRead() + unread badges
+  ✓ Cloud Function: onNewMessage notifications
+
+Day 5:
+  ✓ Integrate MessagesTab into all 5 dashboards
+  ✓ Test group chat with 3 users simultaneously
+  ✓ Test DM flow between all role combinations
+  ✓ Test unread counts and read receipts
+  ✓ Test SMS notifications on new DM
+```
+
+---
+
+## Testing Checklist
+
+```
+Group Chat:
+  □ Admin sends message — all members see it instantly
+  □ Athlete sends message — all members see it instantly
+  □ Coach sends message — name shows in green, role badge visible
+  □ New member added to club — they see the group in Messages tab
+  □ Member removed — group disappears from their Messages tab
+
+Direct Messages:
+  □ Club admin starts DM with coach — thread opens correctly
+  □ Scout starts DM with athlete (after accepted request) — works
+  □ Athlete starts DM with squad teammate — works
+  □ Message sent appears on right (green), received on left (dark)
+  □ Conversation list sorts by most recent message
+
+Unread Counts:
+  □ Unread badge appears on conversation when new message arrives
+  □ Badge disappears when conversation is opened
+  □ Bell icon in nav bar shows total unread count
+
+Notifications:
+  □ DM received: in-app notification appears
+  □ DM received: SMS arrives within 30 seconds
+  □ Group message: in-app notification only (no SMS)
+```
+
+---
+
+When this is done, give the go-ahead and I will produce the full engineering prompt for **Part 2 — Club Member Management** (athlete add, request, accept/reject for coach, scout and analyst).
