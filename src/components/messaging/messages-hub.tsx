@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { UserSearchDialog } from '@/components/messaging/user-search-dialog';
 import {
   ArrowLeft, Search, Send, Plus, Users, Loader2,
-  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, X, Bell,
+  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, CheckCheck, X, Bell,
 } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -373,6 +373,9 @@ function ChatThread({
                 const prevMsg = group.messages[i - 1];
                 const showSenderInfo = !isOwn && (i === 0 || prevMsg?.senderId !== msg.senderId);
                 const roleColor = ROLE_COLORS[msg.senderRole || ''] || '#94A3B8';
+                // Read receipts — DMs only: green ✓✓ when other has read at/after this message
+                const otherLastRead = !isGroup && otherId ? conv.lastReadAt?.[otherId] : undefined;
+                const isReadByOther = !isGroup && !!otherLastRead && otherLastRead >= msg.timestamp;
 
                 if (msg.isDeleted) {
                   return (
@@ -455,6 +458,14 @@ function ChatThread({
                                   <span className={cn('text-[10px] italic', isOwn ? 'text-black/50' : 'text-[#4B5563]')}>
                                     · edited
                                   </span>
+                                )}
+                                {isOwn && !isGroup && (
+                                  <CheckCheck
+                                    className={cn(
+                                      'h-3.5 w-3.5 shrink-0',
+                                      isReadByOther ? 'text-[#006B2D]' : 'text-black/40'
+                                    )}
+                                  />
                                 )}
                               </div>
                             </div>
