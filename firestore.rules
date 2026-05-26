@@ -290,10 +290,24 @@ service cloud.firestore {
             isActiveMemberOfClub(d.clubId) || isClubOwner(d.clubId)
           );
         }
-        allow read: if isSignedIn() && (inConv() || inGroupConv());
-        allow create: if isSignedIn() && (inConv() || inGroupConv()) &&
+        // isClubAdmin() is an explicit bypass: a user whose role == 'club' can
+        // always write to any group conversation they are broadcasting to.
+        // This covers the case where the club_members document path doesn't
+        // match the expected pattern and isClubOwner()/isActiveMemberOfClub()
+        // would otherwise fail.
+        function canWriteToConv() {
+          let d = convData();
+          return inConv() ||
+                 inGroupConv() ||
+                 (isClubAdmin() && d != null && d.type == 'group');
+        }
+        allow read: if isSignedIn() && (inConv() || inGroupConv() || isClubAdmin());
+        allow create: if isSignedIn() && canWriteToConv() &&
           request.resource.data.senderId == request.auth.uid;
-        allow update: if isSignedIn() && resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          (isClubAdmin() && convData().type == 'group')
+        );
         allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
     }

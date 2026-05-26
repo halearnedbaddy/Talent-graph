@@ -22,7 +22,7 @@ export default function AthleteClubChatPage() {
         </div>
       </header>
       <div className="max-w-6xl mx-auto px-4 py-4" style={{ height: 'calc(100vh - 80px)' }}>
-        <MessagesHub />
+        <MessagesHub demo />
       </div>
     </div>
   );

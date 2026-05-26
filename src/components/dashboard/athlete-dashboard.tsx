@@ -1121,7 +1121,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
             </SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-hidden">
-            <MessagesHub />
+            <MessagesHub demo />
           </div>
         </SheetContent>
       </Sheet>

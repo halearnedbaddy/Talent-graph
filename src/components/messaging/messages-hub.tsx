@@ -36,6 +36,7 @@ interface Conversation {
   lastSenderName?: string;
   lastReadAt?: Record<string, string>;
   updatedAt?: string;
+  unreadCount?: number; // explicit count used by demo/mock data
 }
 
 interface Message {
@@ -111,7 +112,79 @@ function groupByDate(messages: Message[]) {
   return groups;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo / mock data — exact layout from screenshot
+// ─────────────────────────────────────────────────────────────────────────────
+const DEMO_UID = '__demo_me__';
+
+const DEMO_CONVERSATIONS: Conversation[] = [
+  {
+    id: 'demo_coach_muhavi',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_coach_1'],
+    participantInfo: {
+      [DEMO_UID]:    { name: 'You',          role: 'athlete' },
+      demo_coach_1:  { name: 'Muhavi',        role: 'coach'   },
+    },
+    lastMessage: 'See you at training tomorrow',
+    lastMessageAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    lastSenderId: 'demo_coach_1',
+    lastReadAt: {},
+    updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    unreadCount: 2,
+  },
+  {
+    id: 'demo_james',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_scout_1'],
+    participantInfo: {
+      [DEMO_UID]:   { name: 'You',           role: 'athlete' },
+      demo_scout_1: { name: 'James Otieno',  role: 'scout'   },
+    },
+    lastMessage: 'I reviewed your profile',
+    lastMessageAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    lastSenderId: 'demo_scout_1',
+    lastReadAt: {},
+    updatedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    unreadCount: 1,
+  },
+  {
+    id: 'demo_scout_office',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_office_1'],
+    participantInfo: {
+      [DEMO_UID]:    { name: 'You',          role: 'athlete' },
+      demo_office_1: { name: 'Scout Office', role: 'scout'   },
+    },
+    lastMessage: 'Your application has been received',
+    lastMessageAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    lastSenderId: DEMO_UID,
+    lastReadAt: { [DEMO_UID]: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    updatedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    unreadCount: 0,
+  },
+];
+
+const DEMO_MESSAGES: Record<string, Message[]> = {
+  demo_coach_muhavi: [
+    { id: 'd1', senderId: 'demo_coach_1', senderName: 'Coach Muhavi', senderRole: 'coach',   content: 'Great training session today!',           timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    { id: 'd2', senderId: DEMO_UID,       senderName: 'You',           senderRole: 'athlete', content: "Thank you coach, I'll keep working hard",   timestamp: new Date(Date.now() - 1.5 * 3_600_000).toISOString() },
+    { id: 'd3', senderId: 'demo_coach_1', senderName: 'Coach Muhavi', senderRole: 'coach',   content: 'See you at training tomorrow',              timestamp: new Date(Date.now() - 5 * 60_000).toISOString() },
+  ],
+  demo_james: [
+    { id: 'j1', senderId: 'demo_scout_1', senderName: 'James Otieno', senderRole: 'scout',   content: 'Hello! I saw you in the recent match.',     timestamp: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: 'j2', senderId: 'demo_scout_1', senderName: 'James Otieno', senderRole: 'scout',   content: 'I reviewed your profile',                   timestamp: new Date(Date.now() - 30 * 60_000).toISOString() },
+  ],
+  demo_scout_office: [
+    { id: 's1', senderId: DEMO_UID,        senderName: 'You',           senderRole: 'athlete', content: "I'd like to apply for the scouting program", timestamp: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+    { id: 's2', senderId: 'demo_office_1', senderName: 'Scout Office',  senderRole: 'scout',   content: 'Your application has been received',         timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+  ],
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 function getUnreadCount(conv: Conversation, userId: string): number {
+  // Use explicit count when present (demo/mock data)
+  if (typeof conv.unreadCount === 'number') return conv.unreadCount;
   if (!conv.lastMessageAt || !conv.lastSenderId) return 0;
   if (conv.lastSenderId === userId) return 0;
   const lastRead = conv.lastReadAt?.[userId];
@@ -192,19 +265,25 @@ function ChatThread({
   userId,
   userProfile,
   onBack,
+  demoMessages,
 }: {
   conv: Conversation;
   userId: string;
   userProfile: { name: string; role: string; photoUrl?: string };
   onBack: () => void;
+  demoMessages?: Message[]; // when set, runs in-memory only (no Firestore)
 }) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const isDemo = !!demoMessages;
+
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [optimisticMsgs, setOptimisticMsgs] = useState<OptimisticMsg[]>([]);
+  // Demo-mode: in-memory message store initialised from prop
+  const [demoMsgStore, setDemoMsgStore] = useState<Message[]>(demoMessages ?? []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -216,16 +295,20 @@ function ChatThread({
   const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
   const displayRole = !isGroup && otherInfo?.role;
 
+  // Firestore live query — skipped in demo mode
   const msgsQuery = useMemoFirebase(() => (
-    firestore
+    !isDemo && firestore
       ? query(collection(firestore, 'conversations', conv.id, 'messages'), orderBy('timestamp', 'asc'))
       : null
-  ), [firestore, conv.id]);
-  const { data: messages, isLoading } = useCollection<Message>(msgsQuery);
+  ), [isDemo, firestore, conv.id]);
+  const { data: firestoreMessages, isLoading } = useCollection<Message>(msgsQuery);
+
+  // In demo mode use local store; otherwise use Firestore + optimistic
+  const messages = isDemo ? demoMsgStore : firestoreMessages;
 
   // Remove optimistic messages whose real counterpart has arrived from Firestore
   useEffect(() => {
-    if (!messages || optimisticMsgs.length === 0) return;
+    if (isDemo || !messages || optimisticMsgs.length === 0) return;
     setOptimisticMsgs(prev =>
       prev.filter(opt =>
         !messages.some(
@@ -235,35 +318,53 @@ function ChatThread({
         )
       )
     );
-  }, [messages, userId]);
+  }, [isDemo, messages, userId]);
 
-  // Merged display list: confirmed messages + any optimistic not yet echoed back
+  // Merged display list
   const displayMessages = (() => {
+    if (isDemo) return demoMsgStore;
     const realTs = new Set((messages ?? []).map(m => m.timestamp));
     const pending = optimisticMsgs.filter(o => !realTs.has(o.timestamp));
-    return [...(messages ?? []), ...pending].sort((a, b) =>
-      a.timestamp.localeCompare(b.timestamp)
-    );
+    return [...(messages ?? []), ...pending].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   })();
 
   useEffect(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   }, [displayMessages.length]);
 
+  // Mark read — skipped in demo mode
   useEffect(() => {
-    if (!firestore || !userId || !conv.id) return;
+    if (isDemo || !firestore || !userId || !conv.id) return;
     updateDoc(doc(firestore, 'conversations', conv.id), {
       [`lastReadAt.${userId}`]: new Date().toISOString(),
     }).catch(() => {});
-  }, [firestore, userId, conv.id]);
+  }, [isDemo, firestore, userId, conv.id]);
 
   const handleSend = useCallback(async () => {
-    if (!firestore || !input.trim() || sending) return;
+    if (!input.trim() || sending) return;
     const content = input.trim();
     const now = new Date().toISOString();
-    const tempId = `opt_${Date.now()}`;
+    setInput('');
 
-    // 1. Optimistic insert — shows instantly with single grey tick
+    // ── Demo mode: pure in-memory send ──
+    if (isDemo) {
+      const newMsg: Message = {
+        id: `demo_sent_${Date.now()}`,
+        senderId: userId,
+        senderName: userProfile.name,
+        senderRole: userProfile.role,
+        content,
+        timestamp: now,
+        isDeleted: false,
+      };
+      setDemoMsgStore(prev => [...prev, newMsg]);
+      inputRef.current?.focus();
+      return;
+    }
+
+    // ── Live mode: optimistic → Firestore ──
+    if (!firestore) return;
+    const tempId = `opt_${Date.now()}`;
     const optimistic: OptimisticMsg = {
       id: tempId,
       senderId: userId,
@@ -276,12 +377,10 @@ function ChatThread({
       _sending: true,
     };
     setOptimisticMsgs(prev => [...prev, optimistic]);
-    setInput('');
     setSending(true);
 
     try {
       const batch = writeBatch(firestore);
-
       const msgRef = doc(collection(firestore, 'conversations', conv.id, 'messages'));
       batch.set(msgRef, {
         senderId: userId,
@@ -291,7 +390,6 @@ function ChatThread({
         timestamp: now,
         isDeleted: false,
       });
-
       batch.update(doc(firestore, 'conversations', conv.id), {
         lastMessage: content,
         lastMessageAt: now,
@@ -300,13 +398,10 @@ function ChatThread({
         updatedAt: now,
         [`lastReadAt.${userId}`]: now,
       });
-
       await batch.commit();
 
-      // 2. Firestore confirmed — upgrade to grey ✓✓ (sent)
-      setOptimisticMsgs(prev =>
-        prev.map(m => m.id === tempId ? { ...m, _sending: false } : m)
-      );
+      // Firestore confirmed → upgrade to grey ✓✓
+      setOptimisticMsgs(prev => prev.map(m => m.id === tempId ? { ...m, _sending: false } : m));
 
       if (!isGroup && otherId) {
         addDoc(collection(firestore, 'notifications', otherId, 'items'), {
@@ -320,11 +415,9 @@ function ChatThread({
           createdAt: now,
         }).catch(() => {});
       }
-
       if (isGroup && conv.participants.length > 1) {
-        const others = conv.participants.filter(p => p !== userId);
-        for (const participantId of others) {
-          addDoc(collection(firestore, 'notifications', participantId, 'items'), {
+        for (const pid of conv.participants.filter(p => p !== userId)) {
+          addDoc(collection(firestore, 'notifications', pid, 'items'), {
             type: 'squad_message',
             actorName: userProfile.name,
             actorRole: userProfile.role,
@@ -338,7 +431,6 @@ function ChatThread({
         }
       }
     } catch {
-      // Remove the optimistic message and restore input on failure
       setOptimisticMsgs(prev => prev.filter(m => m.id !== tempId));
       setInput(content);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
@@ -346,9 +438,13 @@ function ChatThread({
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [firestore, input, sending, userId, userProfile, conv.id, isGroup, otherId, toast]);
+  }, [isDemo, firestore, input, sending, userId, userProfile, conv.id, isGroup, otherId, toast]);
 
   const handleDelete = async (msgId: string) => {
+    if (isDemo) {
+      setDemoMsgStore(prev => prev.map(m => m.id === msgId ? { ...m, isDeleted: true, content: '' } : m));
+      return;
+    }
     if (!firestore) return;
     await updateDoc(doc(firestore, 'conversations', conv.id, 'messages', msgId), {
       isDeleted: true, content: '',
@@ -356,7 +452,13 @@ function ChatThread({
   };
 
   const handleEditSave = async (msgId: string) => {
-    if (!firestore || !editText.trim()) return;
+    if (!editText.trim()) return;
+    if (isDemo) {
+      setDemoMsgStore(prev => prev.map(m => m.id === msgId ? { ...m, content: editText.trim(), editedAt: new Date().toISOString() } : m));
+      setEditingId(null);
+      return;
+    }
+    if (!firestore) return;
     await updateDoc(doc(firestore, 'conversations', conv.id, 'messages', msgId), {
       content: editText.trim(),
       editedAt: new Date().toISOString(),
@@ -625,9 +727,11 @@ function MsgActions({
 
 interface MessagesHubProps {
   defaultConversationId?: string;
+  /** demo=true → uses hardcoded mock data; no Firestore reads/writes */
+  demo?: boolean;
 }
 
-export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
+export function MessagesHub({ defaultConversationId, demo = false }: MessagesHubProps = {}) {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -636,14 +740,18 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
 
+  // Demo mode: in-memory conversation list (deletable)
+  const [demoConvs, setDemoConvs] = useState<Conversation[]>(DEMO_CONVERSATIONS);
+
   useEffect(() => {
     if (defaultConversationId && !activeConvId) {
       setActiveConvId(defaultConversationId);
     }
   }, [defaultConversationId, activeConvId]);
 
+  // Profile fetch — only needed for live mode
   useEffect(() => {
-    if (!firestore || !user?.uid) return;
+    if (demo || !firestore || !user?.uid) return;
     (async () => {
       try {
         const userSnap = await getDoc(doc(firestore, 'users', user.uid));
@@ -674,36 +782,55 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
         setUserProfile({ name, role, photoUrl });
       } catch {}
     })();
-  }, [firestore, user]);
+  }, [demo, firestore, user]);
 
+  // Live Firestore query — skipped in demo mode
   const convQuery = useMemoFirebase(() => (
-    firestore && user?.uid
+    !demo && firestore && user?.uid
       ? query(
           collection(firestore, 'conversations'),
           where('participants', 'array-contains', user.uid),
           orderBy('updatedAt', 'desc')
         )
       : null
-  ), [firestore, user?.uid]);
-  const { data: conversations, isLoading } = useCollection<Conversation>(convQuery);
+  ), [demo, firestore, user?.uid]);
+  const { data: liveConversations, isLoading } = useCollection<Conversation>(convQuery);
 
-  const filtered = (conversations ?? []).filter(c => {
+  // Use demo conversations or live Firestore conversations
+  const conversations: Conversation[] = demo ? demoConvs : (liveConversations ?? []);
+  const effectiveUserId = demo ? DEMO_UID : (user?.uid || '');
+  const effectiveProfile = demo
+    ? { name: 'You', role: 'athlete', photoUrl: undefined }
+    : userProfile;
+
+  // Search: filter by name OR last message content
+  const filtered = conversations.filter(c => {
     if (!searchTerm.trim()) return true;
-    const isGroup = c.type === 'group';
-    if (isGroup) return (c.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const otherId = c.participants.find(p => p !== user?.uid);
+    const q = searchTerm.toLowerCase();
+    if (c.type === 'group') {
+      return (c.name || '').toLowerCase().includes(q) ||
+             (c.lastMessage || '').toLowerCase().includes(q);
+    }
+    const otherId = c.participants.find(p => p !== effectiveUserId);
     const name = otherId ? c.participantInfo?.[otherId]?.name || '' : '';
-    return name.toLowerCase().includes(searchTerm.toLowerCase());
+    return name.toLowerCase().includes(q) ||
+           (c.lastMessage || '').toLowerCase().includes(q);
   });
 
-  const activeConv = (conversations ?? []).find(c => c.id === activeConvId);
-  const totalUnread = (conversations ?? []).filter(c => getUnreadCount(c, user?.uid || '') > 0).length;
+  const activeConv = conversations.find(c => c.id === activeConvId);
+  const totalUnread = conversations.reduce((sum, c) => sum + getUnreadCount(c, effectiveUserId), 0);
 
+  // Delete conversation
   const handleDeleteConv = useCallback(async (convId: string) => {
+    if (demo) {
+      setDemoConvs(prev => prev.filter(c => c.id !== convId));
+      if (activeConvId === convId) setActiveConvId(null);
+      return;
+    }
     if (!firestore || !user?.uid) return;
     try {
       await updateDoc(doc(firestore, 'conversations', convId), {
-        participants: (conversations ?? [])
+        participants: conversations
           .find(c => c.id === convId)
           ?.participants.filter(p => p !== user.uid) ?? [],
       });
@@ -712,9 +839,9 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
     } catch {
       toast({ variant: 'destructive', title: 'Could not remove conversation' });
     }
-  }, [firestore, user, conversations, activeConvId, toast]);
+  }, [demo, firestore, user, conversations, activeConvId, toast]);
 
-  if (isUserLoading) {
+  if (!demo && isUserLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-[#0A0E1A]">
         <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
@@ -751,19 +878,21 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
                 className="w-full pl-8 pr-3 h-10 bg-[#1C2333] border border-[#1E293B] rounded-xl text-white placeholder:text-[#4B5563] text-sm focus:outline-none focus:border-[#00C853] transition-colors"
               />
             </div>
-            <button
-              onClick={() => setShowNewDM(true)}
-              className="h-10 w-10 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-xl border border-[#1E293B] flex items-center justify-center transition-colors shrink-0"
-              title="New message"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
+            {!demo && (
+              <button
+                onClick={() => setShowNewDM(true)}
+                className="h-10 w-10 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-xl border border-[#1E293B] flex items-center justify-center transition-colors shrink-0"
+                title="New message"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
+          {!demo && isLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-[#00C853]" />
             </div>
@@ -776,7 +905,7 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
                 {searchTerm ? 'No conversations match' : 'No messages yet'}
               </p>
               <p className="text-xs text-[#4B5563] mt-1">
-                {searchTerm ? 'Try a different name' : 'Tap + to start a conversation'}
+                {searchTerm ? 'Try a different name or message' : 'Tap + to start a conversation'}
               </p>
             </div>
           ) : (
@@ -784,7 +913,7 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
               <ConvItem
                 key={c.id}
                 conv={c}
-                userId={user?.uid || ''}
+                userId={effectiveUserId}
                 isActive={activeConvId === c.id}
                 onClick={() => setActiveConvId(c.id)}
                 onDelete={() => handleDeleteConv(c.id)}
@@ -796,12 +925,13 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
 
       {/* ── Chat Panel ── */}
       <div className={cn('flex-1 flex flex-col', activeConvId ? 'flex' : 'hidden md:flex')}>
-        {activeConv && user ? (
+        {activeConv ? (
           <ChatThread
             conv={activeConv}
-            userId={user.uid}
-            userProfile={userProfile}
+            userId={effectiveUserId}
+            userProfile={effectiveProfile}
             onBack={() => setActiveConvId(null)}
+            demoMessages={demo ? (DEMO_MESSAGES[activeConv.id] ?? []) : undefined}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0A0E1A]">
@@ -810,20 +940,20 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
             </div>
             <p className="font-black text-white text-base">Select chat</p>
             <p className="text-sm text-[#4B5563] mt-1 max-w-xs">
-              Choose a conversation on the left, or start a new one with +
+              Choose a conversation on the left to open it
             </p>
           </div>
         )}
       </div>
 
-      {user && userProfile.name && (
+      {!demo && user && effectiveProfile.name && (
         <UserSearchDialog
           open={showNewDM}
           onClose={() => setShowNewDM(false)}
           currentUserId={user.uid}
-          currentUserName={userProfile.name}
-          currentUserRole={userProfile.role}
-          currentUserPhoto={userProfile.photoUrl}
+          currentUserName={effectiveProfile.name}
+          currentUserRole={effectiveProfile.role}
+          currentUserPhoto={effectiveProfile.photoUrl}
           onConversationCreated={id => { setShowNewDM(false); setActiveConvId(id); }}
         />
       )}

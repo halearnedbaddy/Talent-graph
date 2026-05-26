@@ -12,7 +12,7 @@ export default function AnalystMessagesPage() {
         </p>
       </div>
       <div style={{ height: 'calc(100vh - 180px)', minHeight: '500px' }}>
-        <MessagesHub />
+        <MessagesHub demo />
       </div>
     </div>
   );
