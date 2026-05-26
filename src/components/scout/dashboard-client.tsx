@@ -13,7 +13,7 @@ import { SearchTab } from './search-tab';
 import { MarketplaceTab } from './marketplace-tab';
 import { CompareTab } from './compare-tab';
 import { SavedAthletesTab } from './saved-athletes-tab';
-import { MessagesTab } from './messages-tab';
+import { MessagesHub } from '@/components/messaging/messages-hub';
 import { ProfileTab } from './profile-tab';
 import { PipelineTab } from './pipeline-tab';
 import { SavedSearchesTab } from './saved-searches-tab';
@@ -290,11 +290,9 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
             <PipelineTab scoutProfile={scoutProfile} />
           )}
           {activeTab === 'messages' && (
-            <MessagesTab
-              scoutProfile={scoutProfile}
-              composeTarget={messageTarget}
-              onComposeClose={() => setMessageTarget(null)}
-            />
+            <div style={{ height: 'calc(100vh - 200px)', minHeight: '500px' }}>
+              <MessagesHub />
+            </div>
           )}
           {activeTab === 'activity' && (
             <ActivityTab scoutProfile={scoutProfile} />

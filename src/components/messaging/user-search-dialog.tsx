@@ -110,7 +110,7 @@ export function UserSearchDialog({
     if (!firestore) return;
     setStartingChat(other.uid);
     try {
-      const conversationId = [currentUserId, other.uid].sort().join('_');
+      const conversationId = [currentUserId, other.uid].sort().join('_dm_');
       const convRef = doc(firestore, 'conversations', conversationId);
       const existing = await getDoc(convRef);
 

@@ -529,6 +529,12 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
   const firestore = useFirestore();
   const [activeConvId, setActiveConvId] = useState<string | null>(defaultConversationId || null);
   const [showNewDM, setShowNewDM] = useState(false);
+
+  useEffect(() => {
+    if (defaultConversationId && !activeConvId) {
+      setActiveConvId(defaultConversationId);
+    }
+  }, [defaultConversationId, activeConvId]);
   const [searchTerm, setSearchTerm] = useState('');
   const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
 
