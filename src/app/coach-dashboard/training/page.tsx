@@ -22,6 +22,7 @@ import {
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isBefore, startOfToday } from 'date-fns';
+import { sendClubNotification } from '@/hooks/usePushNotifications';
 
 function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(' '); }
 
@@ -259,7 +260,6 @@ export default function CoachTrainingPage() {
     if (!firestore || !attendanceSession) return;
     setSavingAttendance(true);
     try {
-      // Legacy attendees array (present + late = attended)
       const attendees = Object.entries(attendance)
         .filter(([, v]) => v === 'present' || v === 'late')
         .map(([k]) => k);
@@ -269,6 +269,21 @@ export default function CoachTrainingPage() {
         attendance,
         updatedAt: new Date().toISOString(),
       });
+
+      if (clubId) {
+        const presentCount = Object.values(attendance).filter(v => v === 'present').length;
+        const lateCount = Object.values(attendance).filter(v => v === 'late').length;
+        sendClubNotification({
+          firestore,
+          clubId,
+          title: `📋 Attendance Marked — ${attendanceSession.title}`,
+          body: `${presentCount} present · ${lateCount} late · ${Object.values(attendance).filter(v => v === 'absent').length} absent`,
+          url: '/club-dashboard/training',
+          tag: `attendance-${attendanceSession.id}`,
+          sentBy: user?.uid,
+        }).catch(() => {});
+      }
+
       toast({ title: 'Attendance Saved ✓', description: `${attendees.length} athletes marked.` });
       setAttendanceSession(null);
       setAttendance({});

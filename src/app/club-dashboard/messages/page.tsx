@@ -1,6 +1,19 @@
 'use client';
 
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MessagesHub } from '@/components/messaging/messages-hub';
+
+function MessagesContent() {
+  const params = useSearchParams();
+  const convId = params.get('conv') || undefined;
+
+  return (
+    <div style={{ height: 'calc(100vh - 180px)', minHeight: '500px' }}>
+      <MessagesHub defaultConversationId={convId} />
+    </div>
+  );
+}
 
 export default function ClubMessagesPage() {
   return (
@@ -11,9 +24,9 @@ export default function ClubMessagesPage() {
           Club group chat &amp; direct messages
         </p>
       </div>
-      <div style={{ height: 'calc(100vh - 180px)', minHeight: '500px' }}>
-        <MessagesHub />
-      </div>
+      <Suspense fallback={null}>
+        <MessagesContent />
+      </Suspense>
     </div>
   );
 }
