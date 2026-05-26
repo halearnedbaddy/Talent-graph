@@ -28,7 +28,7 @@ const navItems = [
   { href: '/coach-dashboard/training', label: 'Training & Drills', icon: Dumbbell },
   { href: '/coach-dashboard/schedule', label: 'Schedule', icon: Calendar },
   { href: '/coach-dashboard/analytics', label: 'Performance Analytics', icon: BarChart3 },
-  { href: '/coach-dashboard/communications', label: 'Communications', icon: MessageSquare },
+  { href: '/coach-dashboard/messages', label: 'Messages', icon: MessageSquare },
   { href: '/coach-dashboard/club', label: 'Club Dashboard', icon: Building2 },
   { href: '/coach-dashboard/settings', label: 'Settings', icon: Settings },
   { href: '/coach-dashboard/find-club', label: 'Find Club', icon: Search, noClubOnly: true },

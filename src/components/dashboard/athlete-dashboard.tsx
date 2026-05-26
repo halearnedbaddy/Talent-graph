@@ -57,9 +57,8 @@ import {
 } from '@/components/ui/sheet';
 import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
-import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
+import { MessagesHub } from '@/components/messaging/messages-hub';
 import { AthleteClubInvitations } from '@/components/club/athlete-club-invitations';
-import { DmSheet } from '@/components/messaging/dm-sheet';
 import { AthleteTrainingSessions } from './athlete-training-sessions';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
@@ -85,7 +84,7 @@ interface AthleteDashboardProps {
   athleteProfile?: AthleteProfile;
 }
 
-type ActiveTab = 'home' | 'edit' | 'support' | 'notifications' | 'squad-chat';
+type ActiveTab = 'home' | 'edit' | 'support' | 'notifications' | 'messages';
 
 export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboardProps) {
   const auth = useAuth();
@@ -94,7 +93,6 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [moreOpen, setMoreOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [dmSheetOpen, setDmSheetOpen] = useState(false);
   const [confirmDeleteVideo, setConfirmDeleteVideo] = useState<ShowcaseVideo | null>(null);
   const [isDeletingVideo, setIsDeletingVideo] = useState(false);
   const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
@@ -345,17 +343,15 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                 variant="ghost"
                 size="icon"
                 className="relative h-9 w-9"
-                asChild
+                onClick={() => setActiveTab('messages')}
                 aria-label="Messages"
               >
-                <Link href="/chat">
-                  <MessageSquare className="h-4 w-4" />
-                  {unreadDMCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
-                      {unreadDMCount > 9 ? '9+' : unreadDMCount}
-                    </span>
-                  )}
-                </Link>
+                <MessageSquare className="h-4 w-4" />
+                {unreadDMCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                    {unreadDMCount > 9 ? '9+' : unreadDMCount}
+                  </span>
+                )}
               </Button>
               <SupportDialog />
               <EditProfileMediaDialog profile={athleteProfile} />
@@ -517,9 +513,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               { id: 'home' as ActiveTab, label: 'Overview', icon: Home },
               { id: 'edit' as ActiveTab, label: 'Edit Profile', icon: Pencil },
               { id: 'notifications' as ActiveTab, label: 'Notifications', icon: Bell },
-              ...(athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId
-                ? [{ id: 'squad-chat' as ActiveTab, label: 'Squad Chat', icon: MessageSquare }]
-                : []),
+              { id: 'messages' as ActiveTab, label: 'Messages', icon: MessageSquare },
               { id: 'support' as ActiveTab, label: 'Support', icon: Headphones },
             ] as { id: ActiveTab; label: string; icon: LucideIcon }[]).map((tab) => (
               <button
@@ -539,21 +533,13 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
+                {tab.id === 'messages' && unreadDMCount > 0 && (
+                  <span className="ml-0.5 text-[10px] bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center font-black shrink-0">
+                    {unreadDMCount > 9 ? '9+' : unreadDMCount}
+                  </span>
+                )}
               </button>
             ))}
-            {/* Messages — standalone link (not a tab, routes to /chat) */}
-            <Link
-              href="/chat"
-              className="flex items-center gap-2 whitespace-nowrap px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              Messages
-              {unreadDMCount > 0 && (
-                <span className="ml-0.5 text-[10px] bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center font-black shrink-0">
-                  {unreadDMCount > 9 ? '9+' : unreadDMCount}
-                </span>
-              )}
-            </Link>
           </div>
         </div>
       </div>
@@ -948,19 +934,35 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </div>
 
           <div className="space-y-8">
-            {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
-              <Card className="border-none shadow-xl overflow-hidden">
-                <CardHeader className="bg-muted/50 border-b py-3 px-4">
+            <Card
+              className="border-none shadow-xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setActiveTab('messages')}
+            >
+              <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
                     <MessageSquare className="h-4 w-4 text-primary" />
-                    Squad Chat
+                    Messages
                   </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <SquadChatWidget clubId={athleteProfile.affiliatedClubId} scrollHeight="380px" />
-                </CardContent>
-              </Card>
-            )}
+                  {unreadDMCount > 0 && (
+                    <span className="h-5 min-w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-black flex items-center justify-center px-1.5">
+                      {unreadDMCount}
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">
+                  {unreadDMCount > 0
+                    ? `You have ${unreadDMCount} unread message${unreadDMCount !== 1 ? 's' : ''}`
+                    : 'Direct messages, squad chat & group conversations'}
+                </p>
+                <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={e => { e.stopPropagation(); setActiveTab('messages'); }}>
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Open Messages
+                </Button>
+              </CardContent>
+            </Card>
 
             <EngagementLoop profile={athleteProfile} />
             <ProfileStrengthCard profile={athleteProfile} />
@@ -1104,30 +1106,25 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
         </SheetContent>
       </Sheet>
 
-      {/* ── Direct Messages Sheet ── */}
-      <DmSheet
-        open={dmSheetOpen}
-        onClose={() => setDmSheetOpen(false)}
-        athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
-        athletePhoto={athleteProfile.photoUrl}
-      />
-
-      {/* ── Squad Chat Sheet (active club members only) ── */}
-      {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
-        <Sheet open={activeTab === 'squad-chat'} onOpenChange={(open) => { if (!open) setActiveTab('home'); }}>
-          <SheetContent side="bottom" className="h-[85dvh] p-0 flex flex-col overflow-hidden rounded-t-2xl">
-            <SheetHeader className="px-5 pt-5 pb-3 border-b shrink-0">
-              <SheetTitle className="flex items-center gap-2 font-black uppercase tracking-widest text-sm">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                Squad Chat
-              </SheetTitle>
-            </SheetHeader>
-            <div className="flex-1 overflow-hidden p-4">
-              <SquadChatWidget clubId={athleteProfile.affiliatedClubId} scrollHeight="calc(85dvh - 160px)" />
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
+      {/* ── Unified Messages Sheet ── */}
+      <Sheet open={activeTab === 'messages'} onOpenChange={(open) => { if (!open) setActiveTab('home'); }}>
+        <SheetContent side="bottom" className="h-[92dvh] p-0 flex flex-col overflow-hidden rounded-t-2xl">
+          <SheetHeader className="px-5 pt-4 pb-3 border-b shrink-0">
+            <SheetTitle className="flex items-center gap-2 font-black uppercase tracking-widest text-sm">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Messages
+              {unreadDMCount > 0 && (
+                <span className="h-5 min-w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-black flex items-center justify-center px-1.5">
+                  {unreadDMCount}
+                </span>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-hidden">
+            <MessagesHub />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* ── Quick-Action FAB ── */}
       <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2 md:bottom-6">
@@ -1268,48 +1265,29 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
           </span>
         </button>
 
-        {/* Direct Messages — inline WhatsApp-style sheet */}
+        {/* Unified Messages */}
         <button
-          onClick={() => setDmSheetOpen(true)}
+          onClick={() => setActiveTab('messages')}
           className={cn(
             'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
-            dmSheetOpen ? 'text-primary' : 'text-muted-foreground'
+            activeTab === 'messages' ? 'text-primary' : 'text-muted-foreground'
           )}
         >
-          {dmSheetOpen && (
+          {activeTab === 'messages' && (
             <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
           )}
           <div className="relative">
-            <MessageSquare className={cn('h-5 w-5 transition-transform', dmSheetOpen && 'scale-110')} />
+            <MessageSquare className={cn('h-5 w-5 transition-transform', activeTab === 'messages' && 'scale-110')} />
             {unreadDMCount > 0 && (
               <span className="absolute -top-1 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-black text-primary-foreground">
                 {unreadDMCount > 9 ? '9+' : unreadDMCount}
               </span>
             )}
           </div>
-          <span className={cn('text-[10px] font-bold uppercase tracking-wide', dmSheetOpen && 'font-black')}>
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'messages' && 'font-black')}>
             Messages
           </span>
         </button>
-
-        {/* Squad Chat — only for active club members */}
-        {athleteProfile.clubStatus === 'active' && athleteProfile.affiliatedClubId && (
-          <button
-            onClick={() => setActiveTab('squad-chat')}
-            className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-1 transition-colors relative',
-              activeTab === 'squad-chat' ? 'text-primary' : 'text-muted-foreground'
-            )}
-          >
-            {activeTab === 'squad-chat' && (
-              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />
-            )}
-            <MessageSquare className={cn('h-5 w-5 transition-transform', activeTab === 'squad-chat' && 'scale-110')} />
-            <span className={cn('text-[10px] font-bold uppercase tracking-wide', activeTab === 'squad-chat' && 'font-black')}>
-              Chat
-            </span>
-          </button>
-        )}
 
         {/* Support */}
         <button

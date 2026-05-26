@@ -67,6 +67,20 @@ function getInitials(name: string) {
     : (name || '?').substring(0, 2).toUpperCase();
 }
 
+function getRolePrefixedName(name: string, role?: string): string {
+  if (!name || name === 'Unknown') return name || 'Unknown';
+  switch (role) {
+    case 'coach': return `Coach ${name}`;
+    case 'assistant_coach': return `Asst. Coach ${name}`;
+    case 'gk_coach': return `GK Coach ${name}`;
+    case 'scout': return `Scout ${name}`;
+    case 'analyst': return `Analyst ${name}`;
+    case 'club':
+    case 'club_admin': return `Club Admin ${name}`;
+    default: return name;
+  }
+}
+
 function formatConvTime(ts?: string) {
   if (!ts) return '';
   try {
@@ -114,7 +128,8 @@ function ConvItem({
   const isGroup = conv.type === 'group';
   const otherId = !isGroup ? conv.participants.find(p => p !== userId) : undefined;
   const otherInfo = otherId ? conv.participantInfo?.[otherId] : undefined;
-  const displayName = isGroup ? (conv.name || 'Club Chat') : (otherInfo?.name || 'Unknown');
+  const otherRole = otherId ? conv.participantInfo?.[otherId]?.role : undefined;
+  const displayName = isGroup ? (conv.name || 'Club Chat') : getRolePrefixedName(otherInfo?.name || 'Unknown', otherRole);
   const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
   const unread = isUnread(conv, userId);
 
@@ -189,7 +204,8 @@ function ChatThread({
   const isGroup = conv.type === 'group';
   const otherId = !isGroup ? conv.participants.find(p => p !== userId) : undefined;
   const otherInfo = otherId ? conv.participantInfo?.[otherId] : undefined;
-  const displayName = isGroup ? (conv.name || 'Club Chat') : (otherInfo?.name || 'Chat');
+  const otherRole = !isGroup ? otherInfo?.role : undefined;
+  const displayName = isGroup ? (conv.name || 'Club Chat') : getRolePrefixedName(otherInfo?.name || 'Chat', otherRole);
   const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
   const displayRole = !isGroup && otherInfo?.role;
 
@@ -252,6 +268,23 @@ function ChatThread({
           isRead: false,
           createdAt: now,
         }).catch(() => {});
+      }
+
+      if (isGroup && conv.participants.length > 1) {
+        const others = conv.participants.filter(p => p !== userId);
+        for (const participantId of others) {
+          addDoc(collection(firestore, 'notifications', participantId, 'items'), {
+            type: 'squad_message',
+            actorName: userProfile.name,
+            actorRole: userProfile.role,
+            message: content.length > 80 ? content.slice(0, 80) + '…' : content,
+            conversationId: conv.id,
+            conversationName: conv.name || 'Squad Chat',
+            url: `/chat/${conv.id}`,
+            isRead: false,
+            createdAt: now,
+          }).catch(() => {});
+        }
       }
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
