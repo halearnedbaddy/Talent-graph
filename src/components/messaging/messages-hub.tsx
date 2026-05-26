@@ -3,19 +3,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  collection, query, where, orderBy, addDoc, updateDoc, doc,
+  collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc,
   getDoc, setDoc, writeBatch, getDocs, serverTimestamp,
 } from 'firebase/firestore';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { UserSearchDialog } from '@/components/messaging/user-search-dialog';
 import {
   ArrowLeft, Search, Send, Plus, Users, Loader2,
-  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, X,
+  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, X, Bell,
 } from 'lucide-react';
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -112,72 +111,73 @@ function groupByDate(messages: Message[]) {
   return groups;
 }
 
-function isUnread(conv: Conversation, userId: string) {
-  if (!conv.lastMessageAt || !conv.lastSenderId) return false;
-  if (conv.lastSenderId === userId) return false;
+function getUnreadCount(conv: Conversation, userId: string): number {
+  if (!conv.lastMessageAt || !conv.lastSenderId) return 0;
+  if (conv.lastSenderId === userId) return 0;
   const lastRead = conv.lastReadAt?.[userId];
-  if (!lastRead) return true;
-  return conv.lastMessageAt > lastRead;
+  if (!lastRead) return 1;
+  return conv.lastMessageAt > lastRead ? 1 : 0;
 }
 
 function ConvItem({
-  conv, userId, isActive, onClick,
+  conv, userId, isActive, onClick, onDelete,
 }: {
-  conv: Conversation; userId: string; isActive: boolean; onClick: () => void;
+  conv: Conversation; userId: string; isActive: boolean;
+  onClick: () => void; onDelete: () => void;
 }) {
   const isGroup = conv.type === 'group';
   const otherId = !isGroup ? conv.participants.find(p => p !== userId) : undefined;
   const otherInfo = otherId ? conv.participantInfo?.[otherId] : undefined;
   const otherRole = otherId ? conv.participantInfo?.[otherId]?.role : undefined;
-  const displayName = isGroup ? (conv.name || 'Club Chat') : getRolePrefixedName(otherInfo?.name || 'Unknown', otherRole);
-  const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
-  const unread = isUnread(conv, userId);
-
-  const preview = conv.lastMessage
-    ? (conv.lastSenderId === userId ? `You: ${conv.lastMessage}` : conv.lastMessage)
-    : 'No messages yet';
+  const displayName = isGroup
+    ? (conv.name || 'Club Chat')
+    : getRolePrefixedName(otherInfo?.name || 'Unknown', otherRole);
+  const unreadCount = getUnreadCount(conv, userId);
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-[#1E293B]',
+        'w-full flex items-center gap-3 px-4 py-3 border-b border-[#1E293B] transition-colors',
         isActive ? 'bg-[#1C2333]' : 'hover:bg-[#111827]'
       )}
     >
-      <div className="relative shrink-0">
-        <Avatar className="h-11 w-11">
-          {displayPhoto && <AvatarImage src={displayPhoto} className="object-cover" />}
-          <AvatarFallback className={cn('font-black text-sm', isGroup ? 'bg-[#00C853]/20 text-[#00C853]' : 'bg-[#1C2333] text-[#94A3B8]')}>
-            {isGroup ? <Hash className="h-5 w-5" /> : getInitials(displayName)}
-          </AvatarFallback>
-        </Avatar>
-        {isGroup && (
-          <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-[#00C853] flex items-center justify-center">
-            <Users className="h-2.5 w-2.5 text-black" />
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-0.5">
-          <p className={cn('text-sm truncate', unread ? 'font-black text-white' : 'font-semibold text-[#94A3B8]')}>
+      <button onClick={onClick} className="flex-1 flex items-center gap-3 text-left min-w-0">
+        <div className="relative shrink-0">
+          <Avatar className="h-10 w-10">
+            <AvatarFallback className={cn(
+              'font-black text-sm',
+              isGroup ? 'bg-[#00C853]/20 text-[#00C853]' : 'bg-[#1C2333] text-[#94A3B8]'
+            )}>
+              {isGroup ? <Hash className="h-4 w-4" /> : getInitials(displayName)}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={cn(
+            'text-sm truncate',
+            unreadCount > 0 ? 'font-black text-white' : 'font-semibold text-[#CBD5E1]'
+          )}>
             {displayName}
           </p>
-          <span className="text-[10px] text-[#94A3B8] shrink-0">{formatConvTime(conv.lastMessageAt || conv.updatedAt)}</span>
+          <p className="text-xs text-[#4B5563]">Chat</p>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <p className={cn('text-xs truncate flex-1', unread ? 'text-white' : 'text-[#4B5563]')}>
-            {preview}
-          </p>
-          {unread && (
-            <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5 shrink-0">
-              ●
-            </span>
-          )}
-        </div>
+      </button>
+
+      <div className="flex items-center gap-2 shrink-0">
+        {unreadCount > 0 && (
+          <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5">
+            {unreadCount}
+          </span>
+        )}
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="text-[#4B5563] hover:text-red-400 transition-colors p-1"
+          title="Delete conversation"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -499,7 +499,7 @@ function ChatThread({
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
               }}
-              placeholder="Message…"
+              placeholder="Type message..."
               rows={1}
               className="w-full bg-[#1C2333] border border-[#1E293B] rounded-2xl px-4 py-3 text-sm text-white placeholder:text-[#4B5563] resize-none focus:outline-none focus:border-[#00C853] max-h-32 overflow-y-auto transition-colors"
               style={{ minHeight: '44px' }}
@@ -513,9 +513,9 @@ function ChatThread({
           <Button
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="h-11 w-11 rounded-full bg-[#00C853] hover:bg-[#00C853]/90 text-black shrink-0 p-0"
+            className="h-11 px-5 rounded-full bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-sm shrink-0"
           >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
           </Button>
         </div>
       </div>
@@ -560,16 +560,17 @@ interface MessagesHubProps {
 export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [activeConvId, setActiveConvId] = useState<string | null>(defaultConversationId || null);
   const [showNewDM, setShowNewDM] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
 
   useEffect(() => {
     if (defaultConversationId && !activeConvId) {
       setActiveConvId(defaultConversationId);
     }
   }, [defaultConversationId, activeConvId]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
 
   useEffect(() => {
     if (!firestore || !user?.uid) return;
@@ -625,10 +626,23 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
     return name.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const groups = filtered.filter(c => c.type === 'group');
-  const directs = filtered.filter(c => c.type !== 'group');
   const activeConv = (conversations ?? []).find(c => c.id === activeConvId);
-  const totalUnread = (conversations ?? []).filter(c => isUnread(c, user?.uid || '')).length;
+  const totalUnread = (conversations ?? []).filter(c => getUnreadCount(c, user?.uid || '') > 0).length;
+
+  const handleDeleteConv = useCallback(async (convId: string) => {
+    if (!firestore || !user?.uid) return;
+    try {
+      await updateDoc(doc(firestore, 'conversations', convId), {
+        participants: (conversations ?? [])
+          .find(c => c.id === convId)
+          ?.participants.filter(p => p !== user.uid) ?? [],
+      });
+      if (activeConvId === convId) setActiveConvId(null);
+      toast({ title: 'Conversation removed' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not remove conversation' });
+    }
+  }, [firestore, user, conversations, activeConvId, toast]);
 
   if (isUserLoading) {
     return (
@@ -639,87 +653,78 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
   }
 
   return (
-    <div className="flex h-full bg-[#0A0E1A] rounded-xl overflow-hidden border border-[#1E293B]" style={{ minHeight: '600px' }}>
+    <div className="flex h-full bg-[#0A0E1A] rounded-xl overflow-hidden border border-[#1E293B]" style={{ minHeight: '500px' }}>
+      {/* ── Conversation List ── */}
       <div className={cn(
         'flex flex-col bg-[#0D1117] border-r border-[#1E293B]',
         activeConvId ? 'hidden md:flex md:w-80 lg:w-96' : 'flex w-full'
       )}>
-        <div className="px-4 py-4 border-b border-[#1E293B] bg-[#111827] shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-black text-white uppercase tracking-tight">Messages</h2>
-              {totalUnread > 0 && (
-                <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5">
-                  {totalUnread}
-                </span>
-              )}
+        {/* Unread notification bar */}
+        {totalUnread > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0A0E1A] border-b border-[#1E293B] shrink-0">
+            <Bell className="h-3.5 w-3.5 text-[#00C853] shrink-0" />
+            <span className="text-xs text-[#94A3B8]">
+              <span className="font-black text-white">{totalUnread}</span> unread message{totalUnread !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
+
+        {/* Search + new DM */}
+        <div className="px-3 py-3 border-b border-[#1E293B] bg-[#0D1117] shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#4B5563]" />
+              <input
+                placeholder="Search chats..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 h-10 bg-[#1C2333] border border-[#1E293B] rounded-xl text-white placeholder:text-[#4B5563] text-sm focus:outline-none focus:border-[#00C853] transition-colors"
+              />
             </div>
-            <Button
-              size="icon"
+            <button
               onClick={() => setShowNewDM(true)}
-              className="h-8 w-8 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-full border border-[#1E293B]"
+              className="h-10 w-10 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-xl border border-[#1E293B] flex items-center justify-center transition-colors shrink-0"
+              title="New message"
             >
               <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#4B5563]" />
-            <Input
-              placeholder="Search conversations…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-8 h-9 bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#4B5563] text-xs"
-            />
+            </button>
           </div>
         </div>
 
+        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-[#00C853]" />
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+              <div className="w-14 h-14 rounded-full bg-[#1C2333] flex items-center justify-center mb-3">
+                <MessageSquare className="h-6 w-6 text-[#4B5563]" />
+              </div>
+              <p className="font-black text-white text-sm">
+                {searchTerm ? 'No conversations match' : 'No messages yet'}
+              </p>
+              <p className="text-xs text-[#4B5563] mt-1">
+                {searchTerm ? 'Try a different name' : 'Tap + to start a conversation'}
+              </p>
+            </div>
           ) : (
-            <>
-              {groups.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-[#0A0E1A]">
-                    <p className="text-[10px] font-black text-[#4B5563] uppercase tracking-widest">Groups</p>
-                  </div>
-                  {groups.map(c => (
-                    <ConvItem key={c.id} conv={c} userId={user?.uid || ''} isActive={activeConvId === c.id} onClick={() => setActiveConvId(c.id)} />
-                  ))}
-                </>
-              )}
-
-              {directs.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-[#0A0E1A]">
-                    <p className="text-[10px] font-black text-[#4B5563] uppercase tracking-widest">Direct Messages</p>
-                  </div>
-                  {directs.map(c => (
-                    <ConvItem key={c.id} conv={c} userId={user?.uid || ''} isActive={activeConvId === c.id} onClick={() => setActiveConvId(c.id)} />
-                  ))}
-                </>
-              )}
-
-              {groups.length === 0 && directs.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                  <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
-                    <MessageSquare className="h-7 w-7 text-[#4B5563]" />
-                  </div>
-                  <p className="font-black text-white text-sm">
-                    {searchTerm ? 'No conversations match' : 'No messages yet'}
-                  </p>
-                  <p className="text-xs text-[#4B5563] mt-1">
-                    {searchTerm ? 'Try a different name' : 'Tap + to start a conversation'}
-                  </p>
-                </div>
-              )}
-            </>
+            filtered.map(c => (
+              <ConvItem
+                key={c.id}
+                conv={c}
+                userId={user?.uid || ''}
+                isActive={activeConvId === c.id}
+                onClick={() => setActiveConvId(c.id)}
+                onDelete={() => handleDeleteConv(c.id)}
+              />
+            ))
           )}
         </div>
       </div>
 
+      {/* ── Chat Panel ── */}
       <div className={cn('flex-1 flex flex-col', activeConvId ? 'flex' : 'hidden md:flex')}>
         {activeConv && user ? (
           <ChatThread
@@ -730,12 +735,12 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0A0E1A]">
-            <div className="w-20 h-20 rounded-full bg-[#1C2333] flex items-center justify-center mb-5">
-              <MessageSquare className="h-9 w-9 text-[#4B5563]" />
+            <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
+              <MessageSquare className="h-7 w-7 text-[#4B5563]" />
             </div>
-            <p className="font-black text-white text-lg">Your Messages</p>
-            <p className="text-sm text-[#4B5563] mt-2 max-w-xs">
-              Select a conversation from the left, or start a new one with the + button.
+            <p className="font-black text-white text-base">Select chat</p>
+            <p className="text-sm text-[#4B5563] mt-1 max-w-xs">
+              Choose a conversation on the left, or start a new one with +
             </p>
           </div>
         )}

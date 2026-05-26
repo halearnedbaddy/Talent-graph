@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  collection, query, where, doc, setDoc, addDoc, updateDoc, getDocs, getDoc, writeBatch,
+  collection, query, where, doc, setDoc, addDoc, updateDoc, getDoc,
 } from 'firebase/firestore';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -20,11 +20,6 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSent?: (convId: string) => void;
-}
-
-function getInitials(name: string) {
-  const p = (name || '').trim().split(' ');
-  return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : (name || '?').slice(0, 2).toUpperCase();
 }
 
 export function BroadcastDialog({ open, onClose, onSent }: Props) {
@@ -87,10 +82,10 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
       const convRef = doc(firestore, 'conversations', convId);
       const convSnap = await getDoc(convRef);
 
-      const batch = writeBatch(firestore);
-
+      // ── Step 1: Create or update the conversation FIRST ──
+      // (message write rules check the parent conv doc — it must exist before the message write)
       if (!convSnap.exists()) {
-        batch.set(convRef, {
+        await setDoc(convRef, {
           type: 'group',
           clubId,
           name: `${clubName} Squad`,
@@ -104,7 +99,7 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
           createdAt: now,
         });
       } else {
-        batch.update(convRef, {
+        await updateDoc(convRef, {
           participants: allMemberIds,
           participantInfo,
           lastMessage: text.trim(),
@@ -115,8 +110,8 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         });
       }
 
-      const msgRef = doc(collection(firestore, 'conversations', convId, 'messages'));
-      batch.set(msgRef, {
+      // ── Step 2: Write the message (conv doc now exists, rules will pass) ──
+      await addDoc(collection(firestore, 'conversations', convId, 'messages'), {
         senderId: user.uid,
         senderName,
         senderRole,
@@ -127,9 +122,8 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         type: 'announcement',
       });
 
-      await batch.commit();
-
-      await sendClubNotification({
+      // ── Step 3: Push notifications ──
+      sendClubNotification({
         firestore,
         clubId,
         title: `📢 ${clubName} — Announcement`,
@@ -139,8 +133,8 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         sentBy: user.uid,
       }).catch(() => {});
 
-      const notifSnap = squadMembers ?? [];
-      for (const member of notifSnap) {
+      // ── Step 4: In-app notifications ──
+      for (const member of squadMembers ?? []) {
         if (member.userId && member.userId !== user.uid) {
           addDoc(collection(firestore, 'notifications', member.userId, 'items'), {
             type: 'club_announcement',
@@ -155,11 +149,15 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         }
       }
 
-      toast({ title: '📢 Broadcast sent!', description: `Message delivered to ${memberCount} squad member${memberCount !== 1 ? 's' : ''}.` });
+      toast({
+        title: '📢 Broadcast sent!',
+        description: `Message delivered to ${memberCount} squad member${memberCount !== 1 ? 's' : ''}.`,
+      });
       setText('');
       onSent?.(convId);
       onClose();
     } catch (err: any) {
+      console.error('[BroadcastDialog]', err);
       toast({ variant: 'destructive', title: 'Failed to send', description: err?.message || 'Please try again.' });
     } finally {
       setSending(false);
@@ -210,23 +208,23 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
           </p>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-[#1E293B] text-[#94A3B8] hover:text-white font-black text-xs uppercase"
-          >
-            Cancel
-          </Button>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button
             onClick={handleSend}
             disabled={!text.trim() || sending || !clubId}
-            className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2"
+            className="w-full bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2 h-11"
           >
             {sending
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
               : <><Megaphone className="h-4 w-4" /> Send to All</>
             }
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="w-full border-[#1E293B] text-[#94A3B8] hover:text-white font-black text-xs uppercase h-11"
+          >
+            Cancel
           </Button>
         </DialogFooter>
       </DialogContent>
