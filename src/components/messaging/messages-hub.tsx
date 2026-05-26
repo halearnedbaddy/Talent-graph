@@ -181,6 +181,12 @@ function ConvItem({
   );
 }
 
+// Three-state delivery: 'sending' → 'sent' → (read via lastReadAt)
+interface OptimisticMsg extends Message {
+  _optimistic: true;
+  _sending: boolean;
+}
+
 function ChatThread({
   conv,
   userId,
@@ -198,6 +204,7 @@ function ChatThread({
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [optimisticMsgs, setOptimisticMsgs] = useState<OptimisticMsg[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -216,9 +223,32 @@ function ChatThread({
   ), [firestore, conv.id]);
   const { data: messages, isLoading } = useCollection<Message>(msgsQuery);
 
+  // Remove optimistic messages whose real counterpart has arrived from Firestore
+  useEffect(() => {
+    if (!messages || optimisticMsgs.length === 0) return;
+    setOptimisticMsgs(prev =>
+      prev.filter(opt =>
+        !messages.some(
+          m =>
+            m.senderId === userId &&
+            Math.abs(new Date(m.timestamp).getTime() - new Date(opt.timestamp).getTime()) < 3000
+        )
+      )
+    );
+  }, [messages, userId]);
+
+  // Merged display list: confirmed messages + any optimistic not yet echoed back
+  const displayMessages = (() => {
+    const realTs = new Set((messages ?? []).map(m => m.timestamp));
+    const pending = optimisticMsgs.filter(o => !realTs.has(o.timestamp));
+    return [...(messages ?? []), ...pending].sort((a, b) =>
+      a.timestamp.localeCompare(b.timestamp)
+    );
+  })();
+
   useEffect(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-  }, [messages?.length]);
+  }, [displayMessages.length]);
 
   useEffect(() => {
     if (!firestore || !userId || !conv.id) return;
@@ -230,10 +260,26 @@ function ChatThread({
   const handleSend = useCallback(async () => {
     if (!firestore || !input.trim() || sending) return;
     const content = input.trim();
+    const now = new Date().toISOString();
+    const tempId = `opt_${Date.now()}`;
+
+    // 1. Optimistic insert — shows instantly with single grey tick
+    const optimistic: OptimisticMsg = {
+      id: tempId,
+      senderId: userId,
+      senderName: userProfile.name,
+      senderRole: userProfile.role,
+      content,
+      timestamp: now,
+      isDeleted: false,
+      _optimistic: true,
+      _sending: true,
+    };
+    setOptimisticMsgs(prev => [...prev, optimistic]);
     setInput('');
     setSending(true);
+
     try {
-      const now = new Date().toISOString();
       const batch = writeBatch(firestore);
 
       const msgRef = doc(collection(firestore, 'conversations', conv.id, 'messages'));
@@ -256,6 +302,11 @@ function ChatThread({
       });
 
       await batch.commit();
+
+      // 2. Firestore confirmed — upgrade to grey ✓✓ (sent)
+      setOptimisticMsgs(prev =>
+        prev.map(m => m.id === tempId ? { ...m, _sending: false } : m)
+      );
 
       if (!isGroup && otherId) {
         addDoc(collection(firestore, 'notifications', otherId, 'items'), {
@@ -287,8 +338,10 @@ function ChatThread({
         }
       }
     } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
+      // Remove the optimistic message and restore input on failure
+      setOptimisticMsgs(prev => prev.filter(m => m.id !== tempId));
       setInput(content);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -311,7 +364,7 @@ function ChatThread({
     setEditingId(null);
   };
 
-  const groups = groupByDate(messages ?? []);
+  const groups = groupByDate(displayMessages);
 
   return (
     <div className="flex flex-col h-full bg-[#0A0E1A]">
@@ -345,7 +398,7 @@ function ChatThread({
           </div>
         )}
 
-        {!isLoading && groups.length === 0 && (
+        {!isLoading && displayMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full py-20 text-center">
             <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
               <MessageSquare className="h-7 w-7 text-[#94A3B8]" />
@@ -373,9 +426,11 @@ function ChatThread({
                 const prevMsg = group.messages[i - 1];
                 const showSenderInfo = !isOwn && (i === 0 || prevMsg?.senderId !== msg.senderId);
                 const roleColor = ROLE_COLORS[msg.senderRole || ''] || '#94A3B8';
-                // Read receipts — DMs only: green ✓✓ when other has read at/after this message
+                // Three-state delivery (DMs only)
+                const isOptimistic = !!(msg as any)._optimistic;
+                const isSendingNow = isOptimistic && (msg as any)._sending;
                 const otherLastRead = !isGroup && otherId ? conv.lastReadAt?.[otherId] : undefined;
-                const isReadByOther = !isGroup && !!otherLastRead && otherLastRead >= msg.timestamp;
+                const isReadByOther = !isGroup && !isOptimistic && !!otherLastRead && otherLastRead >= msg.timestamp;
 
                 if (msg.isDeleted) {
                   return (
@@ -460,12 +515,16 @@ function ChatThread({
                                   </span>
                                 )}
                                 {isOwn && !isGroup && (
-                                  <CheckCheck
-                                    className={cn(
-                                      'h-3.5 w-3.5 shrink-0',
-                                      isReadByOther ? 'text-[#006B2D]' : 'text-black/40'
-                                    )}
-                                  />
+                                  isSendingNow ? (
+                                    <Check className="h-3.5 w-3.5 shrink-0 text-black/30" />
+                                  ) : (
+                                    <CheckCheck
+                                      className={cn(
+                                        'h-3.5 w-3.5 shrink-0',
+                                        isReadByOther ? 'text-[#006B2D]' : 'text-black/40'
+                                      )}
+                                    />
+                                  )
                                 )}
                               </div>
                             </div>
