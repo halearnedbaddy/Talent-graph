@@ -1,5 +1,5 @@
 import {
-  doc, getDoc, setDoc, updateDoc, arrayUnion, Firestore,
+  doc, setDoc, updateDoc, arrayUnion, Firestore,
 } from 'firebase/firestore';
 
 export function clubGroupConvId(clubId: string) {
@@ -13,34 +13,39 @@ interface MemberInfo {
   photoUrl?: string;
 }
 
+/**
+ * Ensure the club group conversation document exists.
+ * Uses setDoc with merge:true so it is safe to call multiple times
+ * without overwriting participants or messages already stored.
+ * Does NOT call getDoc() — avoids the Firestore permission issue where
+ * resource == null on a non-existent doc causes rule evaluation to fail.
+ */
 export async function ensureClubGroupChat(
   firestore: Firestore,
   clubId: string,
   clubName: string,
-  clubLogoUrl?: string,
+  _clubLogoUrl?: string,
 ) {
   const convId = clubGroupConvId(clubId);
   const convRef = doc(firestore, 'conversations', convId);
-  const snap = await getDoc(convRef);
-  if (!snap.exists()) {
-    await setDoc(convRef, {
-      type: 'group',
-      name: `${clubName} — Team Chat`,
-      clubId,
-      participants: [],
-      participantInfo: {},
-      participantRoles: {},
-      lastMessage: null,
-      lastMessageAt: null,
-      lastSenderId: null,
-      lastReadAt: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-  }
+
+  // merge:true means we only write these fields; existing fields (participants,
+  // messages, lastMessage, etc.) are NOT overwritten.
+  await setDoc(convRef, {
+    type: 'group',
+    name: `${clubName} — Team Chat`,
+    clubId,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
   return convId;
 }
 
+/**
+ * Add a member to the club group conversation.
+ * Uses arrayUnion so it is idempotent (safe to call twice for the same user).
+ * Expects ensureClubGroupChat to have been called first so the document exists.
+ */
 export async function addMemberToClubGroupChat(
   firestore: Firestore,
   clubId: string,
@@ -48,10 +53,10 @@ export async function addMemberToClubGroupChat(
 ) {
   const convId = clubGroupConvId(clubId);
   const convRef = doc(firestore, 'conversations', convId);
-  const snap = await getDoc(convRef);
-  if (!snap.exists()) return;
 
-  const updates: Record<string, any> = {
+  // arrayUnion is safe on a non-existent field — it creates the array.
+  // No getDoc() needed here.
+  await updateDoc(convRef, {
     participants: arrayUnion(member.userId),
     [`participantInfo.${member.userId}`]: {
       name: member.displayName || 'Member',
@@ -60,7 +65,5 @@ export async function addMemberToClubGroupChat(
     },
     [`participantRoles.${member.userId}`]: member.role || 'member',
     updatedAt: new Date().toISOString(),
-  };
-
-  await updateDoc(convRef, updates);
+  });
 }
