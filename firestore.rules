@@ -150,18 +150,21 @@ service cloud.firestore {
           (resource.data.status == 'pending' || resource.data.status == 'club_invited'));
     }
 
-    // Matches: athletes own their match entries; club admins own club fixtures
+    // Matches: athletes own their match entries; club admins and coaches own club fixtures
     match /matches/{matchId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (
         request.resource.data.athleteId == request.auth.uid ||
-        (isClubAdmin() && request.resource.data.clubId == 'club_' + request.auth.uid) ||
-        isActiveMemberOfClub(request.resource.data.clubId)
+        isClubOwner(request.resource.data.clubId) ||
+        isActiveMemberOfClub(request.resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
       );
       allow update, delete: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
         isClubOwnerOfMatch() ||
         isActiveMemberOfClub(resource.data.clubId) ||
+        isStaffRole() ||
         isAdmin()
       );
 
@@ -222,6 +225,54 @@ service cloud.firestore {
       allow delete: if isClubAdmin() || isAdmin();
     }
 
+    // Squad Invites — sent by coaches/club admins to athletes
+    match /squad_invites/{inviteId} {
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        isClubOwner(resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        isActiveMemberOfClub(request.resource.data.clubId) ||
+        isClubOwner(request.resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        isClubOwner(resource.data.clubId) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || isClubOwner(resource.data.clubId);
+    }
+
+    // Match Confirmations — created by coaches/staff, confirmed by athletes
+    match /match_confirmations/{confirmId} {
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        isClubOwner(resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        isActiveMemberOfClub(request.resource.data.clubId) ||
+        isClubOwner(request.resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
     match /scout_connections/{connectionId} {
       allow read: if isSignedIn(); 
       allow create: if isSignedIn() && request.resource.data.scoutId == request.auth.uid;
@@ -270,9 +321,12 @@ service cloud.firestore {
         request.resource.data.type == 'group'
       );
 
-      // Update: participant can update DMs; any club member or club owner can update group chats
+      // Update: participant can update DMs; any club member or club owner can update group chats.
+      // Also allow update when the sender is in request.resource.data.participants — this covers
+      // setDoc merge calls that self-heal older conversations missing participants.
       allow update: if isSignedIn() && (
         request.auth.uid in resource.data.participants ||
+        request.auth.uid in request.resource.data.participants ||
         (resource.data.type == 'group' && resource.data.clubId != null &&
           (isActiveMemberOfClub(resource.data.clubId) || isClubOwner(resource.data.clubId)))
       );

@@ -230,14 +230,18 @@ function ChatThread({
         isDeleted: false,
       });
 
-      batch.update(doc(firestore, 'conversations', conv.id), {
+      // Use setDoc merge so participants field is always in sync even for older
+      // conversations that were created before the participants array was enforced.
+      batch.set(doc(firestore, 'conversations', conv.id), {
         lastMessage: content,
         lastMessageAt: now,
         lastSenderId: userId,
         lastSenderName: userProfile.name,
         updatedAt: now,
         [`lastReadAt.${userId}`]: now,
-      });
+        // Ensure the sender is always in the participants array
+        ...(conv.participants?.includes(userId) ? {} : { participants: [...(conv.participants ?? []), userId] }),
+      }, { merge: true });
 
       await batch.commit();
 
