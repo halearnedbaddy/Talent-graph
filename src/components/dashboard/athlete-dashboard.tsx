@@ -59,6 +59,7 @@ import { VideoEngagement } from './video-engagement';
 import { ReapplyClubDialog } from './reapply-club-dialog';
 import { SquadChatWidget } from '@/components/squad-chat/squad-chat-widget';
 import { AthleteClubInvitations } from '@/components/club/athlete-club-invitations';
+import { SquadInviteCard } from '@/components/club/squad-invite-card';
 import { DmSheet } from '@/components/messaging/dm-sheet';
 import { Progress } from '@/components/ui/progress';
 import { MarketplaceSettings } from './marketplace-settings';
@@ -139,8 +140,18 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
   ), [firestore, athleteProfile?.uid]);
   const { data: pendingConfirmations } = useCollection<{ id: string }>(pendingConfirmQuery);
 
-  // Total badge = unread notifications + pending match confirmations awaiting athlete sign-off
-  const unreadCount = (unreadNotifs?.length ?? 0) + (pendingConfirmations?.length ?? 0);
+  // Pending squad invites from coaches
+  const pendingSquadInvitesQuery = useMemoFirebase(() => (
+    firestore && athleteProfile ? query(
+      collection(firestore, 'squad_invites'),
+      where('athleteId', '==', athleteProfile.uid),
+      where('status', '==', 'pending')
+    ) : null
+  ), [firestore, athleteProfile?.uid]);
+  const { data: pendingSquadInvites } = useCollection<{ id: string }>(pendingSquadInvitesQuery);
+
+  // Total badge = unread notifications + pending match confirmations + pending squad invites
+  const unreadCount = (unreadNotifs?.length ?? 0) + (pendingConfirmations?.length ?? 0) + (pendingSquadInvites?.length ?? 0);
 
   const handleMarkAllRead = async () => {
     if (!firestore || !athleteProfile || !unreadNotifs?.length) return;
@@ -634,6 +645,12 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
 
         {/* ── Club Invitations (club-initiated invites awaiting athlete response) ── */}
         <AthleteClubInvitations
+          athleteUid={athleteProfile.uid}
+          athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
+        />
+
+        {/* ── Squad Invites (coach-initiated invites via squad management) ── */}
+        <SquadInviteCard
           athleteUid={athleteProfile.uid}
           athleteName={`${athleteProfile.firstName} ${athleteProfile.lastName}`}
         />
