@@ -205,8 +205,7 @@ export default function CoachSquadPage() {
         status: 'pending',
         createdAt: new Date().toISOString(),
       });
-      await addDoc(collection(firestore, 'notifications'), {
-        userId: athlete.uid,
+      await addDoc(collection(firestore, 'notifications', athlete.uid, 'items'), {
         type: 'squad_invite',
         title: 'Squad Invite',
         message: `Coach ${user.displayName || 'at'} ${clubName} has invited you to join their squad on Talent Graph.`,

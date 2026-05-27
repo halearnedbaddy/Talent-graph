@@ -50,6 +50,14 @@ interface Message {
   editedAt?: string;
 }
 
+interface ConnectionEntry {
+  uid: string;
+  name: string;
+  role: string;
+  photoUrl?: string;
+  convId: string; // deterministic: [myUid, uid].sort().join('_dm_')
+}
+
 const ROLE_COLORS: Record<string, string> = {
   club:            '#00C853',
   club_admin:      '#00C853',
@@ -210,7 +218,7 @@ function ConvItem({
   return (
     <div
       className={cn(
-        'w-full flex items-center gap-3 px-4 py-3 border-b border-[#1E293B] transition-colors',
+        'group w-full flex items-center gap-3 px-4 py-3 border-b border-[#1E293B] transition-colors',
         isActive ? 'bg-[#1C2333]' : 'hover:bg-[#111827]'
       )}
     >
@@ -226,17 +234,27 @@ function ConvItem({
           </Avatar>
         </div>
         <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-1">
+            <p className={cn(
+              'text-sm truncate',
+              unreadCount > 0 ? 'font-black text-white' : 'font-semibold text-[#CBD5E1]'
+            )}>
+              {displayName}
+            </p>
+            {conv.lastMessageAt && (
+              <span className="text-[10px] text-[#4B5563] shrink-0">{formatConvTime(conv.lastMessageAt)}</span>
+            )}
+          </div>
           <p className={cn(
-            'text-sm truncate',
-            unreadCount > 0 ? 'font-black text-white' : 'font-semibold text-[#CBD5E1]'
+            'text-xs truncate mt-0.5',
+            unreadCount > 0 ? 'text-[#94A3B8]' : 'text-[#4B5563]'
           )}>
-            {displayName}
+            {conv.lastMessage || (conv.lastMessageAt ? '' : 'Start conversation')}
           </p>
-          <p className="text-xs text-[#4B5563]">Chat</p>
         </div>
       </button>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         {unreadCount > 0 && (
           <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5">
             {unreadCount}
@@ -244,10 +262,10 @@ function ConvItem({
         )}
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="text-[#4B5563] hover:text-red-400 transition-colors p-1"
-          title="Delete conversation"
+          className="text-[#4B5563] hover:text-red-400 transition-colors p-1 opacity-0 group-hover:opacity-100"
+          title="Remove"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -739,6 +757,9 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
   const [showNewDM, setShowNewDM] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
+  const [clubId, setClubId] = useState<string | null>(null);
+  const [connections, setConnections] = useState<ConnectionEntry[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
 
   // Demo mode: in-memory conversation list (deletable)
   const [demoConvs, setDemoConvs] = useState<Conversation[]>(DEMO_CONVERSATIONS);
@@ -784,6 +805,109 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
     })();
   }, [demo, firestore, user]);
 
+  // Load real connections based on user role — skipped in demo mode
+  useEffect(() => {
+    if (demo || !firestore || !user?.uid || !userProfile.role) return;
+    setConnectionsLoading(true);
+    const role = userProfile.role;
+    (async () => {
+      try {
+        const entries: ConnectionEntry[] = [];
+        let foundClubId: string | null = null;
+
+        if (role === 'club') {
+          foundClubId = `club_${user.uid}`;
+          const snap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('clubId', '==', foundClubId),
+            where('status', '==', 'active'),
+          ));
+          for (const d of snap.docs) {
+            const data = d.data() as any;
+            if (data.userId === user.uid) continue;
+            entries.push({
+              uid: data.userId,
+              name: data.displayName || 'Member',
+              role: data.role || 'athlete',
+              photoUrl: data.photoUrl || data.avatarUrl,
+              convId: [user.uid, data.userId].sort().join('_dm_'),
+            });
+          }
+        } else if (['coach', 'assistant_coach', 'analyst', 'gk_coach'].includes(role)) {
+          const mySnap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active'),
+          ));
+          if (!mySnap.empty) {
+            foundClubId = mySnap.docs[0].data().clubId as string;
+            const clubSnap = await getDocs(query(
+              collection(firestore, 'club_members'),
+              where('clubId', '==', foundClubId),
+              where('status', '==', 'active'),
+            ));
+            for (const d of clubSnap.docs) {
+              const data = d.data() as any;
+              if (data.userId === user.uid) continue;
+              entries.push({
+                uid: data.userId,
+                name: data.displayName || 'Member',
+                role: data.role || 'athlete',
+                photoUrl: data.photoUrl || data.avatarUrl,
+                convId: [user.uid, data.userId].sort().join('_dm_'),
+              });
+            }
+          }
+        } else if (role === 'scout') {
+          const snap = await getDocs(query(
+            collection(firestore, 'scout_connections'),
+            where('scoutId', '==', user.uid),
+            where('status', '==', 'accepted'),
+          ));
+          for (const d of snap.docs) {
+            const data = d.data() as any;
+            entries.push({
+              uid: data.athleteId,
+              name: data.athleteName || 'Athlete',
+              role: 'athlete',
+              convId: [user.uid, data.athleteId].sort().join('_dm_'),
+            });
+          }
+        } else if (role === 'athlete') {
+          const scoutSnap = await getDocs(query(
+            collection(firestore, 'scout_connections'),
+            where('athleteId', '==', user.uid),
+            where('status', '==', 'accepted'),
+          ));
+          for (const d of scoutSnap.docs) {
+            const data = d.data() as any;
+            entries.push({
+              uid: data.scoutId,
+              name: data.scoutName || 'Scout',
+              role: 'scout',
+              convId: [user.uid, data.scoutId].sort().join('_dm_'),
+            });
+          }
+          const memberSnap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active'),
+          ));
+          if (!memberSnap.empty) {
+            foundClubId = memberSnap.docs[0].data().clubId as string;
+          }
+        }
+
+        setConnections(entries);
+        if (foundClubId) setClubId(foundClubId);
+      } catch {
+        // silently fail — connections are best-effort
+      } finally {
+        setConnectionsLoading(false);
+      }
+    })();
+  }, [demo, firestore, user?.uid, userProfile.role]);
+
   // Live Firestore query — skipped in demo mode
   const convQuery = useMemoFirebase(() => (
     !demo && firestore && user?.uid
@@ -796,15 +920,60 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
   ), [demo, firestore, user?.uid]);
   const { data: liveConversations, isLoading } = useCollection<Conversation>(convQuery);
 
-  // Use demo conversations or live Firestore conversations
-  const conversations: Conversation[] = demo ? demoConvs : (liveConversations ?? []);
   const effectiveUserId = demo ? DEMO_UID : (user?.uid || '');
   const effectiveProfile = demo
     ? { name: 'You', role: 'athlete', photoUrl: undefined }
     : userProfile;
 
+  // Merged display list: Squad Chat pinned first, then connections (stub or live), then any other live convs
+  const displayList: Conversation[] = (() => {
+    if (demo) return demoConvs;
+    const live = liveConversations ?? [];
+    const liveMap = new Map(live.map(c => [c.id, c]));
+    const result: Conversation[] = [];
+    const addedIds = new Set<string>();
+
+    // 1. Squad/group chat at top (only if user is already a participant)
+    if (clubId) {
+      const squadConv = liveMap.get(clubId);
+      if (squadConv) {
+        result.push(squadConv);
+        addedIds.add(clubId);
+      }
+    }
+
+    // 2. Known connections — show with history if conv exists, stub if not
+    for (const conn of connections) {
+      if (addedIds.has(conn.convId)) continue;
+      if (liveMap.has(conn.convId)) {
+        result.push(liveMap.get(conn.convId)!);
+      } else {
+        result.push({
+          id: conn.convId,
+          type: 'direct',
+          participants: [effectiveUserId, conn.uid],
+          participantInfo: {
+            [effectiveUserId]: { name: effectiveProfile.name, role: effectiveProfile.role },
+            [conn.uid]: { name: conn.name, role: conn.role, photoUrl: conn.photoUrl },
+          },
+        });
+      }
+      addedIds.add(conn.convId);
+    }
+
+    // 3. Any remaining live convs not yet listed (e.g. from "New DM" search)
+    for (const c of live) {
+      if (!addedIds.has(c.id)) {
+        result.push(c);
+        addedIds.add(c.id);
+      }
+    }
+
+    return result;
+  })();
+
   // Search: filter by name OR last message content
-  const filtered = conversations.filter(c => {
+  const filtered = displayList.filter(c => {
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     if (c.type === 'group') {
@@ -817,8 +986,36 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
            (c.lastMessage || '').toLowerCase().includes(q);
   });
 
-  const activeConv = conversations.find(c => c.id === activeConvId);
-  const totalUnread = conversations.reduce((sum, c) => sum + getUnreadCount(c, effectiveUserId), 0);
+  const activeConv = displayList.find(c => c.id === activeConvId);
+  const totalUnread = displayList.reduce((sum, c) => sum + getUnreadCount(c, effectiveUserId), 0);
+
+  // Open a conversation — if it's a stub (not yet in Firestore), create the doc first
+  const handleOpenConv = async (convId: string) => {
+    const alreadyLive = liveConversations?.some(c => c.id === convId);
+    if (alreadyLive || demo) {
+      setActiveConvId(convId);
+      return;
+    }
+    if (!firestore || !user?.uid) return;
+    const stub = displayList.find(c => c.id === convId);
+    if (!stub) { setActiveConvId(convId); return; }
+    try {
+      const now = new Date().toISOString();
+      await setDoc(doc(firestore, 'conversations', convId), {
+        type: stub.type || 'direct',
+        participants: stub.participants,
+        participantInfo: stub.participantInfo || {},
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: '',
+        lastMessageAt: '',
+        lastReadAt: {},
+      });
+      setActiveConvId(convId);
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not open conversation' });
+    }
+  };
 
   // Delete conversation
   const handleDeleteConv = useCallback(async (convId: string) => {
@@ -828,9 +1025,12 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
       return;
     }
     if (!firestore || !user?.uid) return;
+    // If it's a stub, just deselect
+    const isLive = liveConversations?.some(c => c.id === convId);
+    if (!isLive) { if (activeConvId === convId) setActiveConvId(null); return; }
     try {
       await updateDoc(doc(firestore, 'conversations', convId), {
-        participants: conversations
+        participants: (liveConversations ?? [])
           .find(c => c.id === convId)
           ?.participants.filter(p => p !== user.uid) ?? [],
       });
@@ -839,7 +1039,7 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
     } catch {
       toast({ variant: 'destructive', title: 'Could not remove conversation' });
     }
-  }, [demo, firestore, user, conversations, activeConvId, toast]);
+  }, [demo, firestore, user, liveConversations, activeConvId, toast]);
 
   if (!demo && isUserLoading) {
     return (
@@ -892,7 +1092,7 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {!demo && isLoading ? (
+          {!demo && (isLoading || connectionsLoading) ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-[#00C853]" />
             </div>
@@ -902,10 +1102,10 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
                 <MessageSquare className="h-6 w-6 text-[#4B5563]" />
               </div>
               <p className="font-black text-white text-sm">
-                {searchTerm ? 'No conversations match' : 'No messages yet'}
+                {searchTerm ? 'No conversations match' : 'No connections yet'}
               </p>
               <p className="text-xs text-[#4B5563] mt-1">
-                {searchTerm ? 'Try a different name or message' : 'Tap + to start a conversation'}
+                {searchTerm ? 'Try a different name or message' : 'Tap + to find someone to message'}
               </p>
             </div>
           ) : (
@@ -915,7 +1115,7 @@ export function MessagesHub({ defaultConversationId, demo = false }: MessagesHub
                 conv={c}
                 userId={effectiveUserId}
                 isActive={activeConvId === c.id}
-                onClick={() => setActiveConvId(c.id)}
+                onClick={() => handleOpenConv(c.id)}
                 onDelete={() => handleDeleteConv(c.id)}
               />
             ))
