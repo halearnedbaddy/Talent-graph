@@ -8,13 +8,13 @@ import {
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
   Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck, MessageSquare,
-  Trophy, Settings2, Shield, Activity,
+  Trophy, Settings2, Shield, Activity, UserPlus,
   type LucideIcon
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { signOut } from 'firebase/auth';
 import { useAuth, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, updateDoc, arrayRemove, collection, query, orderBy, limit, where, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, arrayRemove, collection, query, orderBy, limit, where, writeBatch, onSnapshot } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import {
   AlertDialog,
@@ -43,7 +43,7 @@ import { TierProgressionCard } from './tier-progression-card';
 import { EngagementLoop } from './engagement-loop';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -161,6 +161,46 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
     });
     await batch.commit();
   };
+
+  // Real-time squad invite watcher — toasts whenever a NEW pending invite arrives
+  const seenInviteIds = useRef<Set<string>>(new Set());
+  const inviteWatcherReady = useRef(false);
+  useEffect(() => {
+    if (!firestore || !athleteProfile?.uid) return;
+    const q = query(
+      collection(firestore, 'squad_invites'),
+      where('athleteId', '==', athleteProfile.uid),
+      where('status', '==', 'pending'),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      if (!inviteWatcherReady.current) {
+        // First snapshot — seed existing IDs so we don't toast on mount
+        snap.docs.forEach(d => seenInviteIds.current.add(d.id));
+        inviteWatcherReady.current = true;
+        return;
+      }
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added' && !seenInviteIds.current.has(change.doc.id)) {
+          seenInviteIds.current.add(change.doc.id);
+          const data = change.doc.data();
+          toast({
+            title: 'New Squad Invite!',
+            description: `${data.coachName || 'A coach'} at ${data.clubName || 'a club'} has invited you to join their squad.`,
+            action: (
+              <Button
+                size="sm"
+                className="h-7 bg-green-600 hover:bg-green-700 text-white font-black text-[10px] uppercase"
+                onClick={() => setActiveTab('home')}
+              >
+                View
+              </Button>
+            ) as any,
+          });
+        }
+      });
+    });
+    return () => unsub();
+  }, [firestore, athleteProfile?.uid]);
 
   const handleDeleteMatch = async () => {
     if (!confirmDeleteMatch || !athleteProfile || !firestore) return;
@@ -1062,6 +1102,38 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               (unreadNotifs as any[]).map((n: any) => {
                 const isMsg = n.type === 'new_message';
                 const isClubInvite = n.type === 'club_invite';
+                const isSquadInvite = n.type === 'squad_invite';
+
+                if (isSquadInvite) {
+                  return (
+                    <div key={n.id} className="flex items-start gap-3 p-4 bg-green-500/5 border-l-2 border-green-500/40 hover:bg-green-500/8 transition-colors">
+                      <div className="h-9 w-9 rounded-full bg-green-500/15 flex items-center justify-center shrink-0">
+                        <UserPlus className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black uppercase tracking-wide text-green-700 dark:text-green-400">
+                          Squad Invite
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">
+                          {n.message}
+                        </p>
+                        {n.createdAt && (
+                          <p className="text-[10px] text-muted-foreground mt-1 font-bold">
+                            {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
+                          </p>
+                        )}
+                        <button
+                          onClick={() => setActiveTab('home')}
+                          className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-green-600 uppercase tracking-widest hover:underline"
+                        >
+                          <UserPlus className="h-3 w-3" />
+                          Accept or Decline →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={n.id} className={`flex items-start gap-3 p-4 transition-colors ${isClubInvite ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-muted/30'}`}>
                     <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : isClubInvite ? 'bg-primary/15' : 'bg-muted'}`}>
