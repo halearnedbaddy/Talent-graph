@@ -882,14 +882,14 @@ export default function LiveMatchPage() {
 
       {/* Stats Snapshot Dialog */}
       <Dialog open={eventDialog === 'stats'} onOpenChange={open => !open && setEventDialog(null)}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-xl flex flex-col" style={{ maxHeight: '90dvh' }}>
           <DialogHeader>
             <DialogTitle className="font-black uppercase tracking-widest flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" /> Stats Snapshot
             </DialogTitle>
             <p className="text-[10px] text-muted-foreground">Record team totals for halftime or full time.</p>
           </DialogHeader>
-          <ScrollArea className="flex-1 pr-4">
+          <div className="overflow-y-auto flex-1 pr-2 -mr-2" style={{ overflowY: 'auto' }}>
             <div className="space-y-5 py-2">
               {/* Header row */}
               <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center pb-1 border-b">
@@ -940,8 +940,8 @@ export default function LiveMatchPage() {
                 </div>
               </div>
             </div>
-          </ScrollArea>
-          <DialogFooter className="pt-4 border-t mt-2 flex-wrap gap-2">
+          </div>
+          <DialogFooter className="pt-4 border-t mt-2 flex-wrap gap-2 shrink-0">
             <Button variant="outline" onClick={() => setEventDialog(null)}>Cancel</Button>
             <Button onClick={() => logStats('halftime')} disabled={isSaving} variant="outline" className="font-black uppercase text-[10px] gap-1">
               <Pause className="w-3 h-3" /> Save as Halftime

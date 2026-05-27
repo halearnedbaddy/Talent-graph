@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TalentGraph Chat Pro</title>
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+:root{
+  --bg:#0b0c10;
+  --panel:#111;
+  --border:#1f1f1f;
+  --text:#eaeaea;
+  --muted:#777;
+  --green:#4be8a0;
+  --red:#ff4d4d;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body{
+  font-family:'DM Sans',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  height:100vh;
+  overflow:hidden;
+}
+
+/* LAYOUT */
+.app{display:flex;height:100vh;}
+
+/* SIDEBAR */
+.sidebar{
+  width:320px;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+}
+
+/* NOTIFICATION BAR */
+.notifbar{
+  padding:10px;
+  font-size:12px;
+  color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+
+/* SEARCH */
+.search{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+}
+
+.search input{
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#0e0e0e;
+  color:#fff;
+  outline:none;
+}
+
+/* CHAT LIST */
+.list{
+  flex:1;
+  overflow-y:auto;
+}
+
+.item{
+  padding:12px;
+  border-bottom:1px solid #1a1a1a;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.item:hover{
+  background:#151515;
+}
+
+.item.active{
+  background:rgba(75,232,160,0.08);
+  border-left:3px solid var(--green);
+}
+
+/* BADGE */
+.badge{
+  background:var(--green);
+  color:#000;
+  font-size:11px;
+  padding:2px 6px;
+  border-radius:8px;
+}
+
+/* DELETE */
+.del{
+  background:transparent;
+  border:none;
+  color:var(--red);
+  cursor:pointer;
+  font-size:12px;
+}
+
+/* CHAT */
+.chat{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+.header{
+  padding:14px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel);
+  font-weight:600;
+}
+
+.messages{
+  flex:1;
+  padding:20px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.msg{
+  max-width:70%;
+  padding:10px 14px;
+  border-radius:14px;
+  background:#1c1c1c;
+  border:1px solid #262626;
+}
+
+.me{
+  align-self:flex-end;
+  background:var(--green);
+  color:#000;
+}
+
+/* INPUT */
+.inputbar{
+  display:flex;
+  gap:10px;
+  padding:12px;
+  border-top:1px solid var(--border);
+  background:var(--panel);
+}
+
+input.msginput{
+  flex:1;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#0e0e0e;
+  color:#fff;
+}
+
+button.send{
+  padding:10px 14px;
+  border:none;
+  border-radius:10px;
+  background:var(--green);
+  font-weight:700;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+
+  <!-- NOTIFICATION BAR -->
+  <div class="notifbar" id="notifbar">
+    🔔 0 unread messages
+  </div>
+
+  <!-- SEARCH -->
+  <div class="search">
+    <input id="search" placeholder="Search chats..." oninput="renderList()"/>
+  </div>
+
+  <!-- LIST -->
+  <div class="list" id="list"></div>
+
+</div>
+
+<!-- CHAT -->
+<div class="chat">
+
+  <div class="header" id="header">Select chat</div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="inputbar">
+    <input class="msginput" id="input" placeholder="Type message..." />
+    <button class="send" onclick="send()">Send</button>
+  </div>
+
+</div>
+
+</div>
+
+<script>
+
+/* CHATS */
+let chats = [
+  {id:"coach", name:"Coach Muhavi", unread:2},
+  {id:"james", name:"James Otieno", unread:1},
+  {id:"scout", name:"Scout Office", unread:0}
+];
+
+/* MESSAGES */
+let messages = {
+  coach:[{text:"Training at 6AM", me:false}],
+  james:[{text:"Welcome player", me:false}],
+  scout:[{text:"Scout report ready", me:false}]
+};
+
+let active = null;
+
+/* NOTIFICATION */
+function updateNotif(){
+  let total = chats.reduce((sum,c)=>sum + c.unread,0);
+  document.getElementById("notifbar").innerText =
+    `🔔 ${total} unread messages`;
+}
+
+/* RENDER LIST */
+function renderList(){
+
+  const box = document.getElementById("list");
+  const search = document.getElementById("search").value.toLowerCase();
+
+  box.innerHTML = "";
+
+  chats
+  .filter(c=>c.name.toLowerCase().includes(search))
+  .forEach(c=>{
+
+    const div = document.createElement("div");
+    div.className = "item" + (active===c.id ? " active":"");
+
+    div.innerHTML = `
+      <div>
+        <div>${c.name}</div>
+        <div style="font-size:11px;color:#777">
+          Chat
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;align-items:center;">
+        ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ""}
+        <button class="del" onclick="deleteChat('${c.id}')">🗑</button>
+      </div>
+    `;
+
+    div.onclick = ()=>openChat(c.id);
+
+    box.appendChild(div);
+  });
+
+  updateNotif();
+}
+
+/* OPEN CHAT */
+function openChat(id){
+  active = id;
+
+  // mark read
+  let chat = chats.find(c=>c.id===id);
+  if(chat){
+    chat.unread = 0;
+  }
+
+  document.getElementById("header").innerText = id.toUpperCase();
+
+  renderMessages();
+  renderList();
+}
+
+/* DELETE CHAT */
+function deleteChat(id){
+  chats = chats.filter(c=>c.id!==id);
+  delete messages[id];
+
+  if(active===id){
+    active = null;
+    document.getElementById("messages").innerHTML = "";
+    document.getElementById("header").innerText = "Select chat";
+  }
+
+  renderList();
+}
+
+/* MESSAGES */
+function renderMessages(){
+
+  const box = document.getElementById("messages");
+  box.innerHTML = "";
+
+  if(!active) return;
+
+  (messages[active]||[]).forEach(m=>{
+    const div = document.createElement("div");
+    div.className = "msg " + (m.me ? "me":"");
+    div.textContent = m.text;
+    box.appendChild(div);
+  });
+
+  box.scrollTop = box.scrollHeight;
+}
+
+/* SEND */
+function send(){
+
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+
+  if(!text || !active) return;
+
+  messages[active].push({text,me:true});
+
+  input.value = "";
+
+  renderMessages();
+}
+
+/* INIT */
+renderList();
+updateNotif();
+
+</script>
+
+</body>
+</html>

@@ -12,8 +12,9 @@ import {
   Loader2, Building2, Dumbbell, Clock, MessageSquare, Settings
 } from 'lucide-react';
 import Link from 'next/link';
-import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile } from '@/lib/types';
+import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile, UserAccount } from '@/lib/types';
 import { ClubInvitationsCard } from '@/components/scout/club-invitations-card';
+import { CoachClubInvitations } from '@/components/coach/club-invitations';
 import { useMemo } from 'react';
 import { format, parseISO, formatDistanceToNow, isAfter } from 'date-fns';
 
@@ -56,6 +57,9 @@ export default function CoachOverviewPage() {
 
   const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
   const { data: clubProfile } = useDoc<ClubProfile>(clubRef);
+
+  const userDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null), [firestore, user?.uid]);
+  const { data: userAccount } = useDoc<UserAccount>(userDocRef);
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
@@ -123,6 +127,13 @@ export default function CoachOverviewPage() {
       .sort((a, b) => (b.compositeScoutingIndex ?? 0) - (a.compositeScoutingIndex ?? 0))
       .slice(0, 3);
   }, [athletes]);
+
+  const lastMOTMMatch = useMemo(() => {
+    if (!matches) return null;
+    return [...matches]
+      .filter(m => m.result && (m as any).motmPlayerName)
+      .sort((a, b) => (b.createdAt ?? b.date).localeCompare(a.createdAt ?? a.date))[0] ?? null;
+  }, [matches]);
 
   const flaggedAthletes = useMemo(() => {
     if (!athletes) return [];
@@ -198,6 +209,7 @@ export default function CoachOverviewPage() {
           <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">Command Centre</p>
         </div>
         <ClubInvitationsCard />
+        <CoachClubInvitations coachUid={user?.uid ?? ''} coachName={userAccount ? `${(userAccount as any).firstName || ''} ${(userAccount as any).lastName || ''}`.trim() : 'Coach'} />
         <div className="rounded-2xl border border-[#00C853]/30 bg-[#00C853]/5 p-8 flex flex-col items-center gap-4 text-center">
           <div className="h-16 w-16 rounded-2xl bg-[#00C853]/15 flex items-center justify-center">
             <Building2 className="h-8 w-8 text-[#00C853]" />
@@ -341,6 +353,37 @@ export default function CoachOverviewPage() {
           <CheckCircle2 className="h-4 w-4 text-[#00C853] shrink-0" />
           <p className="text-[11px] font-black text-[#00C853] uppercase tracking-wide">All athletes verified ✓</p>
         </div>
+      )}
+
+      {/* Last Match Best Player */}
+      {lastMOTMMatch && (
+        <Card className="border border-[#FF6D00]/30 bg-gradient-to-r from-[#FF6D00]/10 to-[#FF6D00]/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-[#FF6D00]/20 flex items-center justify-center shrink-0">
+                <Star className="h-6 w-6 text-[#FF6D00]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-black text-[#FF6D00] uppercase tracking-widest">Man of the Match</p>
+                <p className="text-xl font-black text-white truncate">{(lastMOTMMatch as any).motmPlayerName}</p>
+                <p className="text-[10px] font-bold text-[#94A3B8] mt-0.5">
+                  vs {lastMOTMMatch.opponent} · {lastMOTMMatch.score ?? lastMOTMMatch.result} ·{' '}
+                  {(() => { try { return format(parseISO(lastMOTMMatch.date), 'dd MMM yyyy'); } catch { return lastMOTMMatch.date; } })()}
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Badge className={cn(
+                  'font-black border text-sm px-3 py-1',
+                  lastMOTMMatch.result === 'W' ? 'bg-[#00C853]/20 text-[#00C853] border-[#00C853]/30' :
+                    lastMOTMMatch.result === 'L' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                      'bg-[#94A3B8]/20 text-[#94A3B8] border-[#94A3B8]/30'
+                )}>
+                  {lastMOTMMatch.result}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

@@ -48,7 +48,7 @@ export function InviteStaffDialog({
   const [hasSearched, setHasSearched] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
-  const [role, setRole] = useState<'scout' | 'coach'>('scout');
+  const [role, setRole] = useState<'scout' | 'coach' | 'analyst'>('scout');
 
   const handleSearch = useCallback(async () => {
     if (!firestore || !searchTerm.trim()) return;
@@ -116,7 +116,9 @@ export function InviteStaffDialog({
         type: 'club_invitation',
         actorName: clubName,
         actorRole: 'club',
-        message: `${clubName} has invited you to join as a ${role}. Go to your profile to accept or decline.`,
+        message: `${clubName} has invited you to join as a ${role}. Check your dashboard to accept or decline.`,
+        url: role === 'coach' ? '/coach-dashboard' : '/scout-dashboard',
+        actionRequired: true,
         isRead: false,
         createdAt: now,
       });
@@ -182,13 +184,14 @@ export function InviteStaffDialog({
 
         <div className="space-y-4">
           <div className="flex gap-2">
-            <Select value={role} onValueChange={v => setRole(v as 'scout' | 'coach')}>
-              <SelectTrigger className="w-[110px] shrink-0">
+            <Select value={role} onValueChange={v => setRole(v as 'scout' | 'coach' | 'analyst')}>
+              <SelectTrigger className="w-[120px] shrink-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="scout">Scout</SelectItem>
                 <SelectItem value="coach">Coach</SelectItem>
+                <SelectItem value="analyst">Analyst</SelectItem>
               </SelectContent>
             </Select>
 

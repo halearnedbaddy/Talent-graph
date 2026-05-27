@@ -3,19 +3,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  collection, query, where, orderBy, addDoc, updateDoc, doc,
+  collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc,
   getDoc, setDoc, writeBatch, getDocs, serverTimestamp,
 } from 'firebase/firestore';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { UserSearchDialog } from '@/components/messaging/user-search-dialog';
 import {
   ArrowLeft, Search, Send, Plus, Users, Loader2,
-  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, X,
+  MessageSquare, Hash, Pencil, Trash2, MoreHorizontal, Copy, Check, CheckCheck, X, Bell,
 } from 'lucide-react';
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -37,6 +36,7 @@ interface Conversation {
   lastSenderName?: string;
   lastReadAt?: Record<string, string>;
   updatedAt?: string;
+  unreadCount?: number; // explicit count used by demo/mock data
 }
 
 interface Message {
@@ -48,6 +48,14 @@ interface Message {
   timestamp: string;
   isDeleted?: boolean;
   editedAt?: string;
+}
+
+interface ConnectionEntry {
+  uid: string;
+  name: string;
+  role: string;
+  photoUrl?: string;
+  convId: string; // deterministic: [myUid, uid].sort().join('_dm_')
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -65,6 +73,20 @@ function getInitials(name: string) {
   return parts.length > 1
     ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
     : (name || '?').substring(0, 2).toUpperCase();
+}
+
+function getRolePrefixedName(name: string, role?: string): string {
+  if (!name || name === 'Unknown') return name || 'Unknown';
+  switch (role) {
+    case 'coach': return `Coach ${name}`;
+    case 'assistant_coach': return `Asst. Coach ${name}`;
+    case 'gk_coach': return `GK Coach ${name}`;
+    case 'scout': return `Scout ${name}`;
+    case 'analyst': return `Analyst ${name}`;
+    case 'club':
+    case 'club_admin': return `Club Admin ${name}`;
+    default: return name;
+  }
 }
 
 function formatConvTime(ts?: string) {
@@ -98,72 +120,162 @@ function groupByDate(messages: Message[]) {
   return groups;
 }
 
-function isUnread(conv: Conversation, userId: string) {
-  if (!conv.lastMessageAt || !conv.lastSenderId) return false;
-  if (conv.lastSenderId === userId) return false;
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo / mock data — exact layout from screenshot
+// ─────────────────────────────────────────────────────────────────────────────
+const DEMO_UID = '__demo_me__';
+
+const DEMO_CONVERSATIONS: Conversation[] = [
+  {
+    id: 'demo_coach_muhavi',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_coach_1'],
+    participantInfo: {
+      [DEMO_UID]:    { name: 'You',          role: 'athlete' },
+      demo_coach_1:  { name: 'Muhavi',        role: 'coach'   },
+    },
+    lastMessage: 'See you at training tomorrow',
+    lastMessageAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    lastSenderId: 'demo_coach_1',
+    lastReadAt: {},
+    updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    unreadCount: 2,
+  },
+  {
+    id: 'demo_james',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_scout_1'],
+    participantInfo: {
+      [DEMO_UID]:   { name: 'You',           role: 'athlete' },
+      demo_scout_1: { name: 'James Otieno',  role: 'scout'   },
+    },
+    lastMessage: 'I reviewed your profile',
+    lastMessageAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    lastSenderId: 'demo_scout_1',
+    lastReadAt: {},
+    updatedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    unreadCount: 1,
+  },
+  {
+    id: 'demo_scout_office',
+    type: 'direct',
+    participants: [DEMO_UID, 'demo_office_1'],
+    participantInfo: {
+      [DEMO_UID]:    { name: 'You',          role: 'athlete' },
+      demo_office_1: { name: 'Scout Office', role: 'scout'   },
+    },
+    lastMessage: 'Your application has been received',
+    lastMessageAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    lastSenderId: DEMO_UID,
+    lastReadAt: { [DEMO_UID]: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    updatedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    unreadCount: 0,
+  },
+];
+
+const DEMO_MESSAGES: Record<string, Message[]> = {
+  demo_coach_muhavi: [
+    { id: 'd1', senderId: 'demo_coach_1', senderName: 'Coach Muhavi', senderRole: 'coach',   content: 'Great training session today!',           timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    { id: 'd2', senderId: DEMO_UID,       senderName: 'You',           senderRole: 'athlete', content: "Thank you coach, I'll keep working hard",   timestamp: new Date(Date.now() - 1.5 * 3_600_000).toISOString() },
+    { id: 'd3', senderId: 'demo_coach_1', senderName: 'Coach Muhavi', senderRole: 'coach',   content: 'See you at training tomorrow',              timestamp: new Date(Date.now() - 5 * 60_000).toISOString() },
+  ],
+  demo_james: [
+    { id: 'j1', senderId: 'demo_scout_1', senderName: 'James Otieno', senderRole: 'scout',   content: 'Hello! I saw you in the recent match.',     timestamp: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: 'j2', senderId: 'demo_scout_1', senderName: 'James Otieno', senderRole: 'scout',   content: 'I reviewed your profile',                   timestamp: new Date(Date.now() - 30 * 60_000).toISOString() },
+  ],
+  demo_scout_office: [
+    { id: 's1', senderId: DEMO_UID,        senderName: 'You',           senderRole: 'athlete', content: "I'd like to apply for the scouting program", timestamp: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+    { id: 's2', senderId: 'demo_office_1', senderName: 'Scout Office',  senderRole: 'scout',   content: 'Your application has been received',         timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+  ],
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getUnreadCount(conv: Conversation, userId: string): number {
+  // Use explicit count when present (demo/mock data)
+  if (typeof conv.unreadCount === 'number') return conv.unreadCount;
+  if (!conv.lastMessageAt || !conv.lastSenderId) return 0;
+  if (conv.lastSenderId === userId) return 0;
   const lastRead = conv.lastReadAt?.[userId];
-  if (!lastRead) return true;
-  return conv.lastMessageAt > lastRead;
+  if (!lastRead) return 1;
+  return conv.lastMessageAt > lastRead ? 1 : 0;
 }
 
 function ConvItem({
-  conv, userId, isActive, onClick,
+  conv, userId, isActive, onClick, onDelete,
 }: {
-  conv: Conversation; userId: string; isActive: boolean; onClick: () => void;
+  conv: Conversation; userId: string; isActive: boolean;
+  onClick: () => void; onDelete: () => void;
 }) {
   const isGroup = conv.type === 'group';
   const otherId = !isGroup ? conv.participants.find(p => p !== userId) : undefined;
   const otherInfo = otherId ? conv.participantInfo?.[otherId] : undefined;
-  const displayName = isGroup ? (conv.name || 'Club Chat') : (otherInfo?.name || 'Unknown');
-  const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
-  const unread = isUnread(conv, userId);
-
-  const preview = conv.lastMessage
-    ? (conv.lastSenderId === userId ? `You: ${conv.lastMessage}` : conv.lastMessage)
-    : 'No messages yet';
+  const otherRole = otherId ? conv.participantInfo?.[otherId]?.role : undefined;
+  const displayName = isGroup
+    ? (conv.name || 'Club Chat')
+    : getRolePrefixedName(otherInfo?.name || 'Unknown', otherRole);
+  const unreadCount = getUnreadCount(conv, userId);
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-[#1E293B]',
+        'group w-full flex items-center gap-3 px-4 py-3 border-b border-[#1E293B] transition-colors',
         isActive ? 'bg-[#1C2333]' : 'hover:bg-[#111827]'
       )}
     >
-      <div className="relative shrink-0">
-        <Avatar className="h-11 w-11">
-          {displayPhoto && <AvatarImage src={displayPhoto} className="object-cover" />}
-          <AvatarFallback className={cn('font-black text-sm', isGroup ? 'bg-[#00C853]/20 text-[#00C853]' : 'bg-[#1C2333] text-[#94A3B8]')}>
-            {isGroup ? <Hash className="h-5 w-5" /> : getInitials(displayName)}
-          </AvatarFallback>
-        </Avatar>
-        {isGroup && (
-          <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-[#00C853] flex items-center justify-center">
-            <Users className="h-2.5 w-2.5 text-black" />
+      <button onClick={onClick} className="flex-1 flex items-center gap-3 text-left min-w-0">
+        <div className="relative shrink-0">
+          <Avatar className="h-10 w-10">
+            <AvatarFallback className={cn(
+              'font-black text-sm',
+              isGroup ? 'bg-[#00C853]/20 text-[#00C853]' : 'bg-[#1C2333] text-[#94A3B8]'
+            )}>
+              {isGroup ? <Hash className="h-4 w-4" /> : getInitials(displayName)}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-1">
+            <p className={cn(
+              'text-sm truncate',
+              unreadCount > 0 ? 'font-black text-white' : 'font-semibold text-[#CBD5E1]'
+            )}>
+              {displayName}
+            </p>
+            {conv.lastMessageAt && (
+              <span className="text-[10px] text-[#4B5563] shrink-0">{formatConvTime(conv.lastMessageAt)}</span>
+            )}
           </div>
-        )}
-      </div>
+          <p className={cn(
+            'text-xs truncate mt-0.5',
+            unreadCount > 0 ? 'text-[#94A3B8]' : 'text-[#4B5563]'
+          )}>
+            {conv.lastMessage || (conv.lastMessageAt ? '' : 'Start conversation')}
+          </p>
+        </div>
+      </button>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-0.5">
-          <p className={cn('text-sm truncate', unread ? 'font-black text-white' : 'font-semibold text-[#94A3B8]')}>
-            {displayName}
-          </p>
-          <span className="text-[10px] text-[#94A3B8] shrink-0">{formatConvTime(conv.lastMessageAt || conv.updatedAt)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <p className={cn('text-xs truncate flex-1', unread ? 'text-white' : 'text-[#4B5563]')}>
-            {preview}
-          </p>
-          {unread && (
-            <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5 shrink-0">
-              ●
-            </span>
-          )}
-        </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {unreadCount > 0 && (
+          <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5">
+            {unreadCount}
+          </span>
+        )}
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="text-[#4B5563] hover:text-red-400 transition-colors p-1 opacity-0 group-hover:opacity-100"
+          title="Remove"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
-    </button>
+    </div>
   );
+}
+
+// Three-state delivery: 'sending' → 'sent' → (read via lastReadAt)
+interface OptimisticMsg extends Message {
+  _optimistic: true;
+  _sending: boolean;
 }
 
 function ChatThread({
@@ -171,55 +283,122 @@ function ChatThread({
   userId,
   userProfile,
   onBack,
+  demoMessages,
 }: {
   conv: Conversation;
   userId: string;
   userProfile: { name: string; role: string; photoUrl?: string };
   onBack: () => void;
+  demoMessages?: Message[]; // when set, runs in-memory only (no Firestore)
 }) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const isDemo = !!demoMessages;
+
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [optimisticMsgs, setOptimisticMsgs] = useState<OptimisticMsg[]>([]);
+  // Demo-mode: in-memory message store initialised from prop
+  const [demoMsgStore, setDemoMsgStore] = useState<Message[]>(demoMessages ?? []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const isGroup = conv.type === 'group';
   const otherId = !isGroup ? conv.participants.find(p => p !== userId) : undefined;
   const otherInfo = otherId ? conv.participantInfo?.[otherId] : undefined;
-  const displayName = isGroup ? (conv.name || 'Club Chat') : (otherInfo?.name || 'Chat');
+  const otherRole = !isGroup ? otherInfo?.role : undefined;
+  const displayName = isGroup ? (conv.name || 'Club Chat') : getRolePrefixedName(otherInfo?.name || 'Chat', otherRole);
   const displayPhoto = isGroup ? undefined : otherInfo?.photoUrl;
   const displayRole = !isGroup && otherInfo?.role;
 
+  // Firestore live query — skipped in demo mode
   const msgsQuery = useMemoFirebase(() => (
-    firestore
+    !isDemo && firestore
       ? query(collection(firestore, 'conversations', conv.id, 'messages'), orderBy('timestamp', 'asc'))
       : null
-  ), [firestore, conv.id]);
-  const { data: messages, isLoading } = useCollection<Message>(msgsQuery);
+  ), [isDemo, firestore, conv.id]);
+  const { data: firestoreMessages, isLoading } = useCollection<Message>(msgsQuery);
+
+  // In demo mode use local store; otherwise use Firestore + optimistic
+  const messages = isDemo ? demoMsgStore : firestoreMessages;
+
+  // Remove optimistic messages whose real counterpart has arrived from Firestore
+  useEffect(() => {
+    if (isDemo || !messages || optimisticMsgs.length === 0) return;
+    setOptimisticMsgs(prev =>
+      prev.filter(opt =>
+        !messages.some(
+          m =>
+            m.senderId === userId &&
+            Math.abs(new Date(m.timestamp).getTime() - new Date(opt.timestamp).getTime()) < 3000
+        )
+      )
+    );
+  }, [isDemo, messages, userId]);
+
+  // Merged display list
+  const displayMessages = (() => {
+    if (isDemo) return demoMsgStore;
+    const realTs = new Set((messages ?? []).map(m => m.timestamp));
+    const pending = optimisticMsgs.filter(o => !realTs.has(o.timestamp));
+    return [...(messages ?? []), ...pending].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  })();
 
   useEffect(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-  }, [messages?.length]);
+  }, [displayMessages.length]);
 
+  // Mark read — skipped in demo mode
   useEffect(() => {
-    if (!firestore || !userId || !conv.id) return;
+    if (isDemo || !firestore || !userId || !conv.id) return;
     updateDoc(doc(firestore, 'conversations', conv.id), {
       [`lastReadAt.${userId}`]: new Date().toISOString(),
     }).catch(() => {});
-  }, [firestore, userId, conv.id]);
+  }, [isDemo, firestore, userId, conv.id]);
 
   const handleSend = useCallback(async () => {
-    if (!firestore || !input.trim() || sending) return;
+    if (!input.trim() || sending) return;
     const content = input.trim();
+    const now = new Date().toISOString();
     setInput('');
-    setSending(true);
-    try {
-      const now = new Date().toISOString();
-      const batch = writeBatch(firestore);
 
+    // ── Demo mode: pure in-memory send ──
+    if (isDemo) {
+      const newMsg: Message = {
+        id: `demo_sent_${Date.now()}`,
+        senderId: userId,
+        senderName: userProfile.name,
+        senderRole: userProfile.role,
+        content,
+        timestamp: now,
+        isDeleted: false,
+      };
+      setDemoMsgStore(prev => [...prev, newMsg]);
+      inputRef.current?.focus();
+      return;
+    }
+
+    // ── Live mode: optimistic → Firestore ──
+    if (!firestore) return;
+    const tempId = `opt_${Date.now()}`;
+    const optimistic: OptimisticMsg = {
+      id: tempId,
+      senderId: userId,
+      senderName: userProfile.name,
+      senderRole: userProfile.role,
+      content,
+      timestamp: now,
+      isDeleted: false,
+      _optimistic: true,
+      _sending: true,
+    };
+    setOptimisticMsgs(prev => [...prev, optimistic]);
+    setSending(true);
+
+    try {
+      const batch = writeBatch(firestore);
       const msgRef = doc(collection(firestore, 'conversations', conv.id, 'messages'));
       batch.set(msgRef, {
         senderId: userId,
@@ -229,21 +408,18 @@ function ChatThread({
         timestamp: now,
         isDeleted: false,
       });
-
-      // Use setDoc merge so participants field is always in sync even for older
-      // conversations that were created before the participants array was enforced.
-      batch.set(doc(firestore, 'conversations', conv.id), {
+      batch.update(doc(firestore, 'conversations', conv.id), {
         lastMessage: content,
         lastMessageAt: now,
         lastSenderId: userId,
         lastSenderName: userProfile.name,
         updatedAt: now,
         [`lastReadAt.${userId}`]: now,
-        // Ensure the sender is always in the participants array
-        ...(conv.participants?.includes(userId) ? {} : { participants: [...(conv.participants ?? []), userId] }),
-      }, { merge: true });
-
+      });
       await batch.commit();
+
+      // Firestore confirmed → upgrade to grey ✓✓
+      setOptimisticMsgs(prev => prev.map(m => m.id === tempId ? { ...m, _sending: false } : m));
 
       if (!isGroup && otherId) {
         addDoc(collection(firestore, 'notifications', otherId, 'items'), {
@@ -257,16 +433,36 @@ function ChatThread({
           createdAt: now,
         }).catch(() => {});
       }
+      if (isGroup && conv.participants.length > 1) {
+        for (const pid of conv.participants.filter(p => p !== userId)) {
+          addDoc(collection(firestore, 'notifications', pid, 'items'), {
+            type: 'squad_message',
+            actorName: userProfile.name,
+            actorRole: userProfile.role,
+            message: content.length > 80 ? content.slice(0, 80) + '…' : content,
+            conversationId: conv.id,
+            conversationName: conv.name || 'Squad Chat',
+            url: `/chat/${conv.id}`,
+            isRead: false,
+            createdAt: now,
+          }).catch(() => {});
+        }
+      }
     } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
+      setOptimisticMsgs(prev => prev.filter(m => m.id !== tempId));
       setInput(content);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     } finally {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [firestore, input, sending, userId, userProfile, conv.id, isGroup, otherId, toast]);
+  }, [isDemo, firestore, input, sending, userId, userProfile, conv.id, isGroup, otherId, toast]);
 
   const handleDelete = async (msgId: string) => {
+    if (isDemo) {
+      setDemoMsgStore(prev => prev.map(m => m.id === msgId ? { ...m, isDeleted: true, content: '' } : m));
+      return;
+    }
     if (!firestore) return;
     await updateDoc(doc(firestore, 'conversations', conv.id, 'messages', msgId), {
       isDeleted: true, content: '',
@@ -274,7 +470,13 @@ function ChatThread({
   };
 
   const handleEditSave = async (msgId: string) => {
-    if (!firestore || !editText.trim()) return;
+    if (!editText.trim()) return;
+    if (isDemo) {
+      setDemoMsgStore(prev => prev.map(m => m.id === msgId ? { ...m, content: editText.trim(), editedAt: new Date().toISOString() } : m));
+      setEditingId(null);
+      return;
+    }
+    if (!firestore) return;
     await updateDoc(doc(firestore, 'conversations', conv.id, 'messages', msgId), {
       content: editText.trim(),
       editedAt: new Date().toISOString(),
@@ -282,7 +484,7 @@ function ChatThread({
     setEditingId(null);
   };
 
-  const groups = groupByDate(messages ?? []);
+  const groups = groupByDate(displayMessages);
 
   return (
     <div className="flex flex-col h-full bg-[#0A0E1A]">
@@ -316,7 +518,7 @@ function ChatThread({
           </div>
         )}
 
-        {!isLoading && groups.length === 0 && (
+        {!isLoading && displayMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full py-20 text-center">
             <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
               <MessageSquare className="h-7 w-7 text-[#94A3B8]" />
@@ -344,6 +546,11 @@ function ChatThread({
                 const prevMsg = group.messages[i - 1];
                 const showSenderInfo = !isOwn && (i === 0 || prevMsg?.senderId !== msg.senderId);
                 const roleColor = ROLE_COLORS[msg.senderRole || ''] || '#94A3B8';
+                // Three-state delivery (DMs only)
+                const isOptimistic = !!(msg as any)._optimistic;
+                const isSendingNow = isOptimistic && (msg as any)._sending;
+                const otherLastRead = !isGroup && otherId ? conv.lastReadAt?.[otherId] : undefined;
+                const isReadByOther = !isGroup && !isOptimistic && !!otherLastRead && otherLastRead >= msg.timestamp;
 
                 if (msg.isDeleted) {
                   return (
@@ -427,6 +634,18 @@ function ChatThread({
                                     · edited
                                   </span>
                                 )}
+                                {isOwn && !isGroup && (
+                                  isSendingNow ? (
+                                    <Check className="h-3.5 w-3.5 shrink-0 text-black/30" />
+                                  ) : (
+                                    <CheckCheck
+                                      className={cn(
+                                        'h-3.5 w-3.5 shrink-0',
+                                        isReadByOther ? 'text-[#006B2D]' : 'text-black/40'
+                                      )}
+                                    />
+                                  )
+                                )}
                               </div>
                             </div>
                           )}
@@ -470,7 +689,7 @@ function ChatThread({
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
               }}
-              placeholder="Message…"
+              placeholder="Type message..."
               rows={1}
               className="w-full bg-[#1C2333] border border-[#1E293B] rounded-2xl px-4 py-3 text-sm text-white placeholder:text-[#4B5563] resize-none focus:outline-none focus:border-[#00C853] max-h-32 overflow-y-auto transition-colors"
               style={{ minHeight: '44px' }}
@@ -484,9 +703,9 @@ function ChatThread({
           <Button
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="h-11 w-11 rounded-full bg-[#00C853] hover:bg-[#00C853]/90 text-black shrink-0 p-0"
+            className="h-11 px-5 rounded-full bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-sm shrink-0"
           >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
           </Button>
         </div>
       </div>
@@ -526,18 +745,34 @@ function MsgActions({
 
 interface MessagesHubProps {
   defaultConversationId?: string;
+  /** demo=true → uses hardcoded mock data; no Firestore reads/writes */
+  demo?: boolean;
 }
 
-export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
+export function MessagesHub({ defaultConversationId, demo = false }: MessagesHubProps = {}) {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [activeConvId, setActiveConvId] = useState<string | null>(defaultConversationId || null);
   const [showNewDM, setShowNewDM] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [userProfile, setUserProfile] = useState<{ name: string; role: string; photoUrl?: string }>({ name: '', role: '' });
+  const [clubId, setClubId] = useState<string | null>(null);
+  const [connections, setConnections] = useState<ConnectionEntry[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+
+  // Demo mode: in-memory conversation list (deletable)
+  const [demoConvs, setDemoConvs] = useState<Conversation[]>(DEMO_CONVERSATIONS);
 
   useEffect(() => {
-    if (!firestore || !user?.uid) return;
+    if (defaultConversationId && !activeConvId) {
+      setActiveConvId(defaultConversationId);
+    }
+  }, [defaultConversationId, activeConvId]);
+
+  // Profile fetch — only needed for live mode
+  useEffect(() => {
+    if (demo || !firestore || !user?.uid) return;
     (async () => {
       try {
         const userSnap = await getDoc(doc(firestore, 'users', user.uid));
@@ -568,34 +803,245 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
         setUserProfile({ name, role, photoUrl });
       } catch {}
     })();
-  }, [firestore, user]);
+  }, [demo, firestore, user]);
 
+  // Load real connections based on user role — skipped in demo mode
+  useEffect(() => {
+    if (demo || !firestore || !user?.uid || !userProfile.role) return;
+    setConnectionsLoading(true);
+    const role = userProfile.role;
+    (async () => {
+      try {
+        const entries: ConnectionEntry[] = [];
+        let foundClubId: string | null = null;
+
+        if (role === 'club') {
+          foundClubId = `club_${user.uid}`;
+          const snap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('clubId', '==', foundClubId),
+            where('status', '==', 'active'),
+          ));
+          for (const d of snap.docs) {
+            const data = d.data() as any;
+            if (data.userId === user.uid) continue;
+            entries.push({
+              uid: data.userId,
+              name: data.displayName || 'Member',
+              role: data.role || 'athlete',
+              photoUrl: data.photoUrl || data.avatarUrl,
+              convId: [user.uid, data.userId].sort().join('_dm_'),
+            });
+          }
+        } else if (['coach', 'assistant_coach', 'analyst', 'gk_coach'].includes(role)) {
+          const mySnap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active'),
+          ));
+          if (!mySnap.empty) {
+            foundClubId = mySnap.docs[0].data().clubId as string;
+            const clubSnap = await getDocs(query(
+              collection(firestore, 'club_members'),
+              where('clubId', '==', foundClubId),
+              where('status', '==', 'active'),
+            ));
+            for (const d of clubSnap.docs) {
+              const data = d.data() as any;
+              if (data.userId === user.uid) continue;
+              entries.push({
+                uid: data.userId,
+                name: data.displayName || 'Member',
+                role: data.role || 'athlete',
+                photoUrl: data.photoUrl || data.avatarUrl,
+                convId: [user.uid, data.userId].sort().join('_dm_'),
+              });
+            }
+          }
+        } else if (role === 'scout') {
+          const snap = await getDocs(query(
+            collection(firestore, 'scout_connections'),
+            where('scoutId', '==', user.uid),
+            where('status', '==', 'accepted'),
+          ));
+          for (const d of snap.docs) {
+            const data = d.data() as any;
+            entries.push({
+              uid: data.athleteId,
+              name: data.athleteName || 'Athlete',
+              role: 'athlete',
+              convId: [user.uid, data.athleteId].sort().join('_dm_'),
+            });
+          }
+        } else if (role === 'athlete') {
+          const scoutSnap = await getDocs(query(
+            collection(firestore, 'scout_connections'),
+            where('athleteId', '==', user.uid),
+            where('status', '==', 'accepted'),
+          ));
+          for (const d of scoutSnap.docs) {
+            const data = d.data() as any;
+            entries.push({
+              uid: data.scoutId,
+              name: data.scoutName || 'Scout',
+              role: 'scout',
+              convId: [user.uid, data.scoutId].sort().join('_dm_'),
+            });
+          }
+          const memberSnap = await getDocs(query(
+            collection(firestore, 'club_members'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active'),
+          ));
+          if (!memberSnap.empty) {
+            foundClubId = memberSnap.docs[0].data().clubId as string;
+          }
+        }
+
+        setConnections(entries);
+        if (foundClubId) setClubId(foundClubId);
+      } catch {
+        // silently fail — connections are best-effort
+      } finally {
+        setConnectionsLoading(false);
+      }
+    })();
+  }, [demo, firestore, user?.uid, userProfile.role]);
+
+  // Live Firestore query — skipped in demo mode
   const convQuery = useMemoFirebase(() => (
-    firestore && user?.uid
+    !demo && firestore && user?.uid
       ? query(
           collection(firestore, 'conversations'),
           where('participants', 'array-contains', user.uid),
           orderBy('updatedAt', 'desc')
         )
       : null
-  ), [firestore, user?.uid]);
-  const { data: conversations, isLoading } = useCollection<Conversation>(convQuery);
+  ), [demo, firestore, user?.uid]);
+  const { data: liveConversations, isLoading } = useCollection<Conversation>(convQuery);
 
-  const filtered = (conversations ?? []).filter(c => {
+  const effectiveUserId = demo ? DEMO_UID : (user?.uid || '');
+  const effectiveProfile = demo
+    ? { name: 'You', role: 'athlete', photoUrl: undefined }
+    : userProfile;
+
+  // Merged display list: Squad Chat pinned first, then connections (stub or live), then any other live convs
+  const displayList: Conversation[] = (() => {
+    if (demo) return demoConvs;
+    const live = liveConversations ?? [];
+    const liveMap = new Map(live.map(c => [c.id, c]));
+    const result: Conversation[] = [];
+    const addedIds = new Set<string>();
+
+    // 1. Squad/group chat at top (only if user is already a participant)
+    if (clubId) {
+      const squadConv = liveMap.get(clubId);
+      if (squadConv) {
+        result.push(squadConv);
+        addedIds.add(clubId);
+      }
+    }
+
+    // 2. Known connections — show with history if conv exists, stub if not
+    for (const conn of connections) {
+      if (addedIds.has(conn.convId)) continue;
+      if (liveMap.has(conn.convId)) {
+        result.push(liveMap.get(conn.convId)!);
+      } else {
+        result.push({
+          id: conn.convId,
+          type: 'direct',
+          participants: [effectiveUserId, conn.uid],
+          participantInfo: {
+            [effectiveUserId]: { name: effectiveProfile.name, role: effectiveProfile.role },
+            [conn.uid]: { name: conn.name, role: conn.role, photoUrl: conn.photoUrl },
+          },
+        });
+      }
+      addedIds.add(conn.convId);
+    }
+
+    // 3. Any remaining live convs not yet listed (e.g. from "New DM" search)
+    for (const c of live) {
+      if (!addedIds.has(c.id)) {
+        result.push(c);
+        addedIds.add(c.id);
+      }
+    }
+
+    return result;
+  })();
+
+  // Search: filter by name OR last message content
+  const filtered = displayList.filter(c => {
     if (!searchTerm.trim()) return true;
-    const isGroup = c.type === 'group';
-    if (isGroup) return (c.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const otherId = c.participants.find(p => p !== user?.uid);
+    const q = searchTerm.toLowerCase();
+    if (c.type === 'group') {
+      return (c.name || '').toLowerCase().includes(q) ||
+             (c.lastMessage || '').toLowerCase().includes(q);
+    }
+    const otherId = c.participants.find(p => p !== effectiveUserId);
     const name = otherId ? c.participantInfo?.[otherId]?.name || '' : '';
-    return name.toLowerCase().includes(searchTerm.toLowerCase());
+    return name.toLowerCase().includes(q) ||
+           (c.lastMessage || '').toLowerCase().includes(q);
   });
 
-  const groups = filtered.filter(c => c.type === 'group');
-  const directs = filtered.filter(c => c.type !== 'group');
-  const activeConv = (conversations ?? []).find(c => c.id === activeConvId);
-  const totalUnread = (conversations ?? []).filter(c => isUnread(c, user?.uid || '')).length;
+  const activeConv = displayList.find(c => c.id === activeConvId);
+  const totalUnread = displayList.reduce((sum, c) => sum + getUnreadCount(c, effectiveUserId), 0);
 
-  if (isUserLoading) {
+  // Open a conversation — if it's a stub (not yet in Firestore), create the doc first
+  const handleOpenConv = async (convId: string) => {
+    const alreadyLive = liveConversations?.some(c => c.id === convId);
+    if (alreadyLive || demo) {
+      setActiveConvId(convId);
+      return;
+    }
+    if (!firestore || !user?.uid) return;
+    const stub = displayList.find(c => c.id === convId);
+    if (!stub) { setActiveConvId(convId); return; }
+    try {
+      const now = new Date().toISOString();
+      await setDoc(doc(firestore, 'conversations', convId), {
+        type: stub.type || 'direct',
+        participants: stub.participants,
+        participantInfo: stub.participantInfo || {},
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: '',
+        lastMessageAt: '',
+        lastReadAt: {},
+      });
+      setActiveConvId(convId);
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not open conversation' });
+    }
+  };
+
+  // Delete conversation
+  const handleDeleteConv = useCallback(async (convId: string) => {
+    if (demo) {
+      setDemoConvs(prev => prev.filter(c => c.id !== convId));
+      if (activeConvId === convId) setActiveConvId(null);
+      return;
+    }
+    if (!firestore || !user?.uid) return;
+    // If it's a stub, just deselect
+    const isLive = liveConversations?.some(c => c.id === convId);
+    if (!isLive) { if (activeConvId === convId) setActiveConvId(null); return; }
+    try {
+      await updateDoc(doc(firestore, 'conversations', convId), {
+        participants: (liveConversations ?? [])
+          .find(c => c.id === convId)
+          ?.participants.filter(p => p !== user.uid) ?? [],
+      });
+      if (activeConvId === convId) setActiveConvId(null);
+      toast({ title: 'Conversation removed' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not remove conversation' });
+    }
+  }, [demo, firestore, user, liveConversations, activeConvId, toast]);
+
+  if (!demo && isUserLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-[#0A0E1A]">
         <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
@@ -604,116 +1050,110 @@ export function MessagesHub({ defaultConversationId }: MessagesHubProps = {}) {
   }
 
   return (
-    <div className="flex h-full bg-[#0A0E1A] rounded-xl overflow-hidden border border-[#1E293B]" style={{ minHeight: '600px' }}>
+    <div className="flex h-full bg-[#0A0E1A] rounded-xl overflow-hidden border border-[#1E293B]" style={{ minHeight: '500px' }}>
+      {/* ── Conversation List ── */}
       <div className={cn(
         'flex flex-col bg-[#0D1117] border-r border-[#1E293B]',
         activeConvId ? 'hidden md:flex md:w-80 lg:w-96' : 'flex w-full'
       )}>
-        <div className="px-4 py-4 border-b border-[#1E293B] bg-[#111827] shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-black text-white uppercase tracking-tight">Messages</h2>
-              {totalUnread > 0 && (
-                <span className="h-5 min-w-5 rounded-full bg-[#00C853] text-black text-[10px] font-black flex items-center justify-center px-1.5">
-                  {totalUnread}
-                </span>
-              )}
-            </div>
-            <Button
-              size="icon"
-              onClick={() => setShowNewDM(true)}
-              className="h-8 w-8 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-full border border-[#1E293B]"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+        {/* Unread notification bar */}
+        {totalUnread > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0A0E1A] border-b border-[#1E293B] shrink-0">
+            <Bell className="h-3.5 w-3.5 text-[#00C853] shrink-0" />
+            <span className="text-xs text-[#94A3B8]">
+              <span className="font-black text-white">{totalUnread}</span> unread message{totalUnread !== 1 ? 's' : ''}
+            </span>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#4B5563]" />
-            <Input
-              placeholder="Search conversations…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-8 h-9 bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#4B5563] text-xs"
-            />
+        )}
+
+        {/* Search + new DM */}
+        <div className="px-3 py-3 border-b border-[#1E293B] bg-[#0D1117] shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#4B5563]" />
+              <input
+                placeholder="Search chats..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 h-10 bg-[#1C2333] border border-[#1E293B] rounded-xl text-white placeholder:text-[#4B5563] text-sm focus:outline-none focus:border-[#00C853] transition-colors"
+              />
+            </div>
+            {!demo && (
+              <button
+                onClick={() => setShowNewDM(true)}
+                className="h-10 w-10 bg-[#1C2333] hover:bg-[#00C853] hover:text-black text-[#94A3B8] rounded-xl border border-[#1E293B] flex items-center justify-center transition-colors shrink-0"
+                title="New message"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
+        {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
+          {!demo && (isLoading || connectionsLoading) ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-[#00C853]" />
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+              <div className="w-14 h-14 rounded-full bg-[#1C2333] flex items-center justify-center mb-3">
+                <MessageSquare className="h-6 w-6 text-[#4B5563]" />
+              </div>
+              <p className="font-black text-white text-sm">
+                {searchTerm ? 'No conversations match' : 'No connections yet'}
+              </p>
+              <p className="text-xs text-[#4B5563] mt-1">
+                {searchTerm ? 'Try a different name or message' : 'Tap + to find someone to message'}
+              </p>
+            </div>
           ) : (
-            <>
-              {groups.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-[#0A0E1A]">
-                    <p className="text-[10px] font-black text-[#4B5563] uppercase tracking-widest">Groups</p>
-                  </div>
-                  {groups.map(c => (
-                    <ConvItem key={c.id} conv={c} userId={user?.uid || ''} isActive={activeConvId === c.id} onClick={() => setActiveConvId(c.id)} />
-                  ))}
-                </>
-              )}
-
-              {directs.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-[#0A0E1A]">
-                    <p className="text-[10px] font-black text-[#4B5563] uppercase tracking-widest">Direct Messages</p>
-                  </div>
-                  {directs.map(c => (
-                    <ConvItem key={c.id} conv={c} userId={user?.uid || ''} isActive={activeConvId === c.id} onClick={() => setActiveConvId(c.id)} />
-                  ))}
-                </>
-              )}
-
-              {groups.length === 0 && directs.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                  <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
-                    <MessageSquare className="h-7 w-7 text-[#4B5563]" />
-                  </div>
-                  <p className="font-black text-white text-sm">
-                    {searchTerm ? 'No conversations match' : 'No messages yet'}
-                  </p>
-                  <p className="text-xs text-[#4B5563] mt-1">
-                    {searchTerm ? 'Try a different name' : 'Tap + to start a conversation'}
-                  </p>
-                </div>
-              )}
-            </>
+            filtered.map(c => (
+              <ConvItem
+                key={c.id}
+                conv={c}
+                userId={effectiveUserId}
+                isActive={activeConvId === c.id}
+                onClick={() => handleOpenConv(c.id)}
+                onDelete={() => handleDeleteConv(c.id)}
+              />
+            ))
           )}
         </div>
       </div>
 
+      {/* ── Chat Panel ── */}
       <div className={cn('flex-1 flex flex-col', activeConvId ? 'flex' : 'hidden md:flex')}>
-        {activeConv && user ? (
+        {activeConv ? (
           <ChatThread
             conv={activeConv}
-            userId={user.uid}
-            userProfile={userProfile}
+            userId={effectiveUserId}
+            userProfile={effectiveProfile}
             onBack={() => setActiveConvId(null)}
+            demoMessages={demo ? (DEMO_MESSAGES[activeConv.id] ?? []) : undefined}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0A0E1A]">
-            <div className="w-20 h-20 rounded-full bg-[#1C2333] flex items-center justify-center mb-5">
-              <MessageSquare className="h-9 w-9 text-[#4B5563]" />
+            <div className="w-16 h-16 rounded-full bg-[#1C2333] flex items-center justify-center mb-4">
+              <MessageSquare className="h-7 w-7 text-[#4B5563]" />
             </div>
-            <p className="font-black text-white text-lg">Your Messages</p>
-            <p className="text-sm text-[#4B5563] mt-2 max-w-xs">
-              Select a conversation from the left, or start a new one with the + button.
+            <p className="font-black text-white text-base">Select chat</p>
+            <p className="text-sm text-[#4B5563] mt-1 max-w-xs">
+              Choose a conversation on the left to open it
             </p>
           </div>
         )}
       </div>
 
-      {user && userProfile.name && (
+      {!demo && user && effectiveProfile.name && (
         <UserSearchDialog
           open={showNewDM}
           onClose={() => setShowNewDM(false)}
           currentUserId={user.uid}
-          currentUserName={userProfile.name}
-          currentUserRole={userProfile.role}
-          currentUserPhoto={userProfile.photoUrl}
+          currentUserName={effectiveProfile.name}
+          currentUserRole={effectiveProfile.role}
+          currentUserPhoto={effectiveProfile.photoUrl}
           onConversationCreated={id => { setShowNewDM(false); setActiveConvId(id); }}
         />
       )}

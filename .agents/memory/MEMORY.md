@@ -1,0 +1,3 @@
+- [DM Conversation ID separator](dm-conv-id.md) — must use `_dm_` separator, not `_`; UserSearchDialog and relationships.ts must match
+- [MessagesHub defaultConversationId sync](messages-hub-default-conv.md) — useState init doesn't react to prop changes; always add a useEffect to sync when prop arrives async
+- [Club admin clubId lookup](club-admin-clubid.md) — club admin's clubId lives in club_members where userId==uid (no status filter); admin has role='admin'

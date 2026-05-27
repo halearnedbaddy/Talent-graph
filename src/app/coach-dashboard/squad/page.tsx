@@ -125,36 +125,65 @@ export default function CoachSquadPage() {
     setSearching(true);
     try {
       const raw = athleteSearch.trim();
-      // Build search variants to handle case differences (Firestore range queries are case-sensitive)
-      const variants = Array.from(new Set([
-        raw,
-        raw.toLowerCase(),
-        raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase(),
-        raw.toUpperCase(),
-      ]));
+      const words = raw.split(/\s+/).filter(Boolean);
 
-      const querySnaps = await Promise.all(
-        variants.flatMap(term => {
-          const termEnd = term + '\uf8ff';
-          return [
-            getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', term), where('firstName', '<=', termEnd), limit(10))),
-            getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', term), where('lastName', '<=', termEnd), limit(10))),
-          ];
-        })
-      );
+      // Capitalise first letter (most athlete names are stored Title Case)
+      const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
       const seen = new Set<string>();
       const results: AthleteProfile[] = [];
-      querySnaps.forEach(snap => {
-        snap.docs.forEach(d => {
+
+      const addSnap = (snap: { docs: any[] }) => {
+        snap.docs.forEach((d: any) => {
           if (!seen.has(d.id)) {
             seen.add(d.id);
-            const a = { uid: d.id, ...d.data() } as AthleteProfile;
-            if (a.affiliatedClubId !== clubId) results.push(a);
+            results.push({ uid: d.id, ...d.data() } as AthleteProfile);
           }
         });
-      });
-      setSearchResults(results.slice(0, 10));
+      };
+
+      if (words.length >= 2) {
+        // Two+ word search: search first word as firstName, second as lastName (and vice versa)
+        const [w1, w2] = words;
+        const queries = [
+          // firstName starts with word1
+          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', cap(w1)), where('firstName', '<=', cap(w1) + '\uf8ff'), limit(20))),
+          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', w1.toLowerCase()), where('firstName', '<=', w1.toLowerCase() + '\uf8ff'), limit(20))),
+          // lastName starts with word2
+          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', cap(w2)), where('lastName', '<=', cap(w2) + '\uf8ff'), limit(20))),
+          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', w2.toLowerCase()), where('lastName', '<=', w2.toLowerCase() + '\uf8ff'), limit(20))),
+          // also try swapped (in case user typed lastName firstName)
+          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', cap(w2)), where('firstName', '<=', cap(w2) + '\uf8ff'), limit(20))),
+          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', cap(w1)), where('lastName', '<=', cap(w1) + '\uf8ff'), limit(20))),
+        ];
+        const snaps = await Promise.all(queries);
+        snaps.forEach(addSnap);
+
+        // Keep only athletes that match BOTH words (firstName matches one, lastName matches other)
+        const lw1 = w1.toLowerCase();
+        const lw2 = w2.toLowerCase();
+        const matched = results.filter(a => {
+          const fn = (a.firstName ?? '').toLowerCase();
+          const ln = (a.lastName ?? '').toLowerCase();
+          return (fn.startsWith(lw1) && ln.startsWith(lw2)) ||
+                 (fn.startsWith(lw2) && ln.startsWith(lw1));
+        });
+        // Fallback to all results if the strict filter leaves nothing
+        const finalList = matched.length > 0 ? matched : results;
+        setSearchResults(finalList.filter(a => a.affiliatedClubId !== clubId).slice(0, 10));
+      } else {
+        // Single word: search firstName and lastName separately (case variants)
+        const term = words[0];
+        const queries = [
+          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', cap(term)), where('firstName', '<=', cap(term) + '\uf8ff'), limit(15))),
+          getDocs(query(collection(firestore, 'athletes'), where('firstName', '>=', term.toLowerCase()), where('firstName', '<=', term.toLowerCase() + '\uf8ff'), limit(15))),
+          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', cap(term)), where('lastName', '<=', cap(term) + '\uf8ff'), limit(15))),
+          getDocs(query(collection(firestore, 'athletes'), where('lastName', '>=', term.toLowerCase()), where('lastName', '<=', term.toLowerCase() + '\uf8ff'), limit(15))),
+        ];
+        const snaps = await Promise.all(queries);
+        snaps.forEach(addSnap);
+        setSearchResults(results.filter(a => a.affiliatedClubId !== clubId).slice(0, 10));
+      }
     } catch (err: any) {
       toast({ title: 'Search failed', description: err?.message ?? 'Please try again.', variant: 'destructive' });
     } finally {
@@ -176,11 +205,10 @@ export default function CoachSquadPage() {
         status: 'pending',
         createdAt: new Date().toISOString(),
       });
-      // Write to the correct notifications subcollection path
       await addDoc(collection(firestore, 'notifications', athlete.uid, 'items'), {
         type: 'squad_invite',
         title: 'Squad Invite',
-        message: `${user.displayName || 'Coach'} at ${clubName} has invited you to join their squad.`,
+        message: `Coach ${user.displayName || 'at'} ${clubName} has invited you to join their squad on Talent Graph.`,
         url: '/dashboard/invites',
         isRead: false,
         createdAt: new Date().toISOString(),

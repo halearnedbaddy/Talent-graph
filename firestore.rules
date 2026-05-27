@@ -198,6 +198,31 @@ service cloud.firestore {
       allow delete: if isSignedIn();
     }
 
+    // Squad invites sent by coaches/club admins to athletes
+    match /squad_invites/{inviteId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isClubAdmin() || isStaffRole());
+      allow update: if isSignedIn() && (
+        isClubAdmin() || isStaffRole() ||
+        request.auth.uid == resource.data.athleteId
+      );
+      allow delete: if isAdmin() || isClubAdmin();
+    }
+
+    // Match confirmations written by coaches when saving match data
+    match /match_confirmations/{confirmId} {
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isClubAdmin() || isStaffRole() || isAdmin()
+      );
+      allow create: if isSignedIn() && (isClubAdmin() || isStaffRole());
+      allow update: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isClubAdmin() || isAdmin()
+      );
+      allow delete: if isAdmin() || isClubAdmin();
+    }
+
     match /practices/{practiceId} {
       allow read: if isSignedIn();
       allow create: if isClubAdmin() || isAdmin() || isStaffRole() ||
@@ -344,10 +369,24 @@ service cloud.firestore {
             isActiveMemberOfClub(d.clubId) || isClubOwner(d.clubId)
           );
         }
-        allow read: if isSignedIn() && (inConv() || inGroupConv());
-        allow create: if isSignedIn() && (inConv() || inGroupConv()) &&
+        // isClubAdmin() is an explicit bypass: a user whose role == 'club' can
+        // always write to any group conversation they are broadcasting to.
+        // This covers the case where the club_members document path doesn't
+        // match the expected pattern and isClubOwner()/isActiveMemberOfClub()
+        // would otherwise fail.
+        function canWriteToConv() {
+          let d = convData();
+          return inConv() ||
+                 inGroupConv() ||
+                 (isClubAdmin() && d != null && d.type == 'group');
+        }
+        allow read: if isSignedIn() && (inConv() || inGroupConv() || isClubAdmin());
+        allow create: if isSignedIn() && canWriteToConv() &&
           request.resource.data.senderId == request.auth.uid;
-        allow update: if isSignedIn() && resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          (isClubAdmin() && convData().type == 'group')
+        );
         allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
     }
