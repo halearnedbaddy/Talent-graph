@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, MessageSquare, Building2, Settings, LogOut,
-  Menu, X, Zap, ChevronRight, Radio, Search
+  Menu, X, Zap, ChevronRight, Radio, Search, Link2
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ import { useCoachNotifications } from '@/hooks/useCoachNotifications';
 const navItems = [
   { href: '/coach-dashboard', label: 'Overview', icon: Home, exact: true },
   { href: '/coach-dashboard/squad', label: 'My Squad', icon: Users },
+  { href: '/coach-dashboard/connect', label: 'Connect', icon: Link2, connectBadge: true },
   { href: '/coach-dashboard/verify', label: 'Verify Athletes', icon: ShieldCheck, pendingBadge: true },
   { href: '/coach-dashboard/match-entry', label: 'Match Entry', icon: Trophy },
   { href: '/coach-dashboard/live-match', label: 'Live Match', icon: Radio },
@@ -48,6 +49,12 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   const { data: memberships } = useCollection<ClubMember>(memberQuery);
   const membership = memberships?.[0];
   const clubId = membership?.clubId ?? null;
+
+  const pendingInviteQuery = useMemoFirebase(() => (
+    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'club_invited')) : null
+  ), [firestore, user]);
+  const { data: pendingInvites } = useCollection<ClubMember>(pendingInviteQuery);
+  const pendingInviteCount = pendingInvites?.length ?? 0;
 
   const { isUserLoading } = useUser();
 
@@ -145,6 +152,11 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
             >
               <item.icon className={cn('h-4 w-4 shrink-0', active && 'text-[#00C853]')} />
               <span className="flex-1 truncate">{item.label}</span>
+              {('connectBadge' in item) && pendingInviteCount > 0 && !active && (
+                <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#00C853] px-1 text-[9px] font-black text-black">
+                  {pendingInviteCount}
+                </span>
+              )}
               {active && <ChevronRight className="h-3 w-3 shrink-0 text-[#00C853]" />}
             </Link>
           );

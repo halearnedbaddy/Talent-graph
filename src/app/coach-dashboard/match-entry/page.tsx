@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Trophy, Plus, ChevronLeft, ChevronRight, Loader2,
-  CheckCircle2, Calendar, MapPin, Users, BarChart3, Star, UserCheck
+  CheckCircle2, Calendar, MapPin, Users, BarChart3, Star, UserCheck, UserPlus, X
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile, ClubMatch, UserAccount } from '@/lib/types';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
@@ -28,7 +28,7 @@ const RESULTS = ['W', 'L', 'D'] as const;
 const STEP_LABELS = ['Match Details', 'Lineup', 'Team Stats', 'Player Stats'];
 
 type PlayerStat = {
-  athleteId: string;
+  athleteId?: string; // undefined for manually-entered players
   name: string;
   position: string;
   goals: number;
@@ -48,6 +48,9 @@ export default function CoachMatchEntryPage() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualPos, setManualPos] = useState('');
+  const [showManualAdd, setShowManualAdd] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<ClubMatch | null>(null);
 
   // Step 1: Match details
@@ -103,10 +106,24 @@ export default function CoachMatchEntryPage() {
     setStep(s => Math.min(s + 1, 3));
   };
 
+  const handleAddManualPlayer = () => {
+    if (!manualName.trim()) return;
+    setPlayerStats(prev => [...prev, {
+      name: manualName.trim(),
+      position: manualPos.trim() || 'N/A',
+      goals: 0, assists: 0, rating: 7, yellowCards: 0, redCards: 0,
+      minutesPlayed: 90, manOfTheMatch: false,
+    }]);
+    setManualName('');
+    setManualPos('');
+    setShowManualAdd(false);
+  };
+
   const handleSaveMatch = async () => {
     if (!firestore || !clubId) return;
     setSaving(true);
     try {
+      const motmPlayer = playerStats.find(ps => ps.manOfTheMatch);
       const matchData = {
         clubId,
         opponent: details.opponent,
@@ -122,13 +139,16 @@ export default function CoachMatchEntryPage() {
         totalRedCards: Number(teamStats.redCards) || 0,
         attendance: Number(teamStats.attendance) || undefined,
         matchReport: teamStats.matchReport || undefined,
+        motmPlayerName: motmPlayer?.name ?? null,
+        motmPlayerId: motmPlayer?.athleteId ?? null,
         createdAt: new Date().toISOString(),
       };
 
       const matchRef = await addDoc(collection(firestore, 'matches'), matchData);
 
-      // Update athlete match histories + recalculate CSI scores
+      // Update athlete match histories + recalculate CSI scores (registered athletes only)
       for (const ps of playerStats) {
+        if (!ps.athleteId) continue; // skip manually-added players — no athlete doc to update
         if (!athletes) continue;
         const athlete = athletes.find(a => a.uid === ps.athleteId);
         if (!athlete) continue;
@@ -208,7 +228,8 @@ export default function CoachMatchEntryPage() {
         }
       }
 
-      toast({ title: 'Match Saved ✓', description: `Match data logged. ${playerStats.length} player profile${playerStats.length !== 1 ? 's' : ''} updated.` });
+      const registeredCount = playerStats.filter(p => p.athleteId).length;
+      toast({ title: 'Match Saved ✓', description: `Match data logged. ${registeredCount} registered player profile${registeredCount !== 1 ? 's' : ''} updated.` });
       setShowForm(false);
       setStep(0);
       setDetails({ opponent: '', competition: '', category: 'league', date: new Date().toISOString().slice(0, 10), location: '', venue: '', result: '', score: '', halfTimeScore: '' });
@@ -420,21 +441,92 @@ export default function CoachMatchEntryPage() {
             {/* STEP 3: Player Stats */}
             {step === 3 && (
               <div className="space-y-3">
-                {playerStats.map((ps, i) => (
-                  <div key={ps.athleteId} className="p-3 rounded-xl bg-[#1C2333] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-black text-white">{ps.name}</p>
-                        <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{ps.position}</p>
+                {/* Add player manually */}
+                {showManualAdd ? (
+                  <div className="p-3 rounded-xl bg-[#1C2333] border border-[#00C853]/30 space-y-2">
+                    <p className="text-[10px] font-black text-[#00C853] uppercase tracking-widest">Add Player Manually</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-0.5">
+                        <Label className="text-[9px] font-black text-[#94A3B8] uppercase">Full Name *</Label>
+                        <Input
+                          placeholder="e.g. John Mwangi"
+                          value={manualName}
+                          onChange={e => setManualName(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddManualPlayer()}
+                          className="bg-[#0A0E1A] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853] h-8 text-sm"
+                        />
                       </div>
-                      <button
-                        onClick={() => setPlayerStats(prev => prev.map((p, j) => j === i ? { ...p, manOfTheMatch: !p.manOfTheMatch } : { ...p, manOfTheMatch: false }))}
-                        className={cn('flex items-center gap-1 text-[9px] font-black uppercase border px-2 py-1 rounded-lg transition-all',
-                          ps.manOfTheMatch ? 'bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/30' : 'text-[#94A3B8] border-[#1E293B] hover:border-[#94A3B8]'
-                        )}
+                      <div className="space-y-0.5">
+                        <Label className="text-[9px] font-black text-[#94A3B8] uppercase">Position</Label>
+                        <Input
+                          placeholder="e.g. ST"
+                          value={manualPos}
+                          onChange={e => setManualPos(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddManualPlayer()}
+                          className="bg-[#0A0E1A] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853] h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleAddManualPlayer}
+                        disabled={!manualName.trim()}
+                        className="flex-1 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase h-7"
                       >
-                        <Star className="h-3 w-3" /> MOTM
-                      </button>
+                        <UserPlus className="h-3 w-3 mr-1" /> Add Player
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setShowManualAdd(false); setManualName(''); setManualPos(''); }}
+                        className="text-[#94A3B8] hover:text-white h-7 px-2"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowManualAdd(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-[#1E293B] text-[#94A3B8] hover:border-[#00C853]/50 hover:text-[#00C853] transition-colors text-[10px] font-black uppercase tracking-wide"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" /> Add Player Manually (not in squad)
+                  </button>
+                )}
+
+                {playerStats.map((ps, i) => (
+                  <div key={ps.athleteId ?? `manual-${i}`} className="p-3 rounded-xl bg-[#1C2333] space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-white truncate">{ps.name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{ps.position}</p>
+                            {!ps.athleteId && (
+                              <span className="text-[8px] font-black text-[#4B5563] uppercase border border-[#1E293B] px-1 rounded">manual</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setPlayerStats(prev => prev.map((p, j) => j === i ? { ...p, manOfTheMatch: !p.manOfTheMatch } : { ...p, manOfTheMatch: false }))}
+                          className={cn('flex items-center gap-1 text-[9px] font-black uppercase border px-2 py-1 rounded-lg transition-all',
+                            ps.manOfTheMatch ? 'bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/30' : 'text-[#94A3B8] border-[#1E293B] hover:border-[#94A3B8]'
+                          )}
+                        >
+                          <Star className="h-3 w-3" /> MOTM
+                        </button>
+                        {!ps.athleteId && (
+                          <button
+                            onClick={() => setPlayerStats(prev => prev.filter((_, j) => j !== i))}
+                            className="flex items-center justify-center h-7 w-7 rounded-lg border border-[#1E293B] text-[#4B5563] hover:text-red-400 hover:border-red-500/30 transition-all"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {[
