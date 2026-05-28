@@ -1,665 +1,919 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  Trophy, Plus, ChevronLeft, ChevronRight, Loader2,
-  CheckCircle2, Calendar, MapPin, Users, BarChart3, Star, UserCheck, UserPlus, X
-} from 'lucide-react';
-import type { ClubMember, AthleteProfile, ClubMatch, UserAccount } from '@/lib/types';
+import { Loader2 } from 'lucide-react';
+import type { ClubMember, AthleteProfile, UserAccount } from '@/lib/types';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO } from 'date-fns';
 
-function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(' '); }
+const cardReasons = ['Foul', 'Dissent', 'Time Wasting', 'Handball', 'Simulation', 'Violent Conduct', 'Two Yellow Cards'];
+const goalTypes = ['Open Play', 'Penalty', 'Free Kick', 'Header', 'Own Goal', 'Counter Attack'];
 
-const CATEGORIES = ['league', 'cup', 'friendly', 'national'];
-const RESULTS = ['W', 'L', 'D'] as const;
-
-const STEP_LABELS = ['Match Details', 'Lineup', 'Team Stats', 'Player Stats'];
+type SquadPlayer = { id: string; name: string; number: number | null; position: string };
 
 type PlayerStat = {
-  athleteId?: string; // undefined for manually-entered players
-  name: string;
-  position: string;
+  id: string;
+  athleteId?: string;
+  apps: number;
+  sub: number;
+  subbed: number;
   goals: number;
   assists: number;
+  cleanSheet: boolean;
+  pom: boolean;
   rating: number;
   yellowCards: number;
   redCards: number;
-  minutesPlayed: number;
-  manOfTheMatch: boolean;
+  mins: number;
 };
+
+type GoalEvent = { id: number; scorer: string | null; assister: string | null; minute: string; type: string; ownGoal: boolean };
+type CardEvent  = { id: number; player: string | null; type: string; minute: string; reason: string };
+
+function PlayerPicker({ players, value, onChange, placeholder = 'Select player...' }: {
+  players: SquadPlayer[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = players.find(p => p.id === value);
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8,
+          padding: '10px 14px', cursor: 'pointer', display: 'flex',
+          justifyContent: 'space-between', alignItems: 'center', color: selected ? '#fff' : '#555',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {selected?.number != null && (
+            <span style={{ background: '#00d4aa', color: '#000', fontWeight: 800, borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>
+              {selected.number}
+            </span>
+          )}
+          {selected ? `${selected.name} · ${selected.position}` : placeholder}
+        </span>
+        <span style={{ color: '#00d4aa', fontSize: 12 }}>▼</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 100, top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: '#12122a', border: '1px solid #2a2a4a', borderRadius: 10,
+          maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        }}>
+          <div
+            onClick={() => { onChange(null); setOpen(false); }}
+            style={{ padding: '10px 14px', color: '#555', cursor: 'pointer', borderBottom: '1px solid #1a1a3a', fontSize: 13 }}
+          >— None —</div>
+          {players.map(p => (
+            <div
+              key={p.id}
+              onClick={() => { onChange(p.id); setOpen(false); }}
+              style={{
+                padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                gap: 12, color: '#e0e0f0', background: value === p.id ? '#1e1e40' : 'transparent',
+                borderBottom: '1px solid #1a1a3a', transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#1e1e40')}
+              onMouseLeave={e => (e.currentTarget.style.background = value === p.id ? '#1e1e40' : 'transparent')}
+            >
+              {p.number != null && (
+                <span style={{ background: '#00d4aa', color: '#000', fontWeight: 800, borderRadius: 4, padding: '2px 7px', fontSize: 11, minWidth: 28, textAlign: 'center' }}>
+                  {p.number}
+                </span>
+              )}
+              <span style={{ fontWeight: 600 }}>{p.name}</span>
+              <span style={{ marginLeft: 'auto', color: '#00d4aa', fontSize: 11, fontWeight: 700 }}>{p.position}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatInput({ label, value, onChange, min = 0, max = 99 }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button onClick={() => onChange(Math.max(min, value - 1))} style={{ width: 30, height: 30, background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 6, color: '#00d4aa', fontSize: 16, cursor: 'pointer' }}>−</button>
+        <span style={{ minWidth: 36, textAlign: 'center', color: '#fff', fontWeight: 700, fontSize: 16 }}>{value}</span>
+        <button onClick={() => onChange(Math.min(max, value + 1))} style={{ width: 30, height: 30, background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 6, color: '#00d4aa', fontSize: 16, cursor: 'pointer' }}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function RatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Rating</label>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {[1,2,3,4,5,6,7,8,9,10].map(n => (
+          <div
+            key={n}
+            onClick={() => onChange(n)}
+            style={{
+              width: 24, height: 24, borderRadius: 4, cursor: 'pointer',
+              background: n <= value ? (value >= 8 ? '#00d4aa' : value >= 5 ? '#f5a623' : '#e74c3c') : '#1a1a2e',
+              border: `1px solid ${n <= value ? 'transparent' : '#2a2a4a'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: n <= value ? '#000' : '#444', fontSize: 9, fontWeight: 800, transition: 'all 0.15s',
+            }}
+          >{n}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function CoachMatchEntryPage() {
   const { user } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [manualName, setManualName] = useState('');
-  const [manualPos, setManualPos] = useState('');
-  const [showManualAdd, setShowManualAdd] = useState(false);
-  const [selectedMatch, setSelectedMatch] = useState<ClubMatch | null>(null);
+  const [page, setPage]       = useState(1);
+  const [statsTab, setStatsTab] = useState('player');
+  const [saving, setSaving]   = useState(false);
 
-  // Step 1: Match details
-  const [details, setDetails] = useState({
-    opponent: '', competition: '', category: 'league' as ClubMatch['category'],
-    date: new Date().toISOString().slice(0, 10), location: '', venue: '',
-    result: '' as '' | 'W' | 'L' | 'D', score: '', halfTimeScore: '',
+  const [match, setMatch] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    opponent: '', venue: 'Home', competition: '',
+    kickoff: '', season: '2025/26',
   });
-  // Step 3: Team stats
-  const [teamStats, setTeamStats] = useState({
-    shotsOnTarget: '', shotsOffTarget: '', corners: '', fouls: '',
-    yellowCards: '', redCards: '', attendance: '', matchReport: '',
-  });
-  // Step 4: Player stats
+
   const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
 
+  const [teamStats, setTeamStats] = useState({
+    goalsFor: 0, goalsAgainst: 0, result: 'Draw',
+    cleanSheet: false, failedToScore: false, possession: 50,
+    shotsOnTarget: 0, shotsOffTarget: 0, corners: 0, fouls: 0,
+    attendance: 0, matchReport: '',
+  });
+
+  const [goals, setGoals]           = useState<GoalEvent[]>([]);
+  const [newGoal, setNewGoal]       = useState<GoalEvent>({ id: 0, scorer: null, assister: null, minute: '', type: 'Open Play', ownGoal: false });
+  const [discipline, setDiscipline] = useState<CardEvent[]>([]);
+  const [newCard, setNewCard]       = useState<CardEvent>({ id: 0, player: null, type: 'Yellow', minute: '', reason: 'Foul' });
+  const [motm, setMotm]             = useState<string | null>(null);
+
+  // Firebase data
   const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
+    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
   ), [firestore, user]);
   const { data: memberships } = useCollection<ClubMember>(memberQuery);
   const clubId = memberships?.[0]?.clubId;
 
-  const matchesQuery = useMemoFirebase(() => (
-    firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
-  ), [firestore, clubId]);
-  const { data: matches, isLoading: matchesLoading } = useCollection<ClubMatch>(matchesQuery);
-
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
   ), [firestore, clubId]);
-  const { data: athletes } = useCollection<AthleteProfile>(athletesQuery);
+  const { data: athletes, isLoading: athletesLoading } = useCollection<AthleteProfile>(athletesQuery);
+
+  const matchesQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
+  ), [firestore, clubId]);
+  const { data: matches } = useCollection<any>(matchesQuery);
 
   const sortedMatches = useMemo(() => {
     if (!matches) return [];
-    return [...matches].sort((a, b) => b.date.localeCompare(a.date));
+    return [...matches].sort((a, b) => b.date?.localeCompare(a.date ?? '') ?? 0);
   }, [matches]);
 
+  // Map athletes to squad players
+  const squadPlayers: SquadPlayer[] = useMemo(() => {
+    if (!athletes) return [];
+    return athletes.map(a => ({
+      id: a.uid,
+      name: `${a.firstName} ${a.lastName}`,
+      number: a.jerseyNumber ?? null,
+      position: a.position ?? '',
+    }));
+  }, [athletes]);
+
+  // Init player stats when athletes load or when entering page 2
   const initPlayerStats = () => {
     if (!athletes) return;
     setPlayerStats(athletes.map(a => ({
+      id: a.uid,
       athleteId: a.uid,
-      name: `${a.firstName} ${a.lastName}`,
-      position: a.position ?? '',
-      goals: 0, assists: 0, rating: 7, yellowCards: 0, redCards: 0,
-      minutesPlayed: 90, manOfTheMatch: false,
+      apps: 1, sub: 0, subbed: 0,
+      goals: 0, assists: 0,
+      cleanSheet: false, pom: false,
+      rating: 7, yellowCards: 0, redCards: 0, mins: 90,
     })));
   };
 
-  const handleNext = () => {
-    if (step === 1) initPlayerStats();
-    setStep(s => Math.min(s + 1, 3));
+  const updatePlayerStat = (playerId: string, field: keyof PlayerStat, value: any) => {
+    setPlayerStats(prev => prev.map(p => p.id === playerId ? { ...p, [field]: value } : p));
   };
 
-  const handleAddManualPlayer = () => {
-    if (!manualName.trim()) return;
-    setPlayerStats(prev => [...prev, {
-      name: manualName.trim(),
-      position: manualPos.trim() || 'N/A',
-      goals: 0, assists: 0, rating: 7, yellowCards: 0, redCards: 0,
-      minutesPlayed: 90, manOfTheMatch: false,
-    }]);
-    setManualName('');
-    setManualPos('');
-    setShowManualAdd(false);
+  const addGoal = () => {
+    if (!newGoal.minute) return;
+    const entry = { ...newGoal, id: Date.now() };
+    setGoals(prev => [...prev, entry]);
+    if (newGoal.scorer) {
+      const cur = playerStats.find(p => p.id === newGoal.scorer)?.goals ?? 0;
+      updatePlayerStat(newGoal.scorer, 'goals', cur + 1);
+    }
+    if (newGoal.assister) {
+      const cur = playerStats.find(p => p.id === newGoal.assister)?.assists ?? 0;
+      updatePlayerStat(newGoal.assister, 'assists', cur + 1);
+    }
+    if (!newGoal.ownGoal) {
+      setTeamStats(prev => ({ ...prev, goalsFor: prev.goalsFor + 1 }));
+    }
+    setNewGoal({ id: 0, scorer: null, assister: null, minute: '', type: 'Open Play', ownGoal: false });
   };
 
-  const handleSaveMatch = async () => {
-    if (!firestore || !clubId) return;
+  const addCard = () => {
+    if (!newCard.player || !newCard.minute) return;
+    setDiscipline(prev => [...prev, { ...newCard, id: Date.now() }]);
+    const field: keyof PlayerStat = newCard.type === 'Red' ? 'redCards' : 'yellowCards';
+    const cur = (playerStats.find(p => p.id === newCard.player)?.[field] as number) ?? 0;
+    updatePlayerStat(newCard.player, field, cur + 1);
+    setNewCard({ id: 0, player: null, type: 'Yellow', minute: '', reason: 'Foul' });
+  };
+
+  const getPlayer = (id: string | null) => squadPlayers.find(p => p.id === id);
+
+  // Export
+  const exportData = () => {
+    const data = {
+      match, teamStats,
+      playerStats: playerStats.map(ps => ({ ...ps, playerName: getPlayer(ps.id)?.name })),
+      goals: goals.map(g => ({ ...g, scorerName: getPlayer(g.scorer)?.name, assisterName: getPlayer(g.assister)?.name })),
+      discipline: discipline.map(d => ({ ...d, playerName: getPlayer(d.player)?.name })),
+      motm: getPlayer(motm)?.name ?? null,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `match_${match.opponent || 'entry'}_${match.date || 'draft'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (data.match)      setMatch(data.match);
+        if (data.teamStats)  setTeamStats(data.teamStats);
+        if (data.goals)      setGoals(data.goals);
+        if (data.discipline) setDiscipline(data.discipline);
+        toast({ title: '✅ Data imported successfully!' });
+      } catch {
+        toast({ title: '❌ Invalid file format', variant: 'destructive' });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Save to Firestore
+  const handleSave = async (draft = false) => {
+    if (!firestore || !clubId || !user) return;
     setSaving(true);
     try {
-      const motmPlayer = playerStats.find(ps => ps.manOfTheMatch);
+      const resultMap: Record<string, string> = { Win: 'W', Draw: 'D', Loss: 'L' };
+      const motmPlayer = playerStats.find(ps => ps.pom);
       const matchData = {
         clubId,
-        opponent: details.opponent,
-        competition: details.competition,
-        category: details.category,
-        date: details.date,
-        location: details.location,
-        venue: details.venue,
-        result: details.result || undefined,
-        score: details.score || undefined,
-        halfTimeScore: details.halfTimeScore || undefined,
-        totalYellowCards: Number(teamStats.yellowCards) || 0,
-        totalRedCards: Number(teamStats.redCards) || 0,
-        attendance: Number(teamStats.attendance) || undefined,
-        matchReport: teamStats.matchReport || undefined,
-        motmPlayerName: motmPlayer?.name ?? null,
+        opponent: match.opponent,
+        competition: match.competition,
+        category: 'league',
+        date: match.date,
+        venue: match.venue,
+        kickoff: match.kickoff || null,
+        season: match.season,
+        result: resultMap[teamStats.result] ?? 'D',
+        score: `${teamStats.goalsFor}-${teamStats.goalsAgainst}`,
+        goalsFor: teamStats.goalsFor,
+        goalsAgainst: teamStats.goalsAgainst,
+        possession: teamStats.possession,
+        cleanSheet: teamStats.cleanSheet,
+        failedToScore: teamStats.failedToScore,
+        shotsOnTarget: teamStats.shotsOnTarget,
+        shotsOffTarget: teamStats.shotsOffTarget,
+        corners: teamStats.corners,
+        fouls: teamStats.fouls,
+        attendance: teamStats.attendance || null,
+        matchReport: teamStats.matchReport || null,
+        totalYellowCards: discipline.filter(d => d.type === 'Yellow' || d.type === '2nd Yellow').length,
+        totalRedCards: discipline.filter(d => d.type === 'Red').length,
+        goals: goals.map(g => ({
+          scorerId: g.scorer, scorerName: getPlayer(g.scorer)?.name ?? null,
+          assisterId: g.assister, assisterName: getPlayer(g.assister)?.name ?? null,
+          minute: g.minute, type: g.type, ownGoal: g.ownGoal,
+        })),
+        motmPlayerName: motmPlayer ? getPlayer(motmPlayer.id)?.name ?? null : null,
         motmPlayerId: motmPlayer?.athleteId ?? null,
+        isDraft: draft,
         createdAt: new Date().toISOString(),
       };
 
       const matchRef = await addDoc(collection(firestore, 'matches'), matchData);
 
-      // Update athlete match histories + recalculate CSI scores (registered athletes only)
-      for (const ps of playerStats) {
-        if (!ps.athleteId) continue; // skip manually-added players — no athlete doc to update
-        if (!athletes) continue;
-        const athlete = athletes.find(a => a.uid === ps.athleteId);
-        if (!athlete) continue;
-        const existing = athlete.matchHistory ?? [];
-        const newEntry = {
-          id: matchRef.id,
-          competition: details.competition,
-          category: details.category,
-          opponent: details.opponent,
-          apps: 1,
-          minutes: ps.minutesPlayed,
-          rating: ps.rating,
-          goals: ps.goals,
-          assists: ps.assists,
-          shots: 0, duelsWon: 0, fouls: 0, saves: 0,
-          yellowCards: ps.yellowCards,
-          redCards: ps.redCards,
-          manOfTheMatch: ps.manOfTheMatch,
-          isVerified: true,
-          statsLogged: true,
-          updatedAt: new Date().toISOString(),
-          clubMatchId: matchRef.id,
-        };
-        const updatedHistory = [...existing, newEntry];
-
-        // Recalculate CSI
-        let scoreUpdates: Record<string, any> = {};
-        try {
-          const userSnap = await getDoc(doc(firestore, 'users', ps.athleteId));
-          const userAccount = (userSnap.exists() ? userSnap.data() : {}) as UserAccount;
-          scoreUpdates = calculateTalentGraphScore({ ...athlete, matchHistory: updatedHistory }, userAccount);
-        } catch (csiErr: any) {
-          toast({
-            title: 'Score recalculation failed',
-            description: `Match stats saved, but CSI score could not be updated for ${ps.name}: ${csiErr?.message ?? 'unknown error'}`,
-            variant: 'destructive',
+      if (!draft) {
+        for (const ps of playerStats) {
+          if (!ps.athleteId || !athletes) continue;
+          const athlete = athletes.find(a => a.uid === ps.athleteId);
+          if (!athlete) continue;
+          const existing = athlete.matchHistory ?? [];
+          const newEntry = {
+            id: matchRef.id, competition: match.competition, category: 'league',
+            opponent: match.opponent, apps: ps.apps, minutes: ps.mins, rating: ps.rating,
+            goals: ps.goals, assists: ps.assists, shots: 0, duelsWon: 0, fouls: 0,
+            saves: 0, yellowCards: ps.yellowCards, redCards: ps.redCards,
+            cleanSheet: ps.cleanSheet, manOfTheMatch: ps.pom,
+            isVerified: true, statsLogged: true,
+            updatedAt: new Date().toISOString(), clubMatchId: matchRef.id,
+          };
+          const updatedHistory = [...existing, newEntry];
+          let scoreUpdates: Record<string, any> = {};
+          try {
+            const userSnap = await getDoc(doc(firestore, 'users', ps.athleteId));
+            const userAccount = (userSnap.exists() ? userSnap.data() : {}) as UserAccount;
+            scoreUpdates = calculateTalentGraphScore({ ...athlete, matchHistory: updatedHistory }, userAccount);
+          } catch {}
+          await updateDoc(doc(firestore, 'athletes', ps.athleteId), {
+            matchHistory: updatedHistory, ...scoreUpdates, updatedAt: new Date().toISOString(),
           });
-        }
-
-        await updateDoc(doc(firestore, 'athletes', ps.athleteId), {
-          matchHistory: updatedHistory,
-          ...scoreUpdates,
-          updatedAt: new Date().toISOString(),
-        });
-
-        // Create a pending confirmation request so the athlete can verify their stats
-        try {
-          await addDoc(collection(firestore, 'match_confirmations'), {
-            athleteId: ps.athleteId,
-            matchId: matchRef.id,
-            clubId,
-            opponent: details.opponent,
-            competition: details.competition,
-            date: details.date,
-            category: details.category,
-            stats: {
-              goals: ps.goals,
-              assists: ps.assists,
-              minutes: ps.minutesPlayed,
-              rating: ps.rating,
-              yellowCards: ps.yellowCards,
-              redCards: ps.redCards,
-              shots: 0,
-              duelsWon: 0,
-              fouls: 0,
-              saves: 0,
-              cleanSheet: false,
-              manOfTheMatch: ps.manOfTheMatch,
-            },
-            status: 'pending',
-            enteredBy: user!.uid,
-            enteredByRole: 'coach',
-            createdAt: new Date().toISOString(),
-          });
-        } catch {
-          // Confirmation write failed silently — stats already saved
+          try {
+            await addDoc(collection(firestore, 'match_confirmations'), {
+              athleteId: ps.athleteId, matchId: matchRef.id, clubId,
+              opponent: match.opponent, competition: match.competition,
+              date: match.date, category: 'league',
+              stats: {
+                goals: ps.goals, assists: ps.assists, minutes: ps.mins, rating: ps.rating,
+                yellowCards: ps.yellowCards, redCards: ps.redCards,
+                shots: 0, duelsWon: 0, fouls: 0, saves: 0,
+                cleanSheet: ps.cleanSheet, manOfTheMatch: ps.pom,
+              },
+              status: 'pending', enteredBy: user.uid, enteredByRole: 'coach',
+              createdAt: new Date().toISOString(),
+            });
+          } catch {}
         }
       }
 
-      const registeredCount = playerStats.filter(p => p.athleteId).length;
-      toast({ title: 'Match Saved ✓', description: `Match data logged. ${registeredCount} registered player profile${registeredCount !== 1 ? 's' : ''} updated.` });
-      setShowForm(false);
-      setStep(0);
-      setDetails({ opponent: '', competition: '', category: 'league', date: new Date().toISOString().slice(0, 10), location: '', venue: '', result: '', score: '', halfTimeScore: '' });
-    } catch (e) {
+      toast({ title: draft ? '💾 Saved as draft' : '✓ Match published!', description: draft ? 'You can continue editing later.' : `${playerStats.filter(p => p.athleteId).length} player profiles updated.` });
+      // Reset
+      setPage(1);
+      setMatch({ date: new Date().toISOString().slice(0, 10), opponent: '', venue: 'Home', competition: '', kickoff: '', season: '2025/26' });
+      setTeamStats({ goalsFor: 0, goalsAgainst: 0, result: 'Draw', cleanSheet: false, failedToScore: false, possession: 50, shotsOnTarget: 0, shotsOffTarget: 0, corners: 0, fouls: 0, attendance: 0, matchReport: '' });
+      setGoals([]); setDiscipline([]); setMotm(null); setPlayerStats([]);
+    } catch {
       toast({ title: 'Error', description: 'Could not save match.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
   };
 
-  if (showForm) {
-    return (
-      <div className="space-y-5 max-w-2xl mx-auto">
-        {/* Step indicator */}
-        <div className="flex items-center gap-1">
-          {STEP_LABELS.map((label, i) => (
-            <div key={i} className="flex items-center gap-1 flex-1">
-              <div className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-black shrink-0 transition-all',
-                i < step ? 'bg-[#00C853] text-black' : i === step ? 'bg-[#00C853]/20 text-[#00C853] border border-[#00C853]' : 'bg-[#1C2333] text-[#94A3B8]'
-              )}>
-                {i < step ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
-              </div>
-              <span className={cn('text-[9px] font-black uppercase tracking-wide hidden sm:block', i === step ? 'text-[#00C853]' : 'text-[#94A3B8]')}>
-                {label}
-              </span>
-              {i < 3 && <div className="flex-1 h-px bg-[#1E293B] mx-1" />}
-            </div>
-          ))}
+  const inputStyle: React.CSSProperties = {
+    background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8,
+    color: '#fff', padding: '10px 14px', fontSize: 14, width: '100%', outline: 'none',
+    fontFamily: "'Rajdhani', sans-serif", boxSizing: 'border-box',
+  };
+  const sectionStyle: React.CSSProperties = {
+    background: 'linear-gradient(135deg, #0d0d1f 0%, #12122a 100%)',
+    border: '1px solid #1e1e3a', borderRadius: 12, padding: 18, marginBottom: 14,
+  };
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '10px 4px', background: active ? '#00d4aa' : 'transparent',
+    border: 'none', borderRadius: 8, color: active ? '#000' : '#666',
+    fontWeight: 800, fontSize: 11, cursor: 'pointer', letterSpacing: 1,
+    textTransform: 'uppercase', transition: 'all 0.2s', fontFamily: "'Rajdhani', sans-serif",
+  });
+  const labelStyle: React.CSSProperties = {
+    color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1,
+    textTransform: 'uppercase', display: 'block', marginBottom: 6,
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#080818', fontFamily: "'Rajdhani', 'Oswald', sans-serif", color: '#e0e0f0', maxWidth: 520, margin: '0 auto' }}>
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
+
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, #0a0a20 0%, #0d1635 100%)', borderBottom: '2px solid #00d4aa', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div>
+          <div style={{ fontSize: 11, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' }}>Talent Graph</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: 1 }}>Match Entry</div>
         </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#aaa', letterSpacing: 1 }}>
+            ⬆ IMPORT
+            <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
+          </label>
+          <button onClick={exportData} style={{ background: 'linear-gradient(135deg, #00d4aa, #00a882)', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer', color: '#000', letterSpacing: 1 }}>
+            ⬇ EXPORT
+          </button>
+        </div>
+      </div>
 
-        <Card className="border border-[#1E293B] bg-[#111827]">
-          <CardHeader className="p-4 pb-0">
-            <CardTitle className="text-sm font-black text-white uppercase tracking-wide">
-              Step {step + 1}: {STEP_LABELS[step]}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
+      {/* Progress Steps */}
+      <div style={{ display: 'flex', padding: '14px 20px', gap: 6 }}>
+        {['Match Details', 'Stats Entry', 'Save Match'].map((label, i) => (
+          <div key={i} onClick={() => setPage(i + 1)} style={{ flex: 1, cursor: 'pointer' }}>
+            <div style={{ height: 4, borderRadius: 2, marginBottom: 6, background: page > i ? '#00d4aa' : page === i + 1 ? '#00d4aa' : '#1a1a3a', opacity: page === i + 1 ? 1 : page > i ? 0.7 : 0.3 }} />
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: page === i + 1 ? '#00d4aa' : page > i ? '#555' : '#333', textAlign: 'center' }}>{label}</div>
+          </div>
+        ))}
+      </div>
 
-            {/* STEP 0: Match Details */}
-            {step === 0 && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Opponent *</Label>
-                    <Input
-                      placeholder="e.g. Gor Mahia FC"
-                      value={details.opponent}
-                      onChange={e => setDetails(d => ({ ...d, opponent: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Competition *</Label>
-                    <Input
-                      placeholder="e.g. KPL Season 2025"
-                      value={details.competition}
-                      onChange={e => setDetails(d => ({ ...d, competition: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Category</Label>
-                    <Select value={details.category} onValueChange={v => setDetails(d => ({ ...d, category: v as any }))}>
-                      <SelectTrigger className="bg-[#1C2333] border-[#1E293B] text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#1C2333] border-[#1E293B]">
-                        {CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-white capitalize font-bold">{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Date *</Label>
-                    <Input
-                      type="date"
-                      value={details.date}
-                      onChange={e => setDetails(d => ({ ...d, date: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Result</Label>
-                    <div className="flex gap-2">
-                      {RESULTS.map(r => (
-                        <button
-                          key={r}
-                          onClick={() => setDetails(d => ({ ...d, result: d.result === r ? '' : r }))}
-                          className={cn(
-                            'flex-1 h-10 rounded-xl font-black text-sm border transition-all',
-                            details.result === r
-                              ? r === 'W' ? 'bg-[#00C853] text-black border-[#00C853]'
-                                : r === 'L' ? 'bg-red-500 text-white border-red-500'
-                                  : 'bg-[#94A3B8] text-black border-[#94A3B8]'
-                              : 'bg-[#1C2333] text-[#94A3B8] border-[#1E293B] hover:border-[#94A3B8]'
-                          )}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Score (FT)</Label>
-                    <Input
-                      placeholder="e.g. 2-1"
-                      value={details.score}
-                      onChange={e => setDetails(d => ({ ...d, score: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Half-Time Score</Label>
-                    <Input
-                      placeholder="e.g. 1-0"
-                      value={details.halfTimeScore}
-                      onChange={e => setDetails(d => ({ ...d, halfTimeScore: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Location</Label>
-                    <Input
-                      placeholder="e.g. Nairobi"
-                      value={details.location}
-                      onChange={e => setDetails(d => ({ ...d, location: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Venue</Label>
-                    <Input
-                      placeholder="e.g. Kasarani Stadium"
-                      value={details.venue}
-                      onChange={e => setDetails(d => ({ ...d, venue: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853]"
-                    />
-                  </div>
+      <div style={{ padding: '0 16px 120px' }}>
+
+        {/* ── PAGE 1: MATCH DETAILS ── */}
+        {page === 1 && (
+          <div>
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>⚽ Match Information</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Date</label>
+                  <input type="date" value={match.date} onChange={e => setMatch({ ...match, date: e.target.value })} style={inputStyle} />
                 </div>
-              </>
-            )}
+                <div>
+                  <label style={labelStyle}>Kickoff</label>
+                  <input type="time" value={match.kickoff} onChange={e => setMatch({ ...match, kickoff: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
+            </div>
 
-            {/* STEP 1: Lineup (simplified — show squad list) */}
-            {step === 1 && (
-              <div className="space-y-3">
-                <p className="text-[11px] font-bold text-[#94A3B8]">
-                  Review your squad. Player stats will be entered in the next step.
-                </p>
-                {athletes && athletes.length > 0 ? (
-                  <div className="space-y-2">
-                    {athletes.map(a => (
-                      <div key={a.uid} className="flex items-center gap-3 p-2 rounded-lg bg-[#1C2333]">
-                        <Avatar className="h-8 w-8 rounded-lg shrink-0">
-                          <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-xs font-black">
-                            {a.firstName[0]}{a.lastName[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-white truncate">{a.firstName} {a.lastName}</p>
-                          <p className="text-[9px] text-[#94A3B8] font-bold uppercase">{a.position}</p>
-                        </div>
-                        {a.jerseyNumber && (
-                          <span className="text-[10px] font-black text-[#94A3B8]">#{a.jerseyNumber}</span>
-                        )}
-                      </div>
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>🏟️ Fixture Details</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Opponent</label>
+                  <input placeholder="e.g. Gor Mahia FC" value={match.opponent} onChange={e => setMatch({ ...match, opponent: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Venue</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['Home', 'Away', 'Neutral'].map(v => (
+                      <button key={v} onClick={() => setMatch({ ...match, venue: v })} style={{ flex: 1, padding: '10px 0', background: match.venue === v ? '#00d4aa' : '#1a1a2e', border: `1px solid ${match.venue === v ? '#00d4aa' : '#2a2a4a'}`, borderRadius: 8, color: match.venue === v ? '#000' : '#666', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: "'Rajdhani', sans-serif" }}>
+                        {v.toUpperCase()}
+                      </button>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-[#94A3B8] text-sm text-center py-4">No squad athletes yet. Add athletes via My Squad.</p>
-                )}
+                </div>
+                <div>
+                  <label style={labelStyle}>Competition</label>
+                  <input placeholder="e.g. Kenya Premier League" value={match.competition} onChange={e => setMatch({ ...match, competition: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Season</label>
+                  <input value={match.season} onChange={e => setMatch({ ...match, season: e.target.value })} style={inputStyle} />
+                </div>
               </div>
-            )}
+            </div>
 
-            {/* STEP 2: Team Stats */}
-            {step === 2 && (
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { key: 'shotsOnTarget', label: 'Shots on Target' },
-                  { key: 'shotsOffTarget', label: 'Shots off Target' },
-                  { key: 'corners', label: 'Corners' },
-                  { key: 'fouls', label: 'Fouls' },
-                  { key: 'yellowCards', label: 'Yellow Cards' },
-                  { key: 'redCards', label: 'Red Cards' },
-                  { key: 'attendance', label: 'Attendance' },
-                ].map(f => (
-                  <div key={f.key} className="space-y-1">
-                    <Label className="text-[10px] font-black text-[#94A3B8] uppercase">{f.label}</Label>
-                    <Input
-                      type="number" min="0"
-                      value={(teamStats as any)[f.key]}
-                      onChange={e => setTeamStats(s => ({ ...s, [f.key]: e.target.value }))}
-                      className="bg-[#1C2333] border-[#1E293B] text-white focus:border-[#00C853]"
-                    />
-                  </div>
-                ))}
-                <div className="col-span-2 space-y-1">
-                  <Label className="text-[10px] font-black text-[#94A3B8] uppercase">Match Report</Label>
-                  <Textarea
-                    placeholder="Optional match notes..."
-                    value={teamStats.matchReport}
-                    onChange={e => setTeamStats(s => ({ ...s, matchReport: e.target.value }))}
-                    className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] focus:border-[#00C853] resize-none"
-                    rows={3}
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>📊 Result</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6, fontWeight: 700, letterSpacing: 1 }}>YOUR TEAM</div>
+                  <input
+                    type="number" min="0" max="20"
+                    value={teamStats.goalsFor}
+                    onChange={e => setTeamStats({ ...teamStats, goalsFor: parseInt(e.target.value) || 0 })}
+                    style={{ ...inputStyle, fontSize: 36, textAlign: 'center', padding: '14px 0', fontWeight: 800 }}
+                  />
+                </div>
+                <div style={{ color: '#333', fontWeight: 800, fontSize: 20 }}>—</div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6, fontWeight: 700, letterSpacing: 1 }}>OPPONENT</div>
+                  <input
+                    type="number" min="0" max="20"
+                    value={teamStats.goalsAgainst}
+                    onChange={e => setTeamStats({ ...teamStats, goalsAgainst: parseInt(e.target.value) || 0 })}
+                    style={{ ...inputStyle, fontSize: 36, textAlign: 'center', padding: '14px 0', fontWeight: 800 }}
                   />
                 </div>
               </div>
-            )}
+              <div style={{ marginTop: 12 }}>
+                <label style={labelStyle}>Possession %</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input type="range" min="0" max="100" value={teamStats.possession}
+                    onChange={e => setTeamStats({ ...teamStats, possession: parseInt(e.target.value) })}
+                    style={{ flex: 1, accentColor: '#00d4aa' } as any} />
+                  <span style={{ color: '#00d4aa', fontWeight: 800, fontSize: 18, minWidth: 44 }}>{teamStats.possession}%</span>
+                </div>
+              </div>
+            </div>
 
-            {/* STEP 3: Player Stats */}
-            {step === 3 && (
-              <div className="space-y-3">
-                {/* Add player manually */}
-                {showManualAdd ? (
-                  <div className="p-3 rounded-xl bg-[#1C2333] border border-[#00C853]/30 space-y-2">
-                    <p className="text-[10px] font-black text-[#00C853] uppercase tracking-widest">Add Player Manually</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-0.5">
-                        <Label className="text-[9px] font-black text-[#94A3B8] uppercase">Full Name *</Label>
-                        <Input
-                          placeholder="e.g. John Mwangi"
-                          value={manualName}
-                          onChange={e => setManualName(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleAddManualPlayer()}
-                          className="bg-[#0A0E1A] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853] h-8 text-sm"
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <Label className="text-[9px] font-black text-[#94A3B8] uppercase">Position</Label>
-                        <Input
-                          placeholder="e.g. ST"
-                          value={manualPos}
-                          onChange={e => setManualPos(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleAddManualPlayer()}
-                          className="bg-[#0A0E1A] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853] h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleAddManualPlayer}
-                        disabled={!manualName.trim()}
-                        className="flex-1 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase h-7"
-                      >
-                        <UserPlus className="h-3 w-3 mr-1" /> Add Player
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => { setShowManualAdd(false); setManualName(''); setManualPos(''); }}
-                        className="text-[#94A3B8] hover:text-white h-7 px-2"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>🏆 Man of the Match</div>
+              {athletesLoading ? (
+                <div style={{ color: '#555', fontSize: 13 }}>Loading squad...</div>
+              ) : (
+                <PlayerPicker players={squadPlayers} value={motm} onChange={setMotm} placeholder="Select man of the match..." />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── PAGE 2: STATS ENTRY ── */}
+        {page === 2 && (
+          <div>
+            <div style={{ display: 'flex', gap: 4, background: '#0d0d1f', borderRadius: 10, padding: 4, marginBottom: 16 }}>
+              {(['player', 'team', 'goal', 'discipline'] as const).map(tab => (
+                <button key={tab} onClick={() => setStatsTab(tab)} style={tabStyle(statsTab === tab)}>
+                  {tab === 'player' ? '👤' : tab === 'team' ? '🏟️' : tab === 'goal' ? '⚽' : '🟨'} {tab.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* PLAYER STATS */}
+            {statsTab === 'player' && (
+              <div>
+                {athletesLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+                    <Loader2 style={{ width: 32, height: 32, color: '#00d4aa', animation: 'spin 1s linear infinite' }} />
+                  </div>
+                ) : squadPlayers.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#555' }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: '#888' }}>No squad athletes yet</div>
+                    <div style={{ fontSize: 13, marginTop: 4 }}>Add athletes via My Squad first.</div>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setShowManualAdd(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-[#1E293B] text-[#94A3B8] hover:border-[#00C853]/50 hover:text-[#00C853] transition-colors text-[10px] font-black uppercase tracking-wide"
-                  >
-                    <UserPlus className="h-3.5 w-3.5" /> Add Player Manually (not in squad)
-                  </button>
-                )}
-
-                {playerStats.map((ps, i) => (
-                  <div key={ps.athleteId ?? `manual-${i}`} className="p-3 rounded-xl bg-[#1C2333] space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="min-w-0">
-                          <p className="text-sm font-black text-white truncate">{ps.name}</p>
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{ps.position}</p>
-                            {!ps.athleteId && (
-                              <span className="text-[8px] font-black text-[#4B5563] uppercase border border-[#1E293B] px-1 rounded">manual</span>
-                            )}
+                  squadPlayers.map(player => {
+                    let ps = playerStats.find(p => p.id === player.id);
+                    if (!ps) {
+                      const defaultStat: PlayerStat = { id: player.id, athleteId: player.id, apps: 1, sub: 0, subbed: 0, goals: 0, assists: 0, cleanSheet: false, pom: false, rating: 7, yellowCards: 0, redCards: 0, mins: 90 };
+                      ps = defaultStat;
+                    }
+                    const psFinal = ps;
+                    return (
+                      <div key={player.id} style={{ ...sectionStyle, marginBottom: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #00d4aa, #00a882)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#000', fontSize: 14, flexShrink: 0 }}>
+                            {player.number ?? player.name[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>{player.name}</div>
+                            <div style={{ fontSize: 11, color: '#00d4aa', fontWeight: 700, letterSpacing: 1 }}>{player.position}</div>
+                          </div>
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => {
+                                setPlayerStats(prev => {
+                                  const exists = prev.find(p => p.id === player.id);
+                                  if (exists) return prev.map(p => p.id === player.id ? { ...p, pom: !p.pom } : p);
+                                  return [...prev, { id: player.id, athleteId: player.id, apps: 1, sub: 0, subbed: 0, goals: 0, assists: 0, cleanSheet: false, pom: true, rating: 7, yellowCards: 0, redCards: 0, mins: 90 }];
+                                });
+                              }}
+                              style={{ padding: '4px 10px', background: psFinal.pom ? '#f5a623' : '#1a1a2e', border: `1px solid ${psFinal.pom ? '#f5a623' : '#2a2a4a'}`, borderRadius: 6, color: psFinal.pom ? '#000' : '#555', fontSize: 11, fontWeight: 800, cursor: 'pointer', letterSpacing: 1 }}>
+                              🏆 POM
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPlayerStats(prev => {
+                                  const exists = prev.find(p => p.id === player.id);
+                                  if (exists) return prev.map(p => p.id === player.id ? { ...p, cleanSheet: !p.cleanSheet } : p);
+                                  return [...prev, { id: player.id, athleteId: player.id, apps: 1, sub: 0, subbed: 0, goals: 0, assists: 0, cleanSheet: true, pom: false, rating: 7, yellowCards: 0, redCards: 0, mins: 90 }];
+                                });
+                              }}
+                              style={{ padding: '4px 10px', background: psFinal.cleanSheet ? '#00d4aa' : '#1a1a2e', border: `1px solid ${psFinal.cleanSheet ? '#00d4aa' : '#2a2a4a'}`, borderRadius: 6, color: psFinal.cleanSheet ? '#000' : '#555', fontSize: 11, fontWeight: 800, cursor: 'pointer', letterSpacing: 1 }}>
+                              🧤 CS
+                            </button>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => setPlayerStats(prev => prev.map((p, j) => j === i ? { ...p, manOfTheMatch: !p.manOfTheMatch } : { ...p, manOfTheMatch: false }))}
-                          className={cn('flex items-center gap-1 text-[9px] font-black uppercase border px-2 py-1 rounded-lg transition-all',
-                            ps.manOfTheMatch ? 'bg-[#FF6D00]/10 text-[#FF6D00] border-[#FF6D00]/30' : 'text-[#94A3B8] border-[#1E293B] hover:border-[#94A3B8]'
-                          )}
-                        >
-                          <Star className="h-3 w-3" /> MOTM
-                        </button>
-                        {!ps.athleteId && (
-                          <button
-                            onClick={() => setPlayerStats(prev => prev.filter((_, j) => j !== i))}
-                            className="flex items-center justify-center h-7 w-7 rounded-lg border border-[#1E293B] text-[#4B5563] hover:text-red-400 hover:border-red-500/30 transition-all"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { key: 'goals', label: 'Goals' },
-                        { key: 'assists', label: 'Assists' },
-                        { key: 'rating', label: 'Rating /10' },
-                        { key: 'minutesPlayed', label: 'Minutes' },
-                        { key: 'yellowCards', label: 'Yellows' },
-                        { key: 'redCards', label: 'Reds' },
-                      ].map(f => (
-                        <div key={f.key} className="space-y-0.5">
-                          <Label className="text-[9px] font-black text-[#94A3B8] uppercase">{f.label}</Label>
-                          <Input
-                            type="number" min="0"
-                            max={f.key === 'rating' ? 10 : undefined}
-                            value={(ps as any)[f.key]}
-                            onChange={e => setPlayerStats(prev => prev.map((p, j) => j === i ? { ...p, [f.key]: Number(e.target.value) } : p))}
-                            className="bg-[#0A0E1A] border-[#1E293B] text-white text-sm focus:border-[#00C853] h-8"
-                          />
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
+                          <StatInput label="Goals"  value={psFinal.goals}       onChange={v => updatePlayerStat(player.id, 'goals', v)} />
+                          <StatInput label="Assists" value={psFinal.assists}     onChange={v => updatePlayerStat(player.id, 'assists', v)} />
+                          <StatInput label="Yellow"  value={psFinal.yellowCards} onChange={v => updatePlayerStat(player.id, 'yellowCards', v)} max={2} />
+                          <StatInput label="Red"     value={psFinal.redCards}    onChange={v => updatePlayerStat(player.id, 'redCards', v)} max={1} />
                         </div>
-                      ))}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                          <StatInput label="Mins Played" value={psFinal.mins} onChange={v => updatePlayerStat(player.id, 'mins', v)} max={120} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Status</label>
+                            <select
+                              value={psFinal.sub === 1 ? 'sub' : psFinal.subbed === 1 ? 'subbed' : 'starter'}
+                              onChange={e => {
+                                setPlayerStats(prev => {
+                                  const ensure = (arr: PlayerStat[]) => arr.find(p => p.id === player.id) ? arr : [...arr, { id: player.id, athleteId: player.id, apps: 1, sub: 0, subbed: 0, goals: 0, assists: 0, cleanSheet: false, pom: false, rating: 7, yellowCards: 0, redCards: 0, mins: 90 }];
+                                  return ensure(prev).map(p => p.id === player.id ? { ...p, sub: e.target.value === 'sub' ? 1 : 0, subbed: e.target.value === 'subbed' ? 1 : 0, apps: e.target.value === 'sub' ? 0 : 1 } : p);
+                                });
+                              }}
+                              style={{ ...inputStyle, padding: '8px 10px' }}
+                            >
+                              <option value="starter">Starter</option>
+                              <option value="sub">Substitute In</option>
+                              <option value="subbed">Substituted Off</option>
+                            </select>
+                          </div>
+                        </div>
+                        <RatingInput value={psFinal.rating} onChange={v => updatePlayerStat(player.id, 'rating', v)} />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* TEAM STATS */}
+            {statsTab === 'team' && (
+              <div style={sectionStyle}>
+                <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 16, textTransform: 'uppercase' }}>🏟️ Team Stats Overview</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <StatInput label="Goals For"      value={teamStats.goalsFor}      onChange={v => setTeamStats({ ...teamStats, goalsFor: v })} />
+                  <StatInput label="Goals Against"  value={teamStats.goalsAgainst}  onChange={v => setTeamStats({ ...teamStats, goalsAgainst: v })} />
+                  <StatInput label="Shots On Target" value={teamStats.shotsOnTarget} onChange={v => setTeamStats({ ...teamStats, shotsOnTarget: v })} />
+                  <StatInput label="Shots Off Target" value={teamStats.shotsOffTarget} onChange={v => setTeamStats({ ...teamStats, shotsOffTarget: v })} />
+                  <StatInput label="Corners"         value={teamStats.corners}       onChange={v => setTeamStats({ ...teamStats, corners: v })} />
+                  <StatInput label="Fouls"           value={teamStats.fouls}         onChange={v => setTeamStats({ ...teamStats, fouls: v })} />
+                  <StatInput label="Attendance"      value={teamStats.attendance}    onChange={v => setTeamStats({ ...teamStats, attendance: v })} max={99999} />
+                </div>
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Result</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['Win', 'Draw', 'Loss'].map(r => (
+                      <button key={r} onClick={() => setTeamStats({ ...teamStats, result: r })} style={{ flex: 1, padding: '12px 0', background: teamStats.result === r ? (r === 'Win' ? '#00d4aa' : r === 'Loss' ? '#e74c3c' : '#f5a623') : '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: teamStats.result === r ? '#000' : '#555', fontWeight: 800, fontSize: 13, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+                        {r.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+                    {([['cleanSheet', 'Clean Sheet 🧤'], ['failedToScore', 'Failed to Score ❌']] as const).map(([key, label]) => (
+                      <button key={key} onClick={() => setTeamStats({ ...teamStats, [key]: !teamStats[key] })} style={{ flex: 1, padding: '12px 0', background: teamStats[key] ? '#00d4aa' : '#1a1a2e', border: `1px solid ${teamStats[key] ? '#00d4aa' : '#2a2a4a'}`, borderRadius: 8, color: teamStats[key] ? '#000' : '#555', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: "'Rajdhani', sans-serif" }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <label style={labelStyle}>Possession %</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <input type="range" min="0" max="100" value={teamStats.possession}
+                        onChange={e => setTeamStats({ ...teamStats, possession: parseInt(e.target.value) })}
+                        style={{ flex: 1, accentColor: '#00d4aa' } as any} />
+                      <span style={{ color: '#00d4aa', fontWeight: 800, fontSize: 18, minWidth: 44 }}>{teamStats.possession}%</span>
                     </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Match Report</label>
+                    <textarea
+                      placeholder="Optional match notes..."
+                      value={teamStats.matchReport}
+                      onChange={e => setTeamStats({ ...teamStats, matchReport: e.target.value })}
+                      rows={3}
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* GOAL EVENTS */}
+            {statsTab === 'goal' && (
+              <div>
+                <div style={sectionStyle}>
+                  <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>⚽ Add Goal Event</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Scorer</label>
+                      <PlayerPicker players={squadPlayers} value={newGoal.scorer} onChange={v => setNewGoal({ ...newGoal, scorer: v, ownGoal: false })} placeholder="Select scorer from squad..." />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Assist</label>
+                      <PlayerPicker players={squadPlayers} value={newGoal.assister} onChange={v => setNewGoal({ ...newGoal, assister: v })} placeholder="Select assister (optional)..." />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label style={labelStyle}>Minute</label>
+                        <input type="number" min="1" max="120" placeholder="45'" value={newGoal.minute}
+                          onChange={e => setNewGoal({ ...newGoal, minute: e.target.value })} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Type</label>
+                        <select value={newGoal.type} onChange={e => setNewGoal({ ...newGoal, type: e.target.value })} style={{ ...inputStyle, padding: '10px 10px' }}>
+                          {goalTypes.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setNewGoal({ ...newGoal, ownGoal: !newGoal.ownGoal })}
+                      style={{ padding: '10px 0', background: newGoal.ownGoal ? '#e74c3c' : '#1a1a2e', border: `1px solid ${newGoal.ownGoal ? '#e74c3c' : '#2a2a4a'}`, borderRadius: 8, color: newGoal.ownGoal ? '#fff' : '#555', fontWeight: 800, fontSize: 12, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+                      OWN GOAL {newGoal.ownGoal ? '✓' : ''}
+                    </button>
+                    <button onClick={addGoal} style={{ padding: '14px 0', background: 'linear-gradient(135deg, #00d4aa, #00a882)', border: 'none', borderRadius: 10, color: '#000', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+                      + ADD GOAL
+                    </button>
+                  </div>
+                </div>
+                {goals.length > 0 && (
+                  <div style={sectionStyle}>
+                    <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 12, textTransform: 'uppercase' }}>Goal Log</div>
+                    {goals.map(g => (
+                      <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #1a1a3a' }}>
+                        <span style={{ background: g.ownGoal ? '#e74c3c' : '#00d4aa', color: '#000', fontWeight: 800, borderRadius: 6, padding: '4px 8px', fontSize: 12, minWidth: 36, textAlign: 'center' }}>{g.minute}'</span>
+                        <span style={{ fontWeight: 700, color: '#fff' }}>⚽ {getPlayer(g.scorer)?.name || 'Unknown'}</span>
+                        {g.assister && <span style={{ color: '#888', fontSize: 12 }}>↳ {getPlayer(g.assister)?.name}</span>}
+                        <span style={{ marginLeft: 'auto', color: '#555', fontSize: 11 }}>{g.type}</span>
+                        <button onClick={() => setGoals(prev => prev.filter(x => x.id !== g.id))} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DISCIPLINE */}
+            {statsTab === 'discipline' && (
+              <div>
+                <div style={sectionStyle}>
+                  <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>🟨 Add Card Event</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Player</label>
+                      <PlayerPicker players={squadPlayers} value={newCard.player} onChange={v => setNewCard({ ...newCard, player: v })} placeholder="Select player from squad..." />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Card Type</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {['Yellow', 'Red', '2nd Yellow'].map(t => (
+                          <button key={t} onClick={() => setNewCard({ ...newCard, type: t })} style={{ flex: 1, padding: '12px 0', background: newCard.type === t ? (t === 'Red' ? '#e74c3c' : '#f5a623') : '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: newCard.type === t ? '#000' : '#555', fontWeight: 800, fontSize: 11, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+                            {t.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label style={labelStyle}>Minute</label>
+                        <input type="number" min="1" max="120" placeholder="67'" value={newCard.minute}
+                          onChange={e => setNewCard({ ...newCard, minute: e.target.value })} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Reason</label>
+                        <select value={newCard.reason} onChange={e => setNewCard({ ...newCard, reason: e.target.value })} style={{ ...inputStyle, padding: '10px 10px' }}>
+                          {cardReasons.map(r => <option key={r}>{r}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <button onClick={addCard} style={{ padding: '14px 0', background: 'linear-gradient(135deg, #f5a623, #e09000)', border: 'none', borderRadius: 10, color: '#000', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+                      + ADD CARD
+                    </button>
+                  </div>
+                </div>
+                {discipline.length > 0 && (
+                  <div style={sectionStyle}>
+                    <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 12, textTransform: 'uppercase' }}>Card Log</div>
+                    {discipline.map(d => (
+                      <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #1a1a3a' }}>
+                        <span style={{ background: d.type === 'Yellow' ? '#f5a623' : '#e74c3c', width: 18, height: 24, borderRadius: 3, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ fontWeight: 700, color: '#fff' }}>{getPlayer(d.player)?.name}</span>
+                        <span style={{ color: '#888', fontSize: 12 }}>{d.minute}' · {d.reason}</span>
+                        <button onClick={() => setDiscipline(prev => prev.filter(x => x.id !== d.id))} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PAGE 3: SAVE MATCH ── */}
+        {page === 3 && (
+          <div>
+            <div style={{ ...sectionStyle, background: 'linear-gradient(135deg, #0d1a0d, #0a1a0a)', border: '1px solid #1a3a1a', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }}>📋 Match Summary</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#888', fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>YOUR TEAM</div>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: '#00d4aa' }}>{teamStats.goalsFor}</div>
+                </div>
+                <div style={{ color: '#333', fontWeight: 800, fontSize: 24 }}>:</div>
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#888', fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>{match.opponent || 'OPPONENT'}</div>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: '#fff' }}>{teamStats.goalsAgainst}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+                {[['Date', match.date || '—'], ['Venue', match.venue], ['Competition', match.competition || '—'], ['Season', match.season]].map(([k, v]) => (
+                  <div key={k} style={{ background: '#0a1a0a', borderRadius: 6, padding: '8px 10px' }}>
+                    <div style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>{k.toUpperCase()}</div>
+                    <div style={{ color: '#ccc', fontWeight: 600, marginTop: 2 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {motm && (
+              <div style={{ ...sectionStyle, background: 'linear-gradient(135deg, #1a1500, #201a00)', border: '1px solid #3a3000', marginBottom: 14 }}>
+                <div style={{ fontSize: 13, color: '#f5a623', fontWeight: 700, letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>🏆 Man of the Match</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #f5a623, #e09000)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#000', fontSize: 16, flexShrink: 0 }}>
+                    {getPlayer(motm)?.number ?? getPlayer(motm)?.name[0]}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 18, color: '#f5a623' }}>{getPlayer(motm)?.name}</div>
+                    <div style={{ fontSize: 11, color: '#888', fontWeight: 700 }}>{getPlayer(motm)?.position}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {goals.length > 0 && (
+              <div style={{ ...sectionStyle, marginBottom: 14 }}>
+                <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>⚽ Goals ({goals.length})</div>
+                {goals.map(g => (
+                  <div key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1a1a3a' }}>
+                    <span style={{ color: '#00d4aa', fontWeight: 800, minWidth: 36 }}>{g.minute}'</span>
+                    <span style={{ color: '#fff', fontWeight: 600 }}>{getPlayer(g.scorer)?.name || '?'}</span>
+                    {g.assister && <span style={{ color: '#888', fontSize: 12 }}>↳ {getPlayer(g.assister)?.name}</span>}
+                    <span style={{ marginLeft: 'auto', color: '#555', fontSize: 11 }}>{g.type}</span>
                   </div>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Navigation */}
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={() => step === 0 ? setShowForm(false) : setStep(s => s - 1)}
-            className="flex-1 border-[#1E293B] text-[#94A3B8] hover:text-white font-black text-[10px] uppercase gap-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {step === 0 ? 'Cancel' : 'Back'}
-          </Button>
-          {step < 3 ? (
-            <Button
-              onClick={handleNext}
-              disabled={step === 0 && (!details.opponent.trim() || !details.competition.trim())}
-              className="flex-1 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-2"
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSaveMatch}
-              disabled={saving}
-              className="flex-1 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase gap-2"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Save Match
-            </Button>
-          )}
-        </div>
+            {discipline.length > 0 && (
+              <div style={{ ...sectionStyle, marginBottom: 14 }}>
+                <div style={{ fontSize: 13, color: '#f5a623', fontWeight: 700, letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>🟨 Cards ({discipline.length})</div>
+                {discipline.map(d => (
+                  <div key={d.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1a1a3a' }}>
+                    <span style={{ background: d.type === 'Yellow' ? '#f5a623' : '#e74c3c', width: 14, height: 18, borderRadius: 2, flexShrink: 0 }} />
+                    <span style={{ color: '#fff', fontWeight: 600 }}>{getPlayer(d.player)?.name}</span>
+                    <span style={{ color: '#888', fontSize: 12 }}>{d.minute}' · {d.reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Previous matches */}
+            {sortedMatches.length > 0 && (
+              <div style={sectionStyle}>
+                <div style={{ fontSize: 13, color: '#00d4aa', fontWeight: 700, letterSpacing: 2, marginBottom: 12, textTransform: 'uppercase' }}>📁 Match History ({sortedMatches.length})</div>
+                {sortedMatches.slice(0, 5).map((m: any) => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #1a1a3a' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: m.result === 'W' ? '#00d4aa22' : m.result === 'L' ? '#e74c3c22' : '#f5a62322', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: m.result === 'W' ? '#00d4aa' : m.result === 'L' ? '#e74c3c' : '#f5a623', fontSize: 13, flexShrink: 0 }}>
+                      {m.result || '—'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: '#fff', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>vs {m.opponent}</div>
+                      <div style={{ color: '#555', fontSize: 11 }}>{m.competition} · {m.date}</div>
+                    </div>
+                    {m.score && <div style={{ fontWeight: 800, color: '#00d4aa', fontSize: 15 }}>{m.score}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={() => handleSave(false)}
+                disabled={saving}
+                style={{ padding: '16px 0', background: saving ? '#005544' : 'linear-gradient(135deg, #00d4aa, #00a882)', border: 'none', borderRadius: 12, color: '#000', fontWeight: 800, fontSize: 16, cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: 2, fontFamily: "'Rajdhani', sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {saving ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span> SAVING...</> : '✓ SAVE & PUBLISH MATCH'}
+              </button>
+              <button
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                style={{ padding: '14px 0', background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 12, color: '#888', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 2, fontFamily: "'Rajdhani', sans-serif" }}>
+                💾 SAVE AS DRAFT
+              </button>
+              <button
+                onClick={exportData}
+                style={{ padding: '14px 0', background: 'transparent', border: '1px solid #00d4aa', borderRadius: 12, color: '#00d4aa', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 2, fontFamily: "'Rajdhani', sans-serif" }}>
+                ⬇ EXPORT AS JSON
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white uppercase">Match Data Entry</h1>
-          <p className="text-[#94A3B8] text-[11px] font-bold uppercase tracking-widest mt-0.5">
-            Mobile-first 4-step match logging
-          </p>
-        </div>
-        <Button
-          onClick={() => setShowForm(true)}
-          className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2"
-        >
-          <Plus className="h-4 w-4" /> New Match
-        </Button>
+      {/* Bottom Navigation */}
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 520, background: '#080818', borderTop: '1px solid #1a1a3a', padding: '12px 16px', display: 'flex', gap: 10, zIndex: 40 }}>
+        {page > 1 && (
+          <button onClick={() => setPage(page - 1)} style={{ flex: 1, padding: '14px 0', background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, color: '#888', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+            ← BACK
+          </button>
+        )}
+        {page < 3 && (
+          <button
+            onClick={() => { if (page === 1) initPlayerStats(); setPage(page + 1); }}
+            style={{ flex: 2, padding: '14px 0', background: 'linear-gradient(135deg, #00d4aa, #00a882)', border: 'none', borderRadius: 10, color: '#000', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+            NEXT →
+          </button>
+        )}
       </div>
 
-      {/* Match history */}
-      {matchesLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-[#00C853]" /></div>
-      ) : sortedMatches.length === 0 ? (
-        <div className="text-center py-16">
-          <Trophy className="h-12 w-12 text-[#94A3B8] mx-auto mb-3 opacity-30" />
-          <p className="text-white font-black text-lg">No matches logged yet</p>
-          <p className="text-[#94A3B8] text-sm mt-1">Start by logging your first match.</p>
-          <Button
-            onClick={() => setShowForm(true)}
-            className="mt-4 bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-xs uppercase gap-2"
-          >
-            <Plus className="h-4 w-4" /> Log First Match
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sortedMatches.map(m => (
-            <Card key={m.id} className="border border-[#1E293B] bg-[#111827] hover:border-[#00C853]/30 transition-colors">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    'h-10 w-10 rounded-xl flex items-center justify-center shrink-0 font-black text-sm',
-                    m.result === 'W' ? 'bg-[#00C853]/20 text-[#00C853]' :
-                      m.result === 'L' ? 'bg-red-500/20 text-red-400' :
-                        m.result === 'D' ? 'bg-[#94A3B8]/20 text-[#94A3B8]' :
-                          'bg-[#1C2333] text-[#94A3B8]'
-                  )}>
-                    {m.result || '—'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-white truncate">vs {m.opponent}</p>
-                    <p className="text-[9px] font-bold text-[#94A3B8] uppercase">{m.competition}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    {m.score && <p className="text-sm font-black text-white">{m.score}</p>}
-                    <p className="text-[9px] font-bold text-[#94A3B8]">
-                      {(() => { try { return format(parseISO(m.date), 'dd MMM yyyy'); } catch { return m.date; } })()}
-                    </p>
-                    <Badge className={cn(
-                      'text-[8px] font-black border mt-0.5',
-                      m.category === 'league' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
-                        m.category === 'cup' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
-                          'bg-[#94A3B8]/10 text-[#94A3B8] border-[#94A3B8]/20'
-                    )}>
-                      {m.category}
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
