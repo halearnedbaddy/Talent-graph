@@ -43,11 +43,18 @@ function buildFirestoreBody(data: Record<string, unknown>) {
   return { fields };
 }
 
-async function firestorePatch(collection: string, docId: string, data: Record<string, unknown>) {
+async function firestorePatch(
+  collection: string,
+  docId: string,
+  data: Record<string, unknown>,
+  bearerToken?: string
+) {
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`;
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(buildFirestoreBody(data)),
   });
   if (!res.ok) {
@@ -57,11 +64,17 @@ async function firestorePatch(collection: string, docId: string, data: Record<st
   return res.json();
 }
 
-async function firestorePost(collection: string, data: Record<string, unknown>) {
+async function firestorePost(
+  collection: string,
+  data: Record<string, unknown>,
+  bearerToken?: string
+) {
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?key=${FIREBASE_API_KEY}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(buildFirestoreBody(data)),
   });
   if (!res.ok) {
@@ -86,8 +99,8 @@ export async function POST(request: NextRequest) {
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const idToken = authHeader.slice(7).trim();
-    const adminUid = await verifyIdToken(idToken);
+    const adminIdToken = authHeader.slice(7).trim();
+    const adminUid = await verifyIdToken(adminIdToken);
     if (!adminUid) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -111,31 +124,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
 
-    // Strategy 1: The club owner's UID IS the clubId (most common — club registered as a user,
-    // their Firebase Auth UID becomes the clubs/{clubId} document ID).
-    const isDirectOwner = adminUid === clubId;
+    // Strategy 1: The club owner's UID IS the clubId (club_<uid> → uid matches)
+    const isDirectOwner = adminUid === clubId || clubId === `club_${adminUid}`;
 
-    // Strategy 2: Check users/{adminUid}.role === 'club' (they are a club account type)
-    // and their associated clubId matches, OR they own any club (role=club is enough for now).
+    // Strategy 2: Check users/{adminUid}.role === 'club'
     let isClubRoleUser = false;
     if (!isDirectOwner) {
-      const userDoc = await firestoreGet('users', adminUid, idToken);
+      const userDoc = await firestoreGet('users', adminUid, adminIdToken);
       const userRole = userDoc?.fields?.role?.stringValue;
       const userClubId = userDoc?.fields?.clubId?.stringValue;
-      // Accept if role is 'club' and either their clubId matches or no clubId stored yet
       if (userRole === 'club' && (!userClubId || userClubId === clubId)) {
         isClubRoleUser = true;
       }
     }
 
-    // Strategy 3: Explicit admin entry in club_members (for promoted admins)
+    // Strategy 3: Explicit admin entry in club_members
     let isClubMemberAdmin = false;
     if (!isDirectOwner && !isClubRoleUser) {
       const adminCheckRes = await fetch(
         `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminIdToken}` },
           body: JSON.stringify({
             structuredQuery: {
               from: [{ collectionId: 'club_members' }],
@@ -145,7 +155,6 @@ export async function POST(request: NextRequest) {
                   filters: [
                     { fieldFilter: { field: { fieldPath: 'userId' }, op: 'EQUAL', value: { stringValue: adminUid } } },
                     { fieldFilter: { field: { fieldPath: 'clubId' }, op: 'EQUAL', value: { stringValue: clubId } } },
-                    { fieldFilter: { field: { fieldPath: 'role' }, op: 'EQUAL', value: { stringValue: 'admin' } } },
                     { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
                   ],
                 },
@@ -166,12 +175,13 @@ export async function POST(request: NextRequest) {
 
     const tempPassword = generateTempPassword();
 
+    // Create the new Firebase Auth user and get their ID token for secure Firestore writes
     const signUpRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: tempPassword, displayName, returnSecureToken: false }),
+        body: JSON.stringify({ email, password: tempPassword, displayName, returnSecureToken: true }),
       }
     );
     const signUpData = await signUpRes.json();
@@ -183,6 +193,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
     const newUid: string = signUpData.localId;
+    const newUserIdToken: string = signUpData.idToken;
 
     const nameParts = displayName.trim().split(' ');
     const firstName = nameParts[0] ?? displayName;
@@ -191,6 +202,7 @@ export async function POST(request: NextRequest) {
 
     const userRole = role === 'analyst' ? 'analyst' : role === 'scout' ? 'scout' : 'coach';
 
+    // Write the new user's profile using their own token so Firestore rules pass (isOwner check)
     await firestorePatch('users', newUid, {
       id: newUid,
       email,
@@ -205,8 +217,9 @@ export async function POST(request: NextRequest) {
       phone: phone ?? '',
       createdByAdmin: adminUid,
       updatedAt: now,
-    });
+    }, newUserIdToken);
 
+    // Write the club_members entry using the admin's token (isClubAdmin check)
     await firestorePost('club_members', {
       userId: newUid,
       clubId,
@@ -214,11 +227,13 @@ export async function POST(request: NextRequest) {
       role,
       status: 'active',
       displayName,
+      firstName,
+      lastName,
       joinedAt: now,
       invitedAt: now,
       invitedBy: adminUid,
       createdAt: now,
-    });
+    }, adminIdToken);
 
     return NextResponse.json({
       success: true,

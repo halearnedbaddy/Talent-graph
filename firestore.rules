@@ -9,8 +9,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Safe getUserData — returns {} when the user doc doesn't exist so callers
-    // that access .role get null instead of a null-pointer error.
     function getUserData() {
       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return userDoc != null ? userDoc.data : {};
@@ -45,23 +43,22 @@ service cloud.firestore {
       return exists(memberPath) && get(memberPath).data.status == 'active';
     }
 
-    // True if the club document ID encodes this user's UID (club_<uid>)
     function isClubOwner(clubId) {
       return isSignedIn() && clubId == ('club_' + request.auth.uid);
     }
 
-    // Check if the current user owns the club associated with a match
     function isClubOwnerOfMatch() {
       return isClubOwner(resource.data.clubId);
     }
 
     // ----------------------------------------------------------------------
-    // Standard Collection Rules
+    // Users — allow club admins to create accounts for staff
     // ----------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      // Owner can create their own doc; club admins and system admins can create docs for new staff
+      allow create: if isOwner(userId) || isClubAdmin() || isAdmin();
+      allow update: if isOwner(userId) || isAdmin() || isClubAdmin();
       allow delete: if isOwner(userId) || isAdmin();
     }
 
@@ -75,8 +72,8 @@ service cloud.firestore {
     
     match /scouts/{scoutId} {
         allow read: if isSignedIn();
-        allow create: if isOwner(scoutId);
-        allow update, delete: if isOwner(scoutId) || isAdmin();
+        allow create: if isOwner(scoutId) || isClubAdmin() || isAdmin();
+        allow update, delete: if isOwner(scoutId) || isAdmin() || isClubAdmin();
     }
 
     match /clubs/{clubId} {
@@ -118,7 +115,6 @@ service cloud.firestore {
     match /club_members/{memberId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (
-        // Users creating their own membership (admin setup or a pending join request)
         (
           request.resource.data.userId == request.auth.uid &&
           (
@@ -126,23 +122,11 @@ service cloud.firestore {
             (request.resource.data.status == 'pending' && request.resource.data.role in ['scout', 'coach', 'assistant_coach', 'analyst', 'gk_coach'])
           )
         ) ||
-        // Club admins sending invitations to scouts or coaches
-        (
-          isClubAdmin() &&
-          request.resource.data.status == 'club_invited'
-        ) ||
-        // Club admins directly adding athletes or staff (immediate active status)
-        (
-          isClubAdmin() &&
-          request.resource.data.status == 'active'
-        ) ||
-        // Club admins directly adding athletes with athlete role
-        (
-          isClubAdmin() &&
-          request.resource.data.role == 'athlete'
-        )
+        (isClubAdmin() && request.resource.data.status == 'club_invited') ||
+        (isClubAdmin() && request.resource.data.status == 'active') ||
+        (isClubAdmin() && request.resource.data.role == 'athlete') ||
+        isAdmin()
       );
-      // Club admins and system admins can approve/reject/update any record
       allow update: if isAdmin() || isClubAdmin() ||
         (isSignedIn() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin() || isClubAdmin() ||
@@ -150,7 +134,6 @@ service cloud.firestore {
           (resource.data.status == 'pending' || resource.data.status == 'club_invited'));
     }
 
-    // Matches: athletes own their match entries; club admins and coaches own club fixtures
     match /matches/{matchId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (
@@ -198,7 +181,6 @@ service cloud.firestore {
       allow delete: if isSignedIn();
     }
 
-    // Squad invites sent by coaches/club admins to athletes
     match /squad_invites/{inviteId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (isClubAdmin() || isStaffRole());
@@ -209,7 +191,6 @@ service cloud.firestore {
       allow delete: if isAdmin() || isClubAdmin();
     }
 
-    // Match confirmations written by coaches when saving match data
     match /match_confirmations/{confirmId} {
       allow read: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
@@ -250,54 +231,6 @@ service cloud.firestore {
       allow delete: if isClubAdmin() || isAdmin();
     }
 
-    // Squad Invites — sent by coaches/club admins to athletes
-    match /squad_invites/{inviteId} {
-      allow read: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        isClubOwner(resource.data.clubId) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        isActiveMemberOfClub(request.resource.data.clubId) ||
-        isClubOwner(request.resource.data.clubId) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow update: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        isClubOwner(resource.data.clubId) ||
-        isAdmin()
-      );
-      allow delete: if isAdmin() || isClubOwner(resource.data.clubId);
-    }
-
-    // Match Confirmations — created by coaches/staff, confirmed by athletes
-    match /match_confirmations/{confirmId} {
-      allow read: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        isClubOwner(resource.data.clubId) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        isActiveMemberOfClub(request.resource.data.clubId) ||
-        isClubOwner(request.resource.data.clubId) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow update: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-
     match /scout_connections/{connectionId} {
       allow read: if isSignedIn(); 
       allow create: if isSignedIn() && request.resource.data.scoutId == request.auth.uid;
@@ -328,32 +261,30 @@ service cloud.firestore {
     // Universal Messaging: Direct Messages + Club Group Chats
     // ----------------------------------------------------------------------
     match /conversations/{conversationId} {
-      // Read: allow when doc doesn't exist yet (resource == null handles getDoc on
-      // non-existent docs — resource.data would crash rules otherwise), OR the user
-      // is a participant, OR it's a group chat they're an active member of.
       allow read: if isSignedIn() && (
         resource == null ||
         request.auth.uid in resource.data.participants ||
         (resource.data.type == 'group' && resource.data.clubId != null &&
           isActiveMemberOfClub(resource.data.clubId)) ||
-        (resource.data.type == 'group' && isClubOwner(resource.data.clubId))
+        (resource.data.type == 'group' && isClubOwner(resource.data.clubId)) ||
+        // Squad chat: conversationId IS the clubId (e.g., "club_<adminUID>")
+        (resource.data.type == 'group' && conversationId == ('club_' + request.auth.uid))
       );
 
-      // Create: any signed-in user creating a DM they're part of, OR any signed-in
-      // user creating a group chat (group chats are club-scoped, admin enforced app-side)
       allow create: if isSignedIn() && (
         request.auth.uid in request.resource.data.participants ||
-        request.resource.data.type == 'group'
+        request.resource.data.type == 'group' ||
+        isClubAdmin() ||
+        isStaffRole()
       );
 
-      // Update: participant can update DMs; any club member or club owner can update group chats.
-      // Also allow update when the sender is in request.resource.data.participants — this covers
-      // setDoc merge calls that self-heal older conversations missing participants.
       allow update: if isSignedIn() && (
         request.auth.uid in resource.data.participants ||
         request.auth.uid in request.resource.data.participants ||
         (resource.data.type == 'group' && resource.data.clubId != null &&
-          (isActiveMemberOfClub(resource.data.clubId) || isClubOwner(resource.data.clubId)))
+          (isActiveMemberOfClub(resource.data.clubId) || isClubOwner(resource.data.clubId))) ||
+        isClubAdmin() ||
+        isStaffRole()
       );
 
       match /messages/{messageId} {
@@ -361,7 +292,8 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
         }
         function inConv() {
-          return request.auth.uid in convData().participants;
+          let d = convData();
+          return d != null && request.auth.uid in d.participants;
         }
         function inGroupConv() {
           let d = convData();
@@ -369,23 +301,26 @@ service cloud.firestore {
             isActiveMemberOfClub(d.clubId) || isClubOwner(d.clubId)
           );
         }
-        // isClubAdmin() is an explicit bypass: a user whose role == 'club' can
-        // always write to any group conversation they are broadcasting to.
-        // This covers the case where the club_members document path doesn't
-        // match the expected pattern and isClubOwner()/isActiveMemberOfClub()
-        // would otherwise fail.
+        function isSquadChat() {
+          // Squad chat where conversationId == clubId (e.g., "club_<adminUID>")
+          return conversationId == ('club_' + request.auth.uid) ||
+                 (convData() != null && convData().type == 'group');
+        }
         function canWriteToConv() {
           let d = convData();
           return inConv() ||
                  inGroupConv() ||
-                 (isClubAdmin() && d != null && d.type == 'group');
+                 isSquadChat() ||
+                 (isClubAdmin() && d != null && d.type == 'group') ||
+                 (isStaffRole() && d != null && d.type == 'group');
         }
-        allow read: if isSignedIn() && (inConv() || inGroupConv() || isClubAdmin());
+        allow read: if isSignedIn() && (inConv() || inGroupConv() || isClubAdmin() || isStaffRole() || isSquadChat());
         allow create: if isSignedIn() && canWriteToConv() &&
           request.resource.data.senderId == request.auth.uid;
         allow update: if isSignedIn() && (
           resource.data.senderId == request.auth.uid ||
-          (isClubAdmin() && convData().type == 'group')
+          (isClubAdmin() && convData().type == 'group') ||
+          (isStaffRole() && convData().type == 'group')
         );
         allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
@@ -432,9 +367,6 @@ service cloud.firestore {
       allow update: if isAdmin();
     }
 
-    // ----------------------------------------------------------------------
-    // Contact Form — public create, admin read/manage
-    // ----------------------------------------------------------------------
     match /contact_inquiries/{docId} {
       allow create: if
         request.resource.data.name is string &&
@@ -446,18 +378,12 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // ----------------------------------------------------------------------
-    // Profile View Tracking
-    // ----------------------------------------------------------------------
     match /profile_views/{athleteId}/viewers/{viewerId} {
       allow create, update: if isSignedIn();
       allow read: if isOwner(athleteId);
       allow list: if isOwner(athleteId);
     }
 
-    // ----------------------------------------------------------------------
-    // Notifications
-    // ----------------------------------------------------------------------
     match /notifications/{userId}/items/{notificationId} {
       allow read, list: if isOwner(userId);
       allow create: if isSignedIn();
@@ -465,18 +391,12 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
     }
 
-    // ----------------------------------------------------------------------
-    // Profile Reactions (Likes)
-    // ----------------------------------------------------------------------
     match /profile_reactions/{reactionId} {
       allow read, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // ----------------------------------------------------------------------
-    // Profile Comments
-    // ----------------------------------------------------------------------
     match /profile_comments/{athleteId}/comments/{commentId} {
       allow read, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
@@ -485,9 +405,6 @@ service cloud.firestore {
       );
     }
 
-    // ----------------------------------------------------------------------
-    // Club Subcollections (pendingMembers, squad)
-    // ----------------------------------------------------------------------
     match /clubs/{clubId}/pendingMembers/{memberId} {
       allow read, list: if isSignedIn() && (
         clubId == ('club_' + request.auth.uid) || isAdmin()
@@ -525,18 +442,12 @@ service cloud.firestore {
       );
     }
 
-    // ----------------------------------------------------------------------
-    // Video Reactions (Likes on highlight videos)
-    // ----------------------------------------------------------------------
     match /video_reactions/{reactionId} {
       allow read, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // ----------------------------------------------------------------------
-    // Video Comments (Comments on highlight videos)
-    // ----------------------------------------------------------------------
     match /video_comments/{videoId}/comments/{commentId} {
       allow read, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;

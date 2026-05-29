@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useFirestore, useAuth, useFirebaseApp } from '@/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { compressImage, uploadFileWithProgress, type UploadProgress } from '@/firebase/storage';
+import { compressImage, uploadFileWithProgress, uploadFileViaProxy, type UploadProgress } from '@/firebase/storage';
 import type { AthleteProfile, ShowcaseVideo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -224,14 +224,11 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
 
     try {
       if (!auth.currentUser) throw new Error('Not signed in');
+      const idToken = await auth.currentUser.getIdToken();
       const ext = file.name.split('.').pop() || 'mp4';
-      const downloadUrl = await uploadFileWithProgress(
-        firebaseApp,
-        `profile-videos/${profile.uid}/highlight.${ext}`,
-        file,
-        setVideoUpload
-      );
-      // Auto-save video URL + title to Firestore immediately
+      const storagePath = `profile-videos/${profile.uid}/highlight.${ext}`;
+      // Use server-side proxy to avoid CORS/auth issues with Firebase Storage
+      const downloadUrl = await uploadFileViaProxy(storagePath, file, idToken, setVideoUpload);
       if (firestore) {
         await updateDoc(doc(firestore, 'athletes', profile.uid), {
           highlightVideoUrl: downloadUrl,
@@ -281,14 +278,12 @@ export function EditProfileMediaDialog({ profile, externalOpen, onExternalOpenCh
     setPendingShowcaseVideo(null);
     try {
       if (!auth.currentUser) throw new Error('Not signed in');
+      const idToken = await auth.currentUser.getIdToken();
       const ts = Date.now();
       const ext = file.name.split('.').pop() || 'mp4';
-      const downloadUrl = await uploadFileWithProgress(
-        firebaseApp,
-        `profile-videos/${profile.uid}/showcase_${ts}.${ext}`,
-        file,
-        setShowcaseUpload
-      );
+      const storagePath = `profile-videos/${profile.uid}/showcase_${ts}.${ext}`;
+      // Use server-side proxy to avoid CORS/auth issues with Firebase Storage
+      const downloadUrl = await uploadFileViaProxy(storagePath, file, idToken, setShowcaseUpload);
       const videoToSave: ShowcaseVideo = {
         id: `${ts}`,
         url: downloadUrl,

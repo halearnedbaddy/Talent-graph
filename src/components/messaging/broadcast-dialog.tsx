@@ -36,7 +36,8 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
   ), [firestore, user?.uid]);
   const { data: myMemberships } = useCollection<ClubMember>(myMemberQuery);
   const myMembership = myMemberships?.[0];
-  const clubId = myMembership?.clubId;
+  // Derive clubId: prefer membership record, fallback to club_<uid> for club-role users
+  const clubId = myMembership?.clubId ?? (user?.uid ? `club_${user.uid}` : undefined);
 
   const squadQuery = useMemoFirebase(() => (
     firestore && clubId
@@ -60,7 +61,8 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
       const senderName = myMembership?.displayName || user.displayName || 'Club Admin';
       const senderRole = myMembership?.role || 'club';
 
-      const convId = `club_${clubId}`;
+      // convId is just the clubId itself (e.g., "club_adminUID") — no extra prefix
+      const convId = clubId;
 
       const allMemberIds = [...new Set([
         user.uid,

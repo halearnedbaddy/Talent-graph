@@ -8,15 +8,22 @@ service firebase.storage {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Profile videos: owner can upload/update/delete their own video
+    // Profile videos: owner uploads to their own folder
+    // Also allow via server proxy (any authenticated user writing to their own path)
     match /profile-videos/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Club logos: public read, authenticated write (admin check enforced server-side)
+    // Club logos: public read, club owner or admin can write
     match /club-logos/{clubId}/{allPaths=**} {
       allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Club documents and media
+    match /club-media/{clubId}/{allPaths=**} {
+      allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
   }

@@ -408,14 +408,20 @@ function ChatThread({
         timestamp: now,
         isDeleted: false,
       });
-      batch.update(doc(firestore, 'conversations', conv.id), {
+      // Use set+merge so it works whether the conversation doc already exists or not
+      batch.set(doc(firestore, 'conversations', conv.id), {
+        participants: conv.participants,
+        participantInfo: conv.participantInfo || {},
+        type: conv.type || 'direct',
+        ...(conv.clubId ? { clubId: conv.clubId } : {}),
+        ...(conv.name ? { name: conv.name } : {}),
         lastMessage: content,
         lastMessageAt: now,
         lastSenderId: userId,
         lastSenderName: userProfile.name,
         updatedAt: now,
         [`lastReadAt.${userId}`]: now,
-      });
+      }, { merge: true });
       await batch.commit();
 
       // Firestore confirmed → upgrade to grey ✓✓

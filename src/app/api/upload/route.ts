@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken, FIREBASE_PROJECT_ID, FIREBASE_API_KEY } from '@/lib/server-auth';
 
-const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+const MAX_BYTES = 200 * 1024 * 1024; // 200 MB (videos can be large)
 
 // Try every combination of bucket × auth header so we don't need any specific
 // Firebase Console rule configuration.
