@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Trophy, Megaphone, Clock, CheckCircle2, ChevronRight, Star, ClipboardList, Users, Shirt } from 'lucide-react';
-import type { ClubMatch, ClubMember, ScoutConnection, ClubProfile } from '@/lib/types';
+import type { ClubMatch, ClubMember, ClubProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, isPast, parseISO } from 'date-fns';
 
@@ -39,7 +39,8 @@ export default function MatchManagementPage() {
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
   ), [firestore, user]);
   const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
-  const clubId = userMemberships?.[0]?.clubId;
+  // Fallback: club admins whose role IS 'club' have clubId = club_<uid>
+  const clubId = userMemberships?.[0]?.clubId ?? (user?.uid ? `club_${user.uid}` : undefined);
 
   const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
   const { data: clubProfile } = useDoc<ClubProfile>(clubRef);
@@ -49,11 +50,20 @@ export default function MatchManagementPage() {
   ), [firestore, clubId]);
   const { data: matches, isLoading: matchesLoading } = useCollection<ClubMatch>(matchesQuery);
 
-  const connectionsQuery = useMemoFirebase(() => (
-    firestore && clubId ? query(collection(firestore, 'scout_connections'), where('clubId', '==', clubId), where('status', '==', 'accepted')) : null
+  // Squad members come from club_members (athletes with active status)
+  // This is the source of truth for the club's squad — not scout_connections
+  const squadQuery = useMemoFirebase(() => (
+    firestore && clubId
+      ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('status', '==', 'active'))
+      : null
   ), [firestore, clubId]);
-  const { data: connections } = useCollection<ScoutConnection>(connectionsQuery);
-  const athleteIds = Array.from(new Set(connections?.map(c => c.athleteId) || []));
+  const { data: squadMembers } = useCollection<ClubMember>(squadQuery);
+  // Target athletes in the squad; fall back to all active members if no role filter needed
+  const athleteIds = Array.from(new Set(
+    (squadMembers ?? [])
+      .filter(m => m.userId && m.userId !== user?.uid)
+      .map(m => m.userId)
+  ));
 
   const [newMatch, setNewMatch] = useState({
     competition: '',
@@ -103,7 +113,7 @@ export default function MatchManagementPage() {
 
   const handleNotifySquad = async (match: ClubMatch) => {
     if (!firestore || !athleteIds.length) {
-      toast({ variant: 'destructive', title: 'No Squad Members', description: 'You need accepted athlete connections to send notifications.' });
+      toast({ variant: 'destructive', title: 'No Squad Members', description: 'Add active members to your squad first before notifying.' });
       return;
     }
     setIsInviting(match.id);
