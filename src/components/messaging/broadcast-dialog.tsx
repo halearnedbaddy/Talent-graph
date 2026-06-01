@@ -138,13 +138,21 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
       // ── Step 4: In-app notifications ──
       for (const member of squadMembers ?? []) {
         if (member.userId && member.userId !== user.uid) {
+          const memberRole = member.role || 'athlete';
+          const alertUrl = memberRole === 'coach'
+            ? '/coach-dashboard/alerts'
+            : memberRole === 'analyst'
+            ? '/analyst-dashboard'
+            : memberRole === 'scout'
+            ? '/scout-dashboard'
+            : '/';
           addDoc(collection(firestore, 'notifications', member.userId, 'items'), {
             type: 'club_announcement',
             actorName: clubName,
             actorRole: 'club',
             message: text.trim().length > 120 ? text.trim().slice(0, 120) + '…' : text.trim(),
             conversationId: convId,
-            url: `/club-dashboard/messages?conv=${convId}`,
+            url: alertUrl,
             isRead: false,
             createdAt: now,
           }).catch(() => {});

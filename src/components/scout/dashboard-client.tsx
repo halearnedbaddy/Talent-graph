@@ -13,14 +13,13 @@ import { SearchTab } from './search-tab';
 import { MarketplaceTab } from './marketplace-tab';
 import { CompareTab } from './compare-tab';
 import { SavedAthletesTab } from './saved-athletes-tab';
-import { MessagesHub } from '@/components/messaging/messages-hub';
 import { ProfileTab } from './profile-tab';
 import { PipelineTab } from './pipeline-tab';
 import { SavedSearchesTab } from './saved-searches-tab';
 import { ActivityTab } from './activity-tab';
 import { SettingsTab } from './settings-tab';
 import {
-  Search, Store, BarChart2, Bookmark, MessageSquare, User,
+  Search, Store, BarChart2, Bookmark, User,
   GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -33,7 +32,6 @@ const TABS = [
   { id: 'compare',   label: 'Compare Athletes',    icon: BarChart2,          short: 'Compare' },
   { id: 'saved',     label: 'Saved Athletes',      icon: Bookmark,           short: 'Saved' },
   { id: 'pipeline',  label: 'Pipeline',            icon: GitPullRequestArrow, short: 'Pipeline' },
-  { id: 'messages',  label: 'Messages',            icon: MessageSquare,      short: 'Messages' },
   { id: 'activity',  label: 'My Activity',         icon: Activity,           short: 'Activity' },
   { id: 'profile',   label: 'Profile',             icon: User,               short: 'Profile' },
   { id: 'settings',  label: 'Settings',            icon: Settings,           short: 'Settings' },
@@ -41,7 +39,7 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-const BOTTOM_NAV_TABS = ['search', 'market', 'saved', 'messages'] as TabId[];
+const BOTTOM_NAV_TABS = ['search', 'market', 'saved', 'pipeline'] as TabId[];
 
 export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const auth = useAuth();
@@ -50,7 +48,6 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<TabId>('search');
   const [compareList, setCompareList] = useState<AthleteProfile[]>([]);
-  const [messageTarget, setMessageTarget] = useState<AthleteProfile | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchFiltersFromAlert, setSearchFiltersFromAlert] = useState<SearchFilters | undefined>();
 
@@ -86,11 +83,6 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
     await deleteDoc(doc(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes', athleteId));
     toast({ title: 'Removed from saved athletes.' });
   }, [firestore, scoutProfile.uid, toast]);
-
-  const handleSendMessage = useCallback((athlete: AthleteProfile) => {
-    setMessageTarget(athlete);
-    setActiveTab('messages');
-  }, []);
 
   const handleRunSavedSearch = useCallback((filters: SearchFilters) => {
     setSearchFiltersFromAlert(filters);
@@ -249,7 +241,6 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               onCompare={handleCompare}
               savedIds={savedIds}
               onSave={handleSave}
-              onSendMessage={handleSendMessage}
               initialFilters={searchFiltersFromAlert}
             />
           )}
@@ -266,7 +257,6 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               onCompare={handleCompare}
               savedIds={savedIds}
               onSave={handleSave}
-              onSendMessage={handleSendMessage}
             />
           )}
           {activeTab === 'compare' && (
@@ -283,16 +273,10 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               onCompare={handleCompare}
               savedIds={savedIds}
               onUnsave={handleUnsave}
-              onSendMessage={handleSendMessage}
             />
           )}
           {activeTab === 'pipeline' && (
             <PipelineTab scoutProfile={scoutProfile} />
-          )}
-          {activeTab === 'messages' && (
-            <div style={{ height: 'calc(100vh - 200px)', minHeight: '500px' }}>
-              <MessagesHub demo />
-            </div>
           )}
           {activeTab === 'activity' && (
             <ActivityTab scoutProfile={scoutProfile} />

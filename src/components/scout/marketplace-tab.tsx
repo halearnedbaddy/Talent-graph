@@ -30,7 +30,7 @@ interface Props {
   onCompare: (a: AthleteProfile) => void;
   savedIds: Set<string>;
   onSave: (a: AthleteProfile) => void;
-  onSendMessage: (a: AthleteProfile) => void;
+  onSendMessage?: (a: AthleteProfile) => void;
 }
 
 export function MarketplaceTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage }: Props) {
@@ -168,7 +168,7 @@ export function MarketplaceTab({ scoutProfile, compareList, onCompare, savedIds,
               isSaved={savedIds.has(a.uid)}
               onCompare={() => onCompare(a)}
               onSave={() => onSave(a)}
-              onSendMessage={() => onSendMessage(a)}
+              onSendMessage={onSendMessage ? () => onSendMessage(a) : undefined}
             />
           ))}
         </div>

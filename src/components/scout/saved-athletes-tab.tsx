@@ -20,7 +20,7 @@ interface Props {
   onCompare: (a: AthleteProfile) => void;
   savedIds: Set<string>;
   onUnsave: (athleteId: string) => void;
-  onSendMessage: (a: AthleteProfile) => void;
+  onSendMessage?: (a: AthleteProfile) => void;
 }
 
 export function SavedAthletesTab({ scoutProfile, compareList, onCompare, savedIds, onUnsave, onSendMessage }: Props) {
@@ -111,7 +111,7 @@ export function SavedAthletesTab({ scoutProfile, compareList, onCompare, savedId
                 isSaved={true}
                 onCompare={() => onCompare(a)}
                 onSave={() => onUnsave(a.uid)}
-                onSendMessage={() => onSendMessage(a)}
+                onSendMessage={onSendMessage ? () => onSendMessage(a) : undefined}
               />
               <div className="flex gap-1 px-0.5">
                 <Button

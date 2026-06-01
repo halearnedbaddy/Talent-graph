@@ -7,22 +7,12 @@ import type { AthleteProfile, ClubMatch } from '@/lib/types';
 
 export interface CoachNotification {
   id: string;
-  type: 'verification' | 'match' | 'message';
+  type: 'verification' | 'match';
   title: string;
   body: string;
   href: string;
   createdAt: string;
   isRead: boolean;
-}
-
-interface RawMessage {
-  id: string;
-  recipientId: string;
-  senderName: string;
-  subject?: string;
-  content: string;
-  isRead: boolean;
-  createdAt: string;
 }
 
 const STORAGE_KEY = 'coach_notifications_read';
@@ -79,21 +69,8 @@ export function useCoachNotifications(clubId: string | null, userId: string | nu
     [firestore, clubId]
   );
 
-  const unreadMessagesQuery = useMemoFirebase(
-    () =>
-      firestore && userId
-        ? query(
-            collection(firestore, 'messages'),
-            where('recipientId', '==', userId),
-            where('isRead', '==', false)
-          )
-        : null,
-    [firestore, userId]
-  );
-
   const { data: pendingAthletes } = useCollection<AthleteProfile>(pendingAthletesQuery);
   const { data: upcomingMatches } = useCollection<ClubMatch>(upcomingMatchesQuery);
-  const { data: unreadMessages } = useCollection<RawMessage>(unreadMessagesQuery);
 
   const notifications = useMemo<CoachNotification[]>(() => {
     const items: CoachNotification[] = [];
@@ -143,25 +120,10 @@ export function useCoachNotifications(clubId: string | null, userId: string | nu
       }
     }
 
-    if (unreadMessages) {
-      for (const msg of unreadMessages) {
-        const id = `msg-${msg.id}`;
-        items.push({
-          id,
-          type: 'message',
-          title: `Message from ${msg.senderName}`,
-          body: msg.subject || msg.content.slice(0, 60) + (msg.content.length > 60 ? '…' : ''),
-          href: '/coach-dashboard/communications',
-          createdAt: msg.createdAt,
-          isRead: readIds.has(id),
-        });
-      }
-    }
-
     return items.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [pendingAthletes, upcomingMatches, unreadMessages, readIds, clubId]);
+  }, [pendingAthletes, upcomingMatches, readIds, clubId]);
 
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.isRead).length,

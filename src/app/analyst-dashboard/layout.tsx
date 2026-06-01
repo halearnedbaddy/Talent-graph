@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import {
-  Home, Users, Trophy, BarChart3, MessageSquare,
+  Home, Users, Trophy, BarChart3,
   Settings, LogOut, Menu, X, Radio, FileText, ChevronRight
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,7 +21,6 @@ const navItems = [
   { href: '/analyst-dashboard/squad', label: 'Squad View', icon: Users },
   { href: '/analyst-dashboard/matches', label: 'Match Entry', icon: Trophy },
   { href: '/analyst-dashboard/analytics', label: 'Performance Analytics', icon: BarChart3 },
-  { href: '/analyst-dashboard/messages', label: 'Communications', icon: MessageSquare },
 ];
 
 export default function AnalystDashboardLayout({ children }: { children: React.ReactNode }) {

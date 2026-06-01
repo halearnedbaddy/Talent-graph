@@ -83,7 +83,7 @@ interface Props {
   onCompare: (a: AthleteProfile) => void;
   savedIds: Set<string>;
   onSave: (a: AthleteProfile) => void;
-  onSendMessage: (a: AthleteProfile) => void;
+  onSendMessage?: (a: AthleteProfile) => void;
   initialFilters?: SearchFilters;
 }
 
@@ -378,7 +378,7 @@ export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSa
                   isSaved={savedIds.has(a.uid)}
                   onCompare={() => onCompare(a)}
                   onSave={() => onSave(a)}
-                  onSendMessage={() => onSendMessage(a)}
+                  onSendMessage={onSendMessage ? () => onSendMessage(a) : undefined}
                 />
               ))}
             </div>
