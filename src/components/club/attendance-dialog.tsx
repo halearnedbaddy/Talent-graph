@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, updateDoc, collection, query, where } from 'firebase/firestore';
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
 import { Loader2, UserCheck, XCircle, Clock } from 'lucide-react';
-import type { PracticeSession, AthleteProfile, ScoutConnection } from '@/lib/types';
+import type { PracticeSession, AthleteProfile, ScoutConnection, ClubMember } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -28,12 +28,23 @@ export function AttendanceDialog({ session, clubId }: AttendanceDialogProps) {
     const [isSaving, setIsSaving] = useState(false);
     const [localAttendance, setLocalAttendance] = useState<Record<string, 'present' | 'absent' | 'late'>>(session.attendance || {});
 
-    // 1. Get athletes connected to this club
+    // 1. Get athletes via scout connections (accepted)
     const connectionsQuery = useMemoFirebase(() => (
         firestore ? query(collection(firestore, 'scout_connections'), where('clubId', '==', clubId), where('status', '==', 'accepted')) : null
     ), [firestore, clubId]);
     const { data: connections } = useCollection<ScoutConnection>(connectionsQuery);
-    const athleteIds = Array.from(new Set(connections?.map(c => c.athleteId) || []));
+
+    // Also get directly-added athletes from club_members
+    const directMembersQuery = useMemoFirebase(() => (
+        firestore ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('role', '==', 'athlete'), where('status', '==', 'active')) : null
+    ), [firestore, clubId]);
+    const { data: directMembers } = useCollection<ClubMember>(directMembersQuery);
+
+    const athleteIds = React.useMemo(() => {
+        const fromConnections = connections?.map(c => c.athleteId) || [];
+        const fromDirectMembers = directMembers?.map(m => m.userId) || [];
+        return Array.from(new Set([...fromConnections, ...fromDirectMembers]));
+    }, [connections, directMembers]);
 
     const athletesQuery = useMemoFirebase(() => (
         firestore && athleteIds.length > 0 ? query(collection(firestore, 'athletes'), where('uid', 'in', athleteIds)) : null

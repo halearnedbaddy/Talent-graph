@@ -34,7 +34,20 @@ export default function ClubOverviewPage() {
   ), [firestore, clubId]);
   const { data: connections, isLoading: isConnectionsLoading } = useCollection<ScoutConnection>(connectionsQuery);
 
-  const athleteIds = React.useMemo(() => [...new Set(connections?.map(c => c.athleteId) || [])], [connections]);
+  // Also fetch directly-added athletes from club_members (role=athlete, status=active)
+  const directMembersQuery = useMemoFirebase(() => (
+    firestore && clubId
+      ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('role', '==', 'athlete'), where('status', '==', 'active'))
+      : null
+  ), [firestore, clubId]);
+  const { data: directMembers, isLoading: isDirectMembersLoading } = useCollection<ClubMember>(directMembersQuery);
+
+  // Merge athlete IDs from both sources (scout connections + direct adds)
+  const athleteIds = React.useMemo(() => {
+    const fromConnections = connections?.map(c => c.athleteId) || [];
+    const fromDirectMembers = directMembers?.map(m => m.userId) || [];
+    return [...new Set([...fromConnections, ...fromDirectMembers])];
+  }, [connections, directMembers]);
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && athleteIds.length > 0 ? query(collection(firestore, 'athletes'), where('uid', 'in', athleteIds)) : null
@@ -132,7 +145,7 @@ export default function ClubOverviewPage() {
     );
   }, [athletes, posFilter, tierFilter]);
 
-  if (isMembershipLoading || isConnectionsLoading || (athleteIds.length > 0 && isAthletesLoading)) {
+  if (isMembershipLoading || isConnectionsLoading || isDirectMembersLoading || (athleteIds.length > 0 && isAthletesLoading)) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
   }
 

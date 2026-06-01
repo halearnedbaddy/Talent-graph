@@ -115,13 +115,22 @@ export default function LiveMatchPage() {
     [...(rawEvents ?? [])].sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0)),
   [rawEvents]);
 
-  // Fetch all squad athlete phones for SMS broadcasts
+  // Fetch all squad athlete phones for SMS broadcasts (scout connections + directly added)
   const connectionsQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'scout_connections'), where('clubId', '==', clubId), where('status', '==', 'accepted')) : null
   ), [firestore, clubId]);
   const { data: squadConnections } = useCollection<ScoutConnection>(connectionsQuery);
 
-  const squadAthleteIds = useMemo(() => [...new Set(squadConnections?.map(c => c.athleteId) || [])], [squadConnections]);
+  const directSquadMembersQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'club_members'), where('clubId', '==', clubId), where('role', '==', 'athlete'), where('status', '==', 'active')) : null
+  ), [firestore, clubId]);
+  const { data: directSquadMembers } = useCollection<ClubMember>(directSquadMembersQuery);
+
+  const squadAthleteIds = useMemo(() => {
+    const fromConnections = squadConnections?.map(c => c.athleteId) || [];
+    const fromDirect = directSquadMembers?.map(m => m.userId) || [];
+    return [...new Set([...fromConnections, ...fromDirect])];
+  }, [squadConnections, directSquadMembers]);
 
   const squadAthletesQuery = useMemoFirebase(() => (
     firestore && squadAthleteIds.length > 0 ? query(collection(firestore, 'athletes'), where('uid', 'in', squadAthleteIds)) : null
