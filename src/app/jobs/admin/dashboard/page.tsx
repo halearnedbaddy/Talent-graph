@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ShieldCheck, Flag, MessageSquare, LayoutDashboard, LogOut, Loader2, Users } from 'lucide-react';
+import { ShieldCheck, Flag, MessageSquare, LayoutDashboard, LogOut, Loader2, Users, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { signOut } from 'firebase/auth';
@@ -15,6 +15,7 @@ import { VerificationManager } from '@/components/admin/verification-manager';
 import { ReportManager } from '@/components/admin/report-manager';
 import { SupportInbox } from '@/components/admin/support-inbox';
 import { WaitingListViewer } from '@/components/admin/waiting-list-viewer';
+import { PlatformAnalytics } from '@/components/admin/platform-analytics';
 
 export default function AdminDashboard() {
   const auth = useAuth();
@@ -93,6 +94,9 @@ export default function AdminDashboard() {
               <TabsTrigger value="waiting-list" className="flex items-center gap-2">
                 <Users className="w-4 h-4" /> Waiting List
               </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" /> Analytics
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -142,6 +146,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="waiting-list">
             <WaitingListViewer />
+          </TabsContent>
+
+          <TabsContent value="analytics">
+            <PlatformAnalytics />
           </TabsContent>
         </Tabs>
       </main>
