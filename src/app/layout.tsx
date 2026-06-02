@@ -5,6 +5,7 @@ import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { cn } from '@/lib/utils';
 import { PWARegister } from '@/components/pwa-register';
+import Script from 'next/script';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -51,6 +52,18 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#000000" />
         <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
       </head>
+      <Script
+        src="https://www.googletagmanager.com/gtag/js?id=G-DH7JN1PKKJ"
+        strategy="afterInteractive"
+      />
+      <Script id="gtag-init" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-DH7JN1PKKJ');
+        `}
+      </Script>
       <body className={cn(
         "min-h-screen bg-background font-sans antialiased",
         inter.variable
