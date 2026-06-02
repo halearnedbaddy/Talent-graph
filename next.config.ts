@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+import path from 'path';
 
 const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
 
@@ -20,6 +21,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ['recharts'],
   allowedDevOrigins,
   turbopack: {
+    root: path.resolve(__dirname),
     resolveAlias: {
       '@firebase/firestore': './node_modules/@firebase/firestore/dist/index.esm2017.js',
       '@firebase/auth': './node_modules/@firebase/auth/dist/esm2017/index.js',
