@@ -7,6 +7,7 @@ import { useAuth, useFirestore, useUser, useCollection, useMemoFirebase } from '
 import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent } from '@/lib/analytics';
 import { ScoutNotificationBell } from './notification-bell';
 import { CompareBar } from './compare-bar';
 import { SearchTab } from './search-tab';
@@ -71,9 +72,11 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
     const ref = doc(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes', athlete.uid);
     if (savedIds.has(athlete.uid)) {
       await deleteDoc(ref);
+      trackEvent('athlete_unsaved', { athlete_id: athlete.uid });
       toast({ title: 'Removed', description: `${athlete.firstName} removed from saved athletes.` });
     } else {
       await setDoc(ref, { id: athlete.uid, athleteId: athlete.uid, savedAt: new Date().toISOString() });
+      trackEvent('athlete_saved', { athlete_id: athlete.uid });
       toast({ title: 'Saved', description: `${athlete.firstName} ${athlete.lastName} added to your saved list.` });
     }
   }, [firestore, scoutProfile.uid, savedIds, toast]);

@@ -20,6 +20,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { trackEvent } from '@/lib/analytics';
 import { doc } from 'firebase/firestore';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -88,6 +89,7 @@ export default function SignupPage() {
       });
 
       await sendEmailVerification(newUser);
+      trackEvent('sign_up', { method: 'email' });
 
       const userDocRef = doc(firestore, "users", newUser.uid);
       setDocumentNonBlocking(userDocRef, {

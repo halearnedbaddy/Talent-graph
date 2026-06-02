@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import type { ClubMember, AthleteProfile, UserAccount, LiveMatch, LiveMatchEvent } from '@/lib/types';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent } from '@/lib/analytics';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 const CARD_REASONS = ['Foul', 'Dissent', 'Time Wasting', 'Handball', 'Simulation', 'Violent Conduct', 'Two Yellow Cards'];
@@ -539,6 +540,12 @@ ${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${teamS
         }
       }
 
+      if (!draft) {
+        trackEvent('match_entry_saved', {
+          player_count: playerStats.filter(p => p.athleteId).length,
+          competition: match.competition,
+        });
+      }
       toast({ title: draft ? '💾 Saved as draft' : '✓ Match published!', description: draft ? 'Continue editing later.' : `${playerStats.filter(p => p.athleteId).length} player profiles updated.` });
       // Reset
       setPage(1); setMatch({ date: new Date().toISOString().slice(0, 10), opponent: '', venue: 'Home', competition: '', kickoff: '', season: '2025/26' });

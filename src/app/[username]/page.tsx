@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { smsSend } from '@/hooks/useSMS';
 import React, { useEffect, useRef, useState } from 'react';
+import { trackEvent } from '@/lib/analytics';
 import { Separator } from '@/components/ui/separator';
 
 import { AiSummary } from '@/components/scout/ai-summary';
@@ -135,6 +136,12 @@ export default function UsernamePage() {
             'viewers',
             authUser?.uid || `anon_${Date.now()}`
         );
+        trackEvent('athlete_profile_view', {
+            athlete_id: athlete.uid,
+            athlete_username: username,
+            viewer_role: viewerRole,
+        });
+
         setDoc(viewerDocRef, {
             viewerId: authUser?.uid || null,
             viewerName,

@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Megaphone, Loader2, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent } from '@/lib/analytics';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
 import type { ClubMember } from '@/lib/types';
 
@@ -159,6 +160,7 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         }
       }
 
+      trackEvent('broadcast_sent', { recipient_count: memberCount });
       toast({
         title: '📢 Broadcast sent!',
         description: `Message delivered to ${memberCount} squad member${memberCount !== 1 ? 's' : ''}.`,

@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Search, Bookmark, Bell, BellOff, Trash2, ChevronDown, ChevronUp, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST', 'CF'];
@@ -107,6 +108,18 @@ export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSa
   }, [searchQuery]);
 
   useEffect(() => { setPage(0); }, [filters]);
+
+  const filterKey = JSON.stringify(filters);
+  useEffect(() => {
+    if (!debouncedQ && filterKey === JSON.stringify({ sort: 'score' })) return;
+    if (filtered.length === 0) return;
+    trackEvent('scout_search', {
+      result_count: filtered.length,
+      has_text_query: debouncedQ.length > 0,
+      has_filters: filterKey !== JSON.stringify({ sort: 'score' }),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ, filterKey]);
 
   const athletesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'athletes') : null), [firestore]);
   const { data: athletes, isLoading } = useCollection<AthleteProfile>(athletesQuery);

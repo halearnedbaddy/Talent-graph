@@ -21,6 +21,7 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { UserAccount } from '@/lib/types';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { trackEvent } from '@/lib/analytics';
 
 
 const formSchema = z.object({
@@ -94,6 +95,7 @@ export default function LoginPage() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       await recordLogin(firestore, userCredential.user);
+      trackEvent('login', { method: 'email' });
     } catch (error: any) {
       let message = "An unexpected error occurred.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
