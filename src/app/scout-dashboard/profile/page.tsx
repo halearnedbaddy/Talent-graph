@@ -53,6 +53,7 @@ export default function ScoutProfilePage() {
     const [photoUpload, setPhotoUpload] = useState<UploadProgress | null>(null);
     const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
     const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
+    const [photoDragOver, setPhotoDragOver] = useState(false);
 
     const scoutDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'scouts', user.uid) : null), [firestore, user?.uid]);
     const { data: scoutProfile, isLoading: isScoutProfileLoading } = useDoc<ScoutProfile>(scoutDocRef);
@@ -142,6 +143,13 @@ export default function ScoutProfilePage() {
         e.target.value = '';
     };
 
+    const handlePhotoDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        setPhotoDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) await handlePhotoFile(file);
+    };
+
     const onSubmit = async (values: z.infer<typeof scoutUpdateFormSchema>) => {
         if (!user || !firestore || !scoutDocRef) return;
         setIsLoading(true);
@@ -219,7 +227,17 @@ export default function ScoutProfilePage() {
                             className="hidden"
                             onChange={handlePhotoSelect}
                         />
-                        <div className="flex items-start gap-5">
+                        <button
+                            type="button"
+                            onClick={() => photoInputRef.current?.click()}
+                            onDragOver={(e) => { e.preventDefault(); setPhotoDragOver(true); }}
+                            onDragLeave={() => setPhotoDragOver(false)}
+                            onDrop={handlePhotoDrop}
+                            disabled={isCompressingPhoto || photoUpload?.state === 'running'}
+                            className={`w-full border-2 border-dashed rounded-xl p-5 flex items-center gap-5 transition-all text-left
+                                ${photoDragOver ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-border hover:border-primary/50 hover:bg-muted/30'}
+                                ${isCompressingPhoto || photoUpload?.state === 'running' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
                             <div className="relative shrink-0">
                                 <Avatar className="h-20 w-20 border-4 border-background shadow-xl rounded-2xl">
                                     <AvatarImage src={photoPreview} className="object-cover" />
@@ -227,32 +245,14 @@ export default function ScoutProfilePage() {
                                         {nameInitials}
                                     </AvatarFallback>
                                 </Avatar>
-                                <button
-                                    type="button"
-                                    onClick={() => photoInputRef.current?.click()}
-                                    disabled={photoUpload?.state === 'running'}
-                                    className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                                >
+                                <div className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg">
                                     <Camera className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                            <div className="flex-1 space-y-2">
-                                <div>
-                                    <p className="font-black text-sm">{scoutProfile.name}</p>
-                                    <p className="text-xs text-muted-foreground capitalize">{scoutProfile.entityType} · @{scoutProfile.username}</p>
                                 </div>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-2 font-bold text-xs h-9"
-                                    onClick={() => photoInputRef.current?.click()}
-                                    disabled={isCompressingPhoto || photoUpload?.state === 'running'}
-                                >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    {photoPreview ? 'Change Photo' : 'Upload Photo'}
-                                </Button>
-                                {(isCompressingPhoto || photoUpload?.state === 'running') && (
+                            </div>
+                            <div className="flex-1 space-y-1.5 min-w-0">
+                                <p className="font-black text-sm">{scoutProfile.name}</p>
+                                <p className="text-xs text-muted-foreground capitalize">{scoutProfile.entityType} · @{scoutProfile.username}</p>
+                                {(isCompressingPhoto || photoUpload?.state === 'running') ? (
                                     <div className="space-y-1 max-w-xs">
                                         <div className="flex justify-between text-xs text-muted-foreground">
                                             <span className="flex items-center gap-1">
@@ -263,32 +263,23 @@ export default function ScoutProfilePage() {
                                         </div>
                                         <Progress value={isCompressingPhoto ? undefined : photoUpload?.progress} className="h-1.5" />
                                     </div>
-                                )}
-                                {photoUpload?.state === 'success' && (
+                                ) : photoUpload?.state === 'success' ? (
                                     <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
                                         <CheckCircle2 className="w-3.5 h-3.5" />
                                         Photo saved to your profile!
                                     </p>
-                                )}
-                                {photoUpload?.state === 'error' && (
-                                    <div className="space-y-1">
-                                        <p className="flex items-center gap-1.5 text-destructive text-xs">
-                                            <AlertCircle className="w-3.5 h-3.5" />
-                                            {photoUpload.error}
-                                        </p>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className="text-xs h-8"
-                                            onClick={() => photoInputRef.current?.click()}
-                                        >
-                                            Try Again
-                                        </Button>
-                                    </div>
+                                ) : photoUpload?.state === 'error' ? (
+                                    <p className="flex items-center gap-1.5 text-destructive text-xs">
+                                        <AlertCircle className="w-3.5 h-3.5" />
+                                        {photoUpload.error}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                        {photoDragOver ? 'Drop your photo here' : 'Click or drag to upload a profile photo'}
+                                    </p>
                                 )}
                             </div>
-                        </div>
+                        </button>
                     </CardContent>
                 </Card>
 

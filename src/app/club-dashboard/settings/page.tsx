@@ -29,6 +29,7 @@ export default function ClubSettingsPage() {
     const [logoUpload, setLogoUpload] = useState<UploadProgress | null>(null);
     const [isCompressingLogo, setIsCompressingLogo] = useState(false);
     const [pendingLogoUrl, setPendingLogoUrl] = useState<string | null>(null);
+    const [logoDragOver, setLogoDragOver] = useState(false);
 
     useEffect(() => {
         if (!firestore || !user) return;
@@ -119,6 +120,13 @@ export default function ClubSettingsPage() {
         e.target.value = '';
     };
 
+    const handleLogoDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        setLogoDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) await handleLogoFile(file);
+    };
+
     const handleSave = async () => {
         if (!firestore || !clubId) return;
         setIsSaving(true);
@@ -183,7 +191,17 @@ export default function ClubSettingsPage() {
                         className="hidden"
                         onChange={handleLogoSelect}
                     />
-                    <div className="flex items-start gap-5">
+                    <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); setLogoDragOver(true); }}
+                        onDragLeave={() => setLogoDragOver(false)}
+                        onDrop={handleLogoDrop}
+                        disabled={isCompressingLogo || logoUpload?.state === 'running'}
+                        className={`w-full border-2 border-dashed rounded-xl p-5 flex items-center gap-5 transition-all text-left
+                            ${logoDragOver ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-border hover:border-primary/50 hover:bg-muted/30'}
+                            ${isCompressingLogo || logoUpload?.state === 'running' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
                         <div className="relative shrink-0">
                             <Avatar className="h-20 w-20 border-4 border-background shadow-xl rounded-2xl">
                                 <AvatarImage src={logoPreview} className="object-cover" />
@@ -191,54 +209,40 @@ export default function ClubSettingsPage() {
                                     {clubInitials}
                                 </AvatarFallback>
                             </Avatar>
-                            <button
-                                type="button"
-                                onClick={() => logoInputRef.current?.click()}
-                                disabled={logoUpload?.state === 'running'}
-                                className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                            >
+                            <div className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg">
                                 <Camera className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                        <div className="flex-1 space-y-2">
-                            <div>
-                                <p className="font-black text-sm">{club?.clubName || 'Your Club'}</p>
-                                <p className="text-xs text-muted-foreground">Upload your club logo or crest</p>
                             </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="gap-2 font-bold text-xs h-9"
-                                onClick={() => logoInputRef.current?.click()}
-                                disabled={logoUpload?.state === 'running'}
-                            >
-                                <Upload className="w-3.5 h-3.5" />
-                                {logoPreview ? 'Change Logo' : 'Upload Logo'}
-                            </Button>
-                            {logoUpload?.state === 'running' && (
-                                <div className="space-y-1 max-w-xs">
+                        </div>
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                            <p className="font-black text-sm">{club?.clubName || 'Your Club'}</p>
+                            {(isCompressingLogo || logoUpload?.state === 'running') ? (
+                                <div className="space-y-1">
                                     <div className="flex justify-between text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Uploading...</span>
-                                        <span>{logoUpload.progress}%</span>
+                                        <span className="flex items-center gap-1">
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                            {isCompressingLogo ? 'Compressing…' : 'Uploading…'}
+                                        </span>
+                                        <span>{isCompressingLogo ? '—' : `${logoUpload?.progress ?? 0}%`}</span>
                                     </div>
-                                    <Progress value={logoUpload.progress} className="h-1.5" />
+                                    <Progress value={isCompressingLogo ? undefined : logoUpload?.progress} className="h-1.5" />
                                 </div>
-                            )}
-                            {logoUpload?.state === 'success' && (
+                            ) : logoUpload?.state === 'success' ? (
                                 <p className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                     Logo saved to your club profile!
                                 </p>
-                            )}
-                            {logoUpload?.state === 'error' && (
+                            ) : logoUpload?.state === 'error' ? (
                                 <p className="flex items-center gap-1.5 text-destructive text-xs">
                                     <AlertCircle className="w-3.5 h-3.5" />
                                     {logoUpload.error}
                                 </p>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">
+                                    {logoDragOver ? 'Drop your logo here' : 'Click or drag to upload your club logo or crest'}
+                                </p>
                             )}
                         </div>
-                    </div>
+                    </button>
                 </CardContent>
             </Card>
 
