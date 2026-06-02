@@ -1,0 +1,641 @@
+cat > /home/claude/legal_docs.js << 'SCRIPT'
+const fs = require('fs');
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
+  VerticalAlign, LevelFormat
+} = require('docx');
+
+const W = 9360;
+const border = { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" };
+const borders = { top: border, bottom: border, left: border, right: border };
+
+const numbering = {
+  config: [
+    { reference: "bullets", levels: [{ level: 0, format: LevelFormat.BULLET, text: "•",
+        alignment: AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: 720, hanging: 360 } } } }] }
+  ]
+};
+
+const styles = {
+  default: { document: { run: { font: "Arial", size: 22 } } },
+  paragraphStyles: [
+    { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 34, bold: true, font: "Arial", color: "1A1A1A" },
+      paragraph: { spacing: { before: 360, after: 160 } } },
+    { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 24, bold: true, font: "Arial", color: "1A1A1A" },
+      paragraph: { spacing: { before: 280, after: 100 } } },
+    { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 22, bold: true, font: "Arial", color: "333333" },
+      paragraph: { spacing: { before: 200, after: 80 } } },
+  ]
+};
+
+const pageProps = {
+  page: {
+    size: { width: 12240, height: 15840 },
+    margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+  }
+};
+
+const p = (text, opts = {}) => new Paragraph({
+  children: [new TextRun({ text, font: "Arial", size: opts.size || 22,
+    bold: opts.bold, color: opts.color || "333333", italics: opts.italic })],
+  spacing: { before: opts.before || 60, after: opts.after || 80 },
+  alignment: opts.align || AlignmentType.LEFT
+});
+
+const h1 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_1,
+  children: [new TextRun({ text: t, font: "Arial", size: 34, bold: true, color: "1A1A1A" })],
+  spacing: { before: 360, after: 160 } });
+
+const h2 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_2,
+  children: [new TextRun({ text: t, font: "Arial", size: 24, bold: true, color: "1A1A1A" })],
+  spacing: { before: 300, after: 100 } });
+
+const h3 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_3,
+  children: [new TextRun({ text: t, font: "Arial", size: 22, bold: true, color: "333333" })],
+  spacing: { before: 200, after: 80 } });
+
+const bullet = (text, boldPart) => new Paragraph({
+  numbering: { reference: "bullets", level: 0 },
+  children: boldPart
+    ? [new TextRun({ text: boldPart, font: "Arial", size: 22, bold: true, color: "1A1A1A" }),
+       new TextRun({ text, font: "Arial", size: 22, color: "333333" })]
+    : [new TextRun({ text, font: "Arial", size: 22, color: "333333" })],
+  spacing: { before: 40, after: 40 }
+});
+
+const rule = () => new Paragraph({
+  border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC", space: 1 } },
+  spacing: { before: 200, after: 200 }
+});
+
+const spacer = () => new Paragraph({ children: [new TextRun({ text: "" })],
+  spacing: { before: 80, after: 80 } });
+
+const callout = (text) => new Paragraph({
+  children: [new TextRun({ text, font: "Arial", size: 22, italics: true, color: "1A1A1A" })],
+  border: { left: { style: BorderStyle.SINGLE, size: 14, color: "1A1A1A", space: 8 } },
+  shading: { fill: "F5F5F3", type: ShadingType.CLEAR },
+  spacing: { before: 140, after: 140 },
+  indent: { left: 360 }
+});
+
+const notice = (text) => new Paragraph({
+  children: [new TextRun({ text, font: "Arial", size: 22, color: "333333" })],
+  shading: { fill: "FFF8E6", type: ShadingType.CLEAR },
+  border: { left: { style: BorderStyle.SINGLE, size: 14, color: "C8960C", space: 8 },
+            top: border, bottom: border, right: border },
+  spacing: { before: 120, after: 120 },
+  indent: { left: 240, right: 240 }
+});
+
+const save = (name, children) => {
+  const doc = new Document({ styles, numbering,
+    sections: [{ properties: pageProps, children }] });
+  Packer.toBuffer(doc).then(buf => {
+    fs.writeFileSync(`/home/claude/${name}`, buf);
+    console.log('✓', name);
+  });
+};
+
+// ══════════════════════════════════════════════════════
+// TERMS OF USE
+// ══════════════════════════════════════════════════════
+
+save("TalentGraph_Terms_of_Use.docx", [
+
+  h1("Terms of Use"),
+  p("Talent Graph — Verve Vigor Limited", { bold: true, color: "1A1A1A" }),
+  p("Effective Date: June 1, 2026  ·  Last Updated: June 1, 2026", { color: "888888", italic: true }),
+  rule(),
+
+  notice("IMPORTANT: Please read these Terms carefully before using the Platform. By registering an account or accessing any part of the Platform, you confirm that you have read, understood, and agree to be bound by these Terms. If you do not agree, you must not use the Platform."),
+  spacer(),
+
+  // ── 1 ──
+  h2("1.  Definitions"),
+  p("In these Terms, the following definitions apply:"),
+  bullet('"Company," "we," "us," or "our" means Verve Vigor Limited, a company being registered under the laws of Kenya, operating the Talent Graph platform.'),
+  bullet('"Platform" means the Talent Graph sports intelligence platform, including all web and mobile interfaces, APIs, algorithms, and associated services.'),
+  bullet('"Athlete" means a registered user who creates a performance profile on the Platform.'),
+  bullet('"Scout" means a registered user who accesses athlete profiles for legitimate talent evaluation purposes.'),
+  bullet('"Club" means an organisation registered on the Platform that manages athlete pipelines through affiliated scouts.'),
+  bullet('"Coach" means a registered user with authority to verify athlete performance data on the Platform.'),
+  bullet('"Risk Score" or "Talent Score" means the proprietary 4-pillar composite score generated from verified performance data.'),
+  bullet('"Verification" means the formal act by a Coach of reviewing and confirming the accuracy of an Athlete\'s performance data on the Platform.'),
+  bullet('"KDPA" means the Kenya Data Protection Act 2019 and all regulations made thereunder.'),
+  spacer(),
+
+  // ── 2 ──
+  h2("2.  Platform Overview"),
+  p("Talent Graph is a private sports talent intelligence platform that enables:"),
+  bullet("Athletes to create coach-verified performance profiles"),
+  bullet("Scouts to evaluate and connect with athletes using verified data"),
+  bullet("Clubs to manage athlete pipelines through affiliated scouts"),
+  bullet("Coaches to validate athlete performance data and issue Verified Badges"),
+  bullet("Authorised insurance partners to access structured risk data (subject to separate athlete consent)"),
+  spacer(),
+  p("The Platform is not:"),
+  bullet("A public athlete marketplace or open directory"),
+  bullet("A recruitment agency or employment intermediary"),
+  bullet("A guarantee of trials, contracts, or professional advancement"),
+  bullet("An insurance provider or financial adviser"),
+  spacer(),
+  p("All scouting, recruitment, and insurance decisions are made independently by the respective users and partner institutions. The Company does not participate in or influence those decisions."),
+  spacer(),
+
+  // ── 3 ──
+  h2("3.  Eligibility and Account Registration"),
+  p("To register on the Platform:"),
+  bullet("You must be at least 16 years of age. If you are under 18, you must have obtained the written consent of a parent or legal guardian before registering."),
+  bullet("You must provide accurate, complete, and current information at the time of registration and keep it updated."),
+  bullet("You are responsible for maintaining the confidentiality of your login credentials. You must not share your credentials with any other person."),
+  bullet("You must not create an account on behalf of another person without their express authorisation."),
+  bullet("We reserve the right to verify the identity of any user and to suspend or terminate accounts where false information is provided."),
+  spacer(),
+
+  // ── 4 ──
+  h2("4.  User Roles and Responsibilities"),
+
+  h3("4.1  Athletes"),
+  p("By registering as an Athlete, you agree to:"),
+  bullet("Provide truthful and accurate performance data at all times"),
+  bullet("Upload only lawful, non-infringing content (media, statistics, records)"),
+  bullet("Not misrepresent your identity, credentials, achievements, or physical condition"),
+  bullet("Promptly update your profile where information changes materially"),
+  bullet("Use the Platform solely for legitimate athletic exposure and career development"),
+  spacer(),
+  p("You acknowledge that:"),
+  bullet("Risk Scores are generated from the data you and your Coach provide. Their accuracy depends on the accuracy of that input."),
+  bullet("Risk Scores are informational only and do not constitute professional recruitment assessments or guarantees of any opportunity."),
+  bullet("Where you consent, your Risk Score and performance data may be shared with authorised insurance partners for the purpose of insurance eligibility assessment."),
+  spacer(),
+
+  h3("4.2  Scouts"),
+  p("By registering as a Scout, you agree to:"),
+  bullet("Use athlete data strictly for legitimate, professional talent evaluation purposes"),
+  bullet("Not redistribute, republish, sell, or share athlete data outside the Platform without express written authorisation from the Company"),
+  bullet("Not contact athletes for purposes unrelated to legitimate scouting"),
+  bullet("Not harass, exploit, coerce, or apply undue pressure to athletes"),
+  bullet("Comply with all applicable employment, data protection, and anti-discrimination laws in your jurisdiction"),
+  bullet("Respect all role-based access restrictions enforced by the Platform"),
+  spacer(),
+  p("Misuse of athlete data — including redistribution, commercial exploitation, or use for unauthorised purposes — may result in immediate account termination and legal action."),
+  spacer(),
+
+  h3("4.3  Clubs"),
+  p("Clubs registered on the Platform are responsible for:"),
+  bullet("The conduct of all scout members affiliated with the Club account"),
+  bullet("Proper and lawful handling of athlete information accessed through the Platform"),
+  bullet("Ensuring that affiliated scouts comply with these Terms and all applicable laws"),
+  bullet("Not granting Platform access to unaffiliated third parties"),
+  spacer(),
+
+  h3("4.4  Coaches — Verification Responsibilities and Liability"),
+  notice("This section is critical. By performing a Verification action on the Platform, a Coach accepts personal responsibility for the accuracy of the data they verify. Read this section carefully before verifying any athlete data."),
+  spacer(),
+  p("When a Coach clicks \"Verify\" on an athlete's performance data:"),
+  bullet("The Coach confirms, to the best of their knowledge, that the data is accurate and reflects the Athlete's genuine performance, conduct, and physical condition."),
+  bullet("The Coach's full name and profile link are permanently attached to the Verified Badge on that Athlete's profile, visible to all authorised users including Scouts."),
+  bullet("The Coach accepts that Scouts and other users will rely on the verification when making scouting, recruitment, and potentially insurance decisions."),
+  bullet("The Coach understands that providing false, misleading, or deliberately inflated verification constitutes a breach of these Terms and may constitute fraud or misrepresentation under Kenyan law."),
+  spacer(),
+  p("Coaches who provide systematically inaccurate verifications — whether through carelessness, bias, or collusion — may face:"),
+  bullet("Permanent removal of verification authority on the Platform"),
+  bullet("Public degradation of their Coach credibility score, visible to other users"),
+  bullet("Account suspension or termination"),
+  bullet("Legal liability to the Company and to any third party who relied on the inaccurate verification"),
+  spacer(),
+  p("The Company reserves the right to cross-reference verified data against match records, third-party data, and platform analytics to identify systematic verification inaccuracies. Where a statistical discrepancy is identified, verified badges may be placed on hold pending review."),
+  spacer(),
+
+  // ── 5 ──
+  h2("5.  Data Ownership and Intellectual Property"),
+
+  h3("5.1  User Data"),
+  p("Users retain ownership of personal data they submit to the Platform. By using the Platform, you grant the Company a limited, non-exclusive, royalty-free licence to process, store, and display your data as necessary to operate the Platform and provide its services to you."),
+  spacer(),
+  p("This licence does not permit the Company to sell your personal data to third parties. Where your data is shared with insurance partners, this occurs only with your separate, explicit consent (see Clause 6)."),
+  spacer(),
+
+  h3("5.2  Platform Intellectual Property"),
+  p("The Company owns all rights in:"),
+  bullet("The Platform software, infrastructure, and source code"),
+  bullet("All algorithms, scoring models, and Risk Score methodologies"),
+  bullet("Data architecture and system design"),
+  bullet("Branding, trademarks, and visual identity"),
+  bullet("Aggregated and anonymised analytics derived from Platform use"),
+  spacer(),
+  p("You may not reverse engineer, decompile, scrape, extract, or attempt to replicate any part of the Platform or its scoring methodology. Violation of this clause may result in legal action."),
+  spacer(),
+
+  // ── 6 ──
+  h2("6.  Insurance Data Sharing — Separate Consent Required"),
+  notice("The following applies specifically to Athletes who wish to receive insurance eligibility scores or have their data shared with insurance partners. This is entirely voluntary and requires your separate, explicit consent."),
+  spacer(),
+  p("The Platform's Risk Score is designed to also function as an actuarial instrument for sports injury insurance pricing. This creates the possibility of a separate service: insurance eligibility assessment by authorised insurance partners."),
+  spacer(),
+  p("Insurance data sharing will only occur where:"),
+  bullet("You have separately and explicitly consented to insurance data sharing through a dedicated consent mechanism within the Platform — consent to these Terms alone is not sufficient"),
+  bullet("The purpose of sharing is clearly identified (e.g., NCBA Insurance or another named partner)"),
+  bullet("A Data Processing Agreement is in place between the Company and the relevant insurance partner"),
+  bullet("The data shared is limited to what is necessary for the insurance assessment"),
+  spacer(),
+  p("You may withdraw consent for insurance data sharing at any time without affecting your use of the rest of the Platform. Withdrawal of consent will prevent future sharing but will not reverse data already shared with the insurer's consent."),
+  spacer(),
+  p("The Company does not provide insurance products. Insurance decisions are made independently by licensed insurance partners and are subject to their own terms, conditions, and regulatory requirements."),
+  spacer(),
+
+  // ── 7 ──
+  h2("7.  Risk Scores and Automated Processing"),
+  p("The Platform generates Risk Scores and Talent Scores using coach-verified performance metrics and structured inputs submitted by Athletes, Coaches, and Scouts."),
+  spacer(),
+  p("These scores:"),
+  bullet("Are algorithmically generated from verified input data"),
+  bullet("Are informational only and do not constitute professional certification, medical assessment, or legal evaluation"),
+  bullet("Do not guarantee recruitment, trial, or insurance outcomes"),
+  bullet("May evolve as the Platform's scoring methodology is refined"),
+  spacer(),
+  p("In accordance with KDPA 2019 and applicable data protection law, you have the right not to be subject to a decision based solely on automated processing that significantly affects you. If you believe an automated score has been applied in a manner that significantly affects your rights, you may contact us to request human review at the contact details provided in these Terms."),
+  spacer(),
+
+  // ── 8 ──
+  h2("8.  Prohibited Conduct"),
+  p("You must not:"),
+  bullet("Scrape, crawl, mine, or systematically extract any data from the Platform"),
+  bullet("Attempt to bypass, circumvent, or reverse-engineer any security or access control"),
+  bullet("Impersonate any person, organisation, or authority"),
+  bullet("Harass, threaten, exploit, or discriminate against any user"),
+  bullet("Upload content that is unlawful, defamatory, obscene, or infringes third-party rights"),
+  bullet("Use the Platform for commercial exploitation unrelated to sport and talent development"),
+  bullet("Provide false, misleading, or fraudulent information — including fraudulent verification as a Coach"),
+  bullet("Attempt to manipulate, inflate, or game any scoring, rating, or verification system on the Platform"),
+  bullet("Share your account credentials or grant access to unauthorised persons"),
+  spacer(),
+  p("Violations may result in immediate account suspension, permanent termination, and legal action where appropriate."),
+  spacer(),
+
+  // ── 9 ──
+  h2("9.  Privacy and Data Protection"),
+  p("The collection, use, and sharing of personal data through the Platform is governed by our Privacy Policy and by the Kenya Data Protection Act 2019. By using the Platform, you confirm that you have read and understood our Privacy Policy."),
+  spacer(),
+  p("The Platform processes personal data including, in some cases, health-related data (injury history, physical condition). Such data constitutes sensitive personal data under KDPA Section 49 and is processed only with your explicit consent and for specified, legitimate purposes."),
+  spacer(),
+
+  // ── 10 ──
+  h2("10.  Suspension and Termination"),
+  p("We reserve the right to suspend or terminate any account, without prior notice, where:"),
+  bullet("A user has violated these Terms"),
+  bullet("We reasonably suspect fraudulent, abusive, or harmful activity"),
+  bullet("Required by law, court order, or regulatory authority"),
+  bullet("Continued access poses a risk to other users, the Platform, or third parties"),
+  spacer(),
+  p("Users may terminate their own accounts at any time by contacting us. Upon termination, access to the Platform is revoked. Certain data may be retained as required by law or for legitimate security and compliance purposes, as set out in our Privacy Policy."),
+  spacer(),
+
+  // ── 11 ──
+  h2("11.  Disclaimers"),
+  p("The Platform is provided on an \"as is\" and \"as available\" basis. To the maximum extent permitted by applicable law, the Company makes no warranties, express or implied, including:"),
+  bullet("That the Platform will be uninterrupted, error-free, or free from security vulnerabilities"),
+  bullet("That Risk Scores or Talent Scores will be accurate, complete, or suitable for any particular purpose"),
+  bullet("That use of the Platform will result in recruitment, trial, contracts, or insurance coverage"),
+  bullet("That data submitted by users is accurate (the Company verifies through Coaches, not independently)"),
+  spacer(),
+
+  // ── 12 ──
+  h2("12.  Limitation of Liability"),
+  p("To the fullest extent permitted by Kenyan law:"),
+  bullet("The Company is not liable for indirect, incidental, consequential, or punitive damages arising from your use of the Platform"),
+  bullet("The Company is not responsible for recruitment decisions, scouting outcomes, or insurance decisions made by third parties using Platform data"),
+  bullet("The Company's total liability for any claim shall not exceed the total amount paid by you to the Company in the twelve months preceding the claim"),
+  spacer(),
+  p("Nothing in these Terms limits liability for fraud, death or personal injury caused by negligence, or any liability that cannot be excluded under applicable law."),
+  spacer(),
+
+  // ── 13 ──
+  h2("13.  Indemnification"),
+  p("You agree to indemnify, defend, and hold harmless the Company, its officers, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable legal fees) arising from:"),
+  bullet("Your breach of these Terms"),
+  bullet("Your misuse of the Platform or another user's data"),
+  bullet("Inaccurate or fraudulent information you provided, including as a Coach"),
+  bullet("Your violation of applicable law"),
+  bullet("Infringement of third-party intellectual property or data protection rights"),
+  spacer(),
+
+  // ── 14 ──
+  h2("14.  Governing Law and Dispute Resolution"),
+  p("These Terms are governed by and construed in accordance with the laws of Kenya, including the Kenya Data Protection Act 2019, without regard to conflict of laws principles."),
+  spacer(),
+  p("Any dispute arising from or in connection with these Terms that cannot be resolved through good-faith negotiation within 30 days shall be referred to mediation before the Nairobi Centre for International Arbitration. Where mediation fails, disputes shall be resolved through the courts of Kenya."),
+  spacer(),
+
+  // ── 15 ──
+  h2("15.  Modifications"),
+  p("We may update these Terms periodically to reflect changes in our Platform, legal obligations, or business practices. Where changes are material, we will provide at least 14 days' notice through:"),
+  bullet("In-Platform notifications"),
+  bullet("Email notification (where an email address is registered)"),
+  spacer(),
+  p("Continued use of the Platform after the effective date of updated Terms constitutes acceptance. If you do not agree to updated Terms, you must stop using the Platform before the effective date."),
+  spacer(),
+
+  // ── 16 ──
+  h2("16.  Contact"),
+  p("Verve Vigor Limited — Talent Graph"),
+  p("Registered Address: JKUAT Entry Road, Juja, Kiambu, Kenya"),
+  p("Data Protection Contact: [INSERT BUSINESS EMAIL BEFORE PUBLISHING]", { color: "CC0000", bold: true }),
+  p("ODPC Registration Number: [INSERT UPON REGISTRATION]", { color: "CC0000", bold: true }),
+  rule(),
+  p("These Terms were last reviewed and updated on June 1, 2026.", { color: "888888", italic: true }),
+
+]);
+
+// ══════════════════════════════════════════════════════
+// PRIVACY POLICY
+// ══════════════════════════════════════════════════════
+
+save("TalentGraph_Privacy_Policy.docx", [
+
+  h1("Privacy Policy"),
+  p("Talent Graph — Verve Vigor Limited", { bold: true, color: "1A1A1A" }),
+  p("Effective Date: June 1, 2026  ·  Last Updated: June 1, 2026", { color: "888888", italic: true }),
+  rule(),
+
+  notice("This Privacy Policy explains how Verve Vigor Limited collects, uses, stores, and shares your personal data when you use the Talent Graph platform. By using the Platform, you confirm that you have read and understood this Policy. Your continued use constitutes acceptance."),
+  spacer(),
+
+  // ── 1 ──
+  h2("1.  Who We Are"),
+  p("Legal Entity:", { bold: true }),
+  p("Verve Vigor Limited (registration pending — ODPC Registration Number: [INSERT UPON REGISTRATION])"),
+  spacer(),
+  p("Registered Address:", { bold: true }),
+  p("JKUAT Entry Road, Juja, Kiambu, Kenya"),
+  spacer(),
+  p("Data Protection Contact:", { bold: true }),
+  p("[INSERT BUSINESS EMAIL BEFORE PUBLISHING]", { color: "CC0000", bold: true }),
+  spacer(),
+  p("Primary Jurisdiction:", { bold: true }),
+  p("Kenya. This Platform is governed primarily by the Kenya Data Protection Act 2019 (KDPA) and its regulations. Where users are located in the European Economic Area (EEA) or United Kingdom, the relevant provisions of the GDPR and UK GDPR apply in addition."),
+  spacer(),
+
+  // ── 2 ──
+  h2("2.  Platform Overview"),
+  p("Talent Graph is a private sports talent intelligence platform enabling:"),
+  bullet("Athletes to create coach-verified performance profiles"),
+  bullet("Scouts to evaluate athletes using verified data"),
+  bullet("Clubs to manage athlete pipelines through affiliated scouts"),
+  bullet("Coaches to verify and validate athlete performance data"),
+  bullet("Authorised insurance partners to access structured risk data for insurance eligibility assessment (with separate athlete consent only)"),
+  spacer(),
+  p("The Platform operates on a role-based access model. Athlete profiles are not publicly accessible. All access is controlled by user role and verified affiliation."),
+  spacer(),
+
+  // ── 3 ──
+  h2("3.  Personal Data We Collect"),
+
+  h3("3.1  Athlete Data"),
+  bullet("Full name and date of birth"),
+  bullet("Contact details (email address; phone number if provided)"),
+  bullet("Sport, position, and playing level"),
+  bullet("Performance metrics: speed, agility, endurance, strength, and related attributes"),
+  bullet("Match data: goals, assists, minutes played, cards received, ratings, and game-level statistics"),
+  bullet("Injury history and physical condition records — NOTE: this constitutes health data and is sensitive personal data under KDPA Section 49"),
+  bullet("Uploaded media: photographs and video highlights"),
+  bullet("Risk Score and derived analytics generated by the Platform"),
+  bullet("Verification status and linked Coach identity"),
+  bullet("Communication history with scouts on the Platform"),
+  bullet("Insurance consent status (whether consent to insurance data sharing has been given or withdrawn)"),
+  spacer(),
+
+  h3("3.2  Coach Data"),
+  bullet("Full name and contact information"),
+  bullet("Club affiliation and coaching credentials"),
+  bullet("Verification history: which athletes have been verified and when"),
+  bullet("Coach credibility score and verification accuracy metrics"),
+  spacer(),
+
+  h3("3.3  Scout Data"),
+  bullet("Full name and professional information"),
+  bullet("Club or agency affiliation"),
+  bullet("Athlete connection and communication history"),
+  bullet("Platform activity data"),
+  spacer(),
+
+  h3("3.4  Club Data"),
+  bullet("Club name, type, and location"),
+  bullet("Affiliated member roles and accounts"),
+  bullet("Recruitment pipeline data"),
+  spacer(),
+
+  h3("3.5  Technical and Usage Data"),
+  bullet("IP address and device information"),
+  bullet("Browser type and version"),
+  bullet("Session data and access logs"),
+  bullet("Cookies and similar tracking technologies"),
+  bullet("Security monitoring data"),
+  spacer(),
+
+  // ── 4 ──
+  h2("4.  Legal Basis for Processing — KDPA 2019"),
+  p("Under the Kenya Data Protection Act 2019, we process personal data only where we have a lawful basis. The lawful bases we rely on are:"),
+  spacer(),
+
+  new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [2800, 3280, 3280],
+    rows: [
+      new TableRow({ tableHeader: true, children: [
+        new TableCell({ borders, shading: { fill: "1A1A1A", type: ShadingType.CLEAR }, width: { size: 2800, type: WidthType.DXA }, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: "Processing Activity", font: "Arial", size: 20, bold: true, color: "FFFFFF" })] })] }),
+        new TableCell({ borders, shading: { fill: "1A1A1A", type: ShadingType.CLEAR }, width: { size: 3280, type: WidthType.DXA }, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: "Lawful Basis", font: "Arial", size: 20, bold: true, color: "FFFFFF" })] })] }),
+        new TableCell({ borders, shading: { fill: "1A1A1A", type: ShadingType.CLEAR }, width: { size: 3280, type: WidthType.DXA }, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: "Notes", font: "Arial", size: 20, bold: true, color: "FFFFFF" })] })] }),
+      ]}),
+      ...[
+        ["Account creation and profile management", "Consent (KDPA s.30) / Contractual necessity", "Users consent at registration"],
+        ["Athlete performance data processing", "Consent", "Athlete explicitly consents at profile creation"],
+        ["Coach verification of athlete data", "Contractual necessity / Legitimate interests", "Verification is core to Platform function"],
+        ["Scout access to verified profiles", "Contractual necessity / Legitimate interests", "Access is core to the scout service"],
+        ["Injury history and physical condition (health data)", "Explicit consent (KDPA s.49)", "Separate, explicit consent required — standard consent insufficient for health data"],
+        ["Risk Score generation and display", "Consent / Contractual necessity", "Score derived from consented data inputs"],
+        ["Insurance data sharing with named partners", "Explicit, separate consent (KDPA s.49, s.30)", "Separate insurance consent mechanism required — see Section 8"],
+        ["Security monitoring and fraud prevention", "Legitimate interests", "Necessary to protect users and Platform integrity"],
+        ["Legal compliance and regulatory obligations", "Legal obligation", "KDPA, court orders, regulatory requirements"],
+        ["Platform analytics and improvement", "Legitimate interests", "Uses aggregated, anonymised data only"],
+      ].map(row => new TableRow({ children: row.map((text, i) => new TableCell({
+        borders, width: { size: [2800,3280,3280][i], type: WidthType.DXA },
+        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+        children: [new Paragraph({ children: [new TextRun({ text, font: "Arial", size: 18, color: "333333" })] })]
+      }))}))
+    ]
+  }),
+  spacer(),
+
+  // ── 5 ──
+  h2("5.  Sensitive Personal Data — Injury and Health Records"),
+  notice("Injury history, physical condition, and related health records constitute sensitive personal data under KDPA Section 49. This category of data carries a higher legal protection standard and requires your explicit consent for processing."),
+  spacer(),
+  p("We process health-related data only where you have given explicit, informed, and specific consent at the time of data entry or at onboarding. You may withdraw this consent at any time by contacting us, which will prevent future processing of health data but will not reverse processing already completed with your consent."),
+  spacer(),
+  p("Health data is not shared with insurance partners without a second, separate, explicit consent specifically for that purpose. The insurance consent mechanism within the Platform is distinct from general profile consent."),
+  spacer(),
+
+  // ── 6 ──
+  h2("6.  How We Use Personal Data"),
+  p("We process personal data for the following purposes:"),
+  bullet("Creating and managing user accounts and profiles"),
+  bullet("Generating and displaying Risk Scores and Talent Scores"),
+  bullet("Enabling verified connections between scouts and athletes"),
+  bullet("Operating the coach verification system"),
+  bullet("Enforcing role-based access controls across the Platform"),
+  bullet("Detecting and preventing fraud, data manipulation, and security breaches"),
+  bullet("Conducting cross-referencing of verified data against match records for verification integrity"),
+  bullet("Complying with legal obligations under KDPA and other applicable law"),
+  bullet("Improving Platform functionality using aggregated and anonymised data"),
+  spacer(),
+  p("We do not sell personal data. We do not serve advertising. We do not monetise athlete data through any means other than the Platform's stated services and, with separate explicit consent, insurance data licensing."),
+  spacer(),
+
+  // ── 7 ──
+  h2("7.  Data Sharing and Disclosure"),
+
+  h3("7.1  Within the Platform"),
+  bullet("Athlete data is visible only to connected scouts and affiliated club members within the access permissions framework"),
+  bullet("No cross-club access to athlete data is permitted"),
+  bullet("Coach verification identity is visible on athlete profiles to authorised users"),
+  bullet("No public profile directory exists"),
+  spacer(),
+
+  h3("7.2  Insurance Partners — Separate Consent Required"),
+  p("Where an Athlete has given separate, explicit consent for insurance data sharing:"),
+  bullet("Structured performance and risk data (Risk Score, pillar breakdown, injury flags, and recommended coverage parameters) may be shared with named insurance partners"),
+  bullet("Sharing occurs only under a signed Data Processing Agreement between the Company and the insurance partner"),
+  bullet("The data shared is limited to what is necessary for insurance eligibility assessment"),
+  bullet("The identity of the insurance partner and the purpose of sharing are disclosed to the Athlete at the time consent is obtained"),
+  spacer(),
+  p("The Company does not receive insurance premiums or issue insurance policies. The Company acts solely as a data processor providing structured risk outputs to licensed insurers."),
+  spacer(),
+
+  h3("7.3  Service Providers"),
+  p("We share data with the following categories of service providers who are contractually obligated to protect personal data:"),
+  bullet("Cloud infrastructure and database providers (Firebase / Google Cloud)"),
+  bullet("Security monitoring providers"),
+  bullet("Analytics providers (using anonymised data only)"),
+  spacer(),
+
+  h3("7.4  Legal Disclosure"),
+  p("We may disclose personal data if required by Kenyan law, court order, order of the Office of the Data Protection Commissioner (ODPC), or other regulatory authority. We will, where legally permitted, notify affected users before such disclosure."),
+  spacer(),
+
+  // ── 8 ──
+  h2("8.  Insurance Data Consent — Separate Mechanism"),
+  p("Insurance data sharing requires a separate, dedicated consent that is distinct from agreeing to this Privacy Policy or the Terms of Use. The insurance consent mechanism will:"),
+  bullet("Identify the specific insurance partner by name"),
+  bullet("Describe exactly what data will be shared (Risk Score components, injury flags, coverage recommendations)"),
+  bullet("State the purpose: insurance eligibility assessment and premium pricing"),
+  bullet("Confirm that consent is voluntary and will not affect Platform access if withheld"),
+  bullet("Allow consent to be withdrawn at any time through the Platform settings"),
+  spacer(),
+  notice("You will never be enrolled in any insurance data sharing programme without first actively clicking through a separate consent screen. Your data will not be shared with any insurer based on your general acceptance of this Privacy Policy alone."),
+  spacer(),
+
+  // ── 9 ──
+  h2("9.  Data Retention"),
+  p("We retain personal data for the following periods:"),
+  bullet("Active accounts: data is retained for as long as the account is active"),
+  bullet("Deleted accounts: personal profile data is deleted within 30 days of account deletion request, subject to the exceptions below"),
+  bullet("Legal and regulatory retention: certain records may be retained for up to 7 years where required by Kenyan law"),
+  bullet("Security and fraud logs: retained for up to 12 months"),
+  bullet("Backup systems: residual data in secure backups may persist for up to 90 days following deletion"),
+  spacer(),
+  p("Injury and health data (sensitive personal data) is subject to the same retention periods as general profile data but is deleted immediately upon withdrawal of explicit consent, except where retention is required by law."),
+  spacer(),
+
+  // ── 10 ──
+  h2("10.  Your Rights Under KDPA 2019"),
+  p("As a data subject under the Kenya Data Protection Act 2019, you have the following rights:"),
+  bullet("Right to be informed: you have the right to know what personal data we hold about you and how it is used"),
+  bullet("Right of access: you may request a copy of the personal data we hold about you"),
+  bullet("Right to rectification: you may request correction of inaccurate or incomplete data"),
+  bullet("Right to erasure: you may request deletion of your data subject to legal retention obligations"),
+  bullet("Right to object: you may object to processing based on legitimate interests"),
+  bullet("Right to restrict processing: you may request that we limit how we use your data in certain circumstances"),
+  bullet("Right to data portability: you may request your data in a structured, machine-readable format"),
+  bullet("Right not to be subject to automated decision-making: you may request human review of any decision made solely by automated means that significantly affects you, including Risk Score generation"),
+  bullet("Right to withdraw consent: where processing is based on consent, you may withdraw at any time without affecting the lawfulness of prior processing"),
+  spacer(),
+  p("To exercise any of these rights, contact us at: [INSERT BUSINESS EMAIL]. We will respond within 21 days as required under KDPA. For unresolved complaints, you may contact the Office of the Data Protection Commissioner (ODPC) at www.odpc.go.ke."),
+  spacer(),
+
+  // ── 11 ──
+  h2("11.  Minors"),
+  p("Where users under the age of 18 register on the Platform:"),
+  bullet("Parental or legal guardian consent is required and must be obtained before registration"),
+  bullet("We implement enhanced access controls and data minimisation for minor accounts"),
+  bullet("We do not knowingly share minor data with insurance partners under any circumstances"),
+  bullet("We do not commercialise personal data of users under 18"),
+  spacer(),
+  p("Parents and guardians may contact us to review, correct, or request deletion of a minor's account data at any time."),
+  spacer(),
+
+  // ── 12 ──
+  h2("12.  International Data Transfers"),
+  p("Your data is primarily stored and processed in Kenya. Where data is transferred to or processed in countries outside Kenya (for example, through cloud infrastructure providers), we ensure appropriate safeguards are in place, including:"),
+  bullet("Standard contractual clauses binding recipients to KDPA-equivalent data protection standards"),
+  bullet("Contractual data protection obligations in all service provider agreements"),
+  bullet("Secure, encrypted hosting environments"),
+  spacer(),
+
+  // ── 13 ──
+  h2("13.  Security Measures"),
+  p("We implement the following technical and organisational safeguards:"),
+  bullet("Encryption in transit (HTTPS/TLS) for all data communications"),
+  bullet("Firebase security rules enforcing role-based access control"),
+  bullet("Authentication and session management controls"),
+  bullet("Regular review of Firestore security rules and access permissions"),
+  bullet("Monitoring for unauthorised access and anomalous activity"),
+  bullet("Cross-referencing of verification data to detect systematic inaccuracies"),
+  spacer(),
+  p("No system can guarantee absolute security. In the event of a personal data breach, we will notify the ODPC within 72 hours of becoming aware, and affected users within a reasonable period, as required under KDPA Section 43."),
+  spacer(),
+
+  // ── 14 ──
+  h2("14.  Risk Scores and Automated Processing"),
+  p("The Platform generates Risk Scores and Talent Scores algorithmically from verified performance data. These scores:"),
+  bullet("Are informational only and not professional evaluations, certifications, or guarantees"),
+  bullet("May be used by insurance partners (with separate consent) as one input into their independent actuarial assessment"),
+  bullet("Are not the sole basis for any insurance decision — insurers apply their own independent professional judgment"),
+  spacer(),
+  p("You may request human review of any Risk Score calculation by contacting us. You may also request a plain-language explanation of how your score was calculated, including the specific data inputs and weighting applied."),
+  spacer(),
+
+  // ── 15 ──
+  h2("15.  Cookies"),
+  p("The Platform uses cookies and similar technologies to maintain sessions, improve performance, and monitor security. A full Cookie Policy is available within the Platform settings. You may manage cookie preferences through your browser settings, though disabling certain cookies may affect Platform functionality."),
+  spacer(),
+
+  // ── 16 ──
+  h2("16.  Changes to This Policy"),
+  p("We may update this Privacy Policy periodically. Where changes are material, we will provide at least 14 days' notice through in-Platform notifications and email (where registered). Continued use after the effective date of updated terms constitutes acceptance."),
+  spacer(),
+
+  // ── 17 ──
+  h2("17.  Contact and Complaints"),
+  p("Verve Vigor Limited — Talent Graph"),
+  p("Data Protection Contact: [INSERT BUSINESS EMAIL BEFORE PUBLISHING]", { color: "CC0000", bold: true }),
+  p("ODPC Registration Number: [INSERT UPON REGISTRATION]", { color: "CC0000", bold: true }),
+  p("Office of the Data Protection Commissioner (ODPC): www.odpc.go.ke"),
+  spacer(),
+  rule(),
+  p("This Privacy Policy was last reviewed and updated on June 1, 2026.", { color: "888888", italic: true }),
+
+]);
+
+console.log('\nLegal documents complete.');
+SCRIPT
+node /home/claude/legal_docs.js

@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ilReXfctfVxWUhgSCYmrt"
+uri = "file://TalentGraph_Terms_of_Use.docx"
+type = "word_document"
+title = "Talent Graph — Terms of Use"
+
+[[outputs]]
+id = "Rwht9kt7wQvVpoEeU33Lw"
+uri = "file://TalentGraph_Privacy_Policy.docx"
+type = "word_document"
+title = "Talent Graph — Privacy Policy"
