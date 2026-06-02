@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection as col, query as q, where as wh } from 'firebase/firestore';
 import { Bell, Megaphone, CheckCheck, Loader2, Building2 } from 'lucide-react';
@@ -36,18 +36,23 @@ export default function CoachAlertsPage() {
     if (!firestore || !user?.uid) return;
     setLoading(true);
 
-    getDocs(
-      query(
-        collection(firestore, 'notifications', user.uid, 'items'),
-        where('type', '==', 'club_announcement'),
-        orderBy('createdAt', 'desc')
-      )
-    )
-      .then(snap => {
-        setAlerts(snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<AlertItem, 'id'>) })));
-      })
-      .catch(() => setAlerts([]))
-      .finally(() => setLoading(false));
+    const unsub = onSnapshot(
+      collection(firestore, 'notifications', user.uid, 'items'),
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<AlertItem, 'id'>) }));
+        const announcements = all
+          .filter(n => (n as any).type === 'club_announcement')
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setAlerts(announcements);
+        setLoading(false);
+      },
+      () => {
+        setAlerts([]);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
   }, [firestore, user?.uid]);
 
   const markAllRead = async () => {
