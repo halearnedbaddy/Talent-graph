@@ -2,29 +2,33 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Profile photos: owner can upload/update/delete their own photo
+    // Profile photos: any authenticated user can read; owner can write their own
     match /profile-photos/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Profile videos: owner uploads to their own folder
-    // Also allow via server proxy (any authenticated user writing to their own path)
+    // Profile videos: any authenticated user can read; owner can write their own
     match /profile-videos/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Club logos: public read, club owner or admin can write
+    // Club logos: public read; any authenticated user can upload (server validates club ownership)
     match /club-logos/{clubId}/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // Club documents and media
+    // Club documents and media: authenticated users only
     match /club-media/{clubId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
+    }
+
+    // Catch-all: deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
