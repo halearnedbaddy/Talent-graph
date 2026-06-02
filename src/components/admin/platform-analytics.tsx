@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, collectionGroup, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, Users, Trophy, Building2, UserSearch, Activity, TrendingUp, MapPin, Target } from 'lucide-react';
+import { Loader2, Users, Trophy, Building2, UserSearch, Activity, TrendingUp, MapPin, Target, Eye } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, PieChart, Pie, Cell,
@@ -44,6 +44,8 @@ function KPICard({ icon: Icon, label, value, sub, color = 'text-primary' }: {
   );
 }
 
+interface RawView { athleteId: string; viewerRole: string; viewedAt: string; }
+
 export function PlatformAnalytics() {
   const firestore = useFirestore();
 
@@ -61,6 +63,29 @@ export function PlatformAnalytics() {
 
   const matchesQ = useMemoFirebase(() => (firestore ? collection(firestore, 'matches') : null), [firestore]);
   const { data: matches, isLoading: matchesLoading } = useCollection<any>(matchesQ);
+
+  // ── Profile views — collectionGroup across all athletes ────────────────────
+  const [rawViews, setRawViews] = useState<RawView[]>([]);
+  const [viewsLoading, setViewsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!firestore) return;
+    let cancelled = false;
+    setViewsLoading(true);
+    getDocs(collectionGroup(firestore, 'viewers'))
+      .then(snap => {
+        if (cancelled) return;
+        const rows: RawView[] = snap.docs.map(d => ({
+          athleteId: d.ref.parent.parent?.id ?? '',
+          viewerRole: d.data().viewerRole ?? 'unknown',
+          viewedAt: d.data().viewedAt ?? '',
+        })).filter(r => r.athleteId);
+        setRawViews(rows);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setViewsLoading(false); });
+    return () => { cancelled = true; };
+  }, [firestore]);
 
   const isLoading = usersLoading || athletesLoading || clubsLoading || scoutsLoading || matchesLoading;
 
@@ -158,6 +183,49 @@ export function PlatformAnalytics() {
     return Object.entries(map).map(([role, count]) => ({ role, count }));
   }, [users]);
 
+  // ── Profile-views leaderboard ──────────────────────────────────────────────
+  const viewsLeaderboard = useMemo(() => {
+    const tally: Record<string, number> = {};
+    rawViews.forEach(v => { tally[v.athleteId] = (tally[v.athleteId] ?? 0) + 1; });
+    const athleteMap: Record<string, AthleteProfile> = {};
+    (athletes ?? []).forEach(a => { athleteMap[a.uid] = a; });
+    return Object.entries(tally)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([athleteId, views]) => {
+        const a = athleteMap[athleteId];
+        return {
+          athleteId,
+          name: a ? `${a.firstName} ${a.lastName}` : 'Unknown',
+          position: a?.position ?? '—',
+          county: a?.county ?? '—',
+          csi: a?.compositeScoutingIndex ?? 0,
+          isVerified: a?.isVerified ?? false,
+          views,
+        };
+      });
+  }, [rawViews, athletes]);
+
+  const viewsByMonth = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    rawViews.forEach(v => {
+      if (!v.viewedAt) return;
+      const date = parseISO(v.viewedAt);
+      if (!isValid(date)) return;
+      const key = format(startOfMonth(date), 'MMM yy');
+      buckets[key] = (buckets[key] ?? 0) + 1;
+    });
+    return Object.entries(buckets).slice(-12).map(([month, views]) => ({ month, views }));
+  }, [rawViews]);
+
+  const viewsByRole = useMemo(() => {
+    const map: Record<string, number> = {};
+    rawViews.forEach(v => { map[v.viewerRole] = (map[v.viewerRole] ?? 0) + 1; });
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .map(([role, count]) => ({ role, count }));
+  }, [rawViews]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -177,7 +245,13 @@ export function PlatformAnalytics() {
         <KPICard icon={Trophy} label="Matches" value={kpis.matches} sub="published" color="text-amber-500" />
         <KPICard icon={Target} label="Avg CSI" value={kpis.avgCSI} sub="composite scouting index" color="text-violet-500" />
         <KPICard icon={Activity} label="Verified" value={kpis.verified} sub="athlete profiles" color="text-cyan-500" />
-        <KPICard icon={TrendingUp} label="Athletes" value={kpis.athletes} sub="registered" color="text-primary" />
+        <KPICard
+          icon={Eye}
+          label="Profile Views"
+          value={viewsLoading ? '…' : rawViews.length}
+          sub={viewsLoading ? 'loading…' : `${viewsLeaderboard.length} athletes viewed`}
+          color="text-fuchsia-500"
+        />
         <KPICard icon={MapPin} label="Positions" value={byPosition.length} sub="tracked positions" color="text-rose-500" />
       </div>
 
@@ -371,6 +445,118 @@ export function PlatformAnalytics() {
                       <td className="py-2.5 pr-4 text-muted-foreground">{a.age ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-muted-foreground">{a.county ?? '—'}</td>
                       <td className="py-2.5 text-right font-black text-primary">{a.compositeScoutingIndex ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Profile Views section ──────────────────────────────────────────── */}
+
+      {/* Views over time + by viewer role */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+              <Eye className="h-4 w-4 text-fuchsia-500" /> Profile Views by Month
+            </CardTitle>
+            <CardDescription>Total athlete profile views across the platform</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {viewsLoading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : viewsByMonth.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-8 text-center">No view data yet</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={viewsByMonth} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="views" name="Profile Views" fill="#d946ef" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+              <Eye className="h-4 w-4 text-fuchsia-500" /> Views by Viewer Role
+            </CardTitle>
+            <CardDescription>Which roles are viewing athlete profiles most</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {viewsLoading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : viewsByRole.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-8 text-center">No view data yet</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={viewsByRole} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="role" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Views" radius={[4, 4, 0, 0]}>
+                    {viewsByRole.map(entry => (
+                      <Cell key={entry.role} fill={ROLE_COLORS[entry.role] ?? '#94a3b8'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Most-viewed athletes leaderboard */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+            <Eye className="h-4 w-4 text-fuchsia-500" /> Most Viewed Athletes
+          </CardTitle>
+          <CardDescription>Top 15 athlete profiles by total scout / recruiter views</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {viewsLoading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : viewsLeaderboard.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-8 text-center">No profile view data yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 pr-4 text-xs font-black uppercase tracking-wider text-muted-foreground">#</th>
+                    <th className="text-left py-2 pr-4 text-xs font-black uppercase tracking-wider text-muted-foreground">Athlete</th>
+                    <th className="text-left py-2 pr-4 text-xs font-black uppercase tracking-wider text-muted-foreground">Pos</th>
+                    <th className="text-left py-2 pr-4 text-xs font-black uppercase tracking-wider text-muted-foreground">County</th>
+                    <th className="text-left py-2 pr-4 text-xs font-black uppercase tracking-wider text-muted-foreground">CSI</th>
+                    <th className="text-right py-2 text-xs font-black uppercase tracking-wider text-muted-foreground">Views</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {viewsLeaderboard.map((row, i) => (
+                    <tr key={row.athleteId} className="border-b last:border-0 hover:bg-muted/40 transition-colors">
+                      <td className="py-2.5 pr-4 font-mono text-xs text-muted-foreground">{i + 1}</td>
+                      <td className="py-2.5 pr-4 font-semibold">
+                        {row.name}
+                        {row.isVerified && <span className="ml-1.5 text-[10px] text-primary font-black">✓</span>}
+                      </td>
+                      <td className="py-2.5 pr-4 text-muted-foreground">{row.position}</td>
+                      <td className="py-2.5 pr-4 text-muted-foreground">{row.county}</td>
+                      <td className="py-2.5 pr-4 text-muted-foreground">{row.csi}</td>
+                      <td className="py-2.5 text-right">
+                        <span className="inline-flex items-center gap-1 font-black text-fuchsia-500">
+                          <Eye className="h-3 w-3" />{row.views}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
