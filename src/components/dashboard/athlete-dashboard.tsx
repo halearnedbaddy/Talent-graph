@@ -8,7 +8,7 @@ import {
   Eye, Award, Layers, GitGraph, PlusCircle, Play, Zap, ArrowRight,
   CheckCircle2, Home, Pencil, Headphones, User, MoreHorizontal, Trash2,
   Plus, Flame, Clock, ShieldCheck, ShieldX, Building2, Bell, CheckCheck,
-  Trophy, Settings2, Shield, Activity,
+  Trophy, Settings2, Shield, Activity, Sparkles,
   type LucideIcon
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -998,13 +998,16 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
               (unreadNotifs as any[]).map((n: any) => {
                 const isMsg = n.type === 'new_message';
                 const isClubInvite = n.type === 'club_invite';
+                const isScoutReport = n.type === 'scout_report_saved';
                 return (
-                  <div key={n.id} className={`flex items-start gap-3 p-4 transition-colors ${isClubInvite ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-muted/30'}`}>
-                    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : isClubInvite ? 'bg-primary/15' : 'bg-muted'}`}>
+                  <div key={n.id} className={`flex items-start gap-3 p-4 transition-colors ${isClubInvite ? 'bg-primary/5 hover:bg-primary/8' : isScoutReport ? 'bg-blue-500/5 hover:bg-blue-500/8' : 'hover:bg-muted/30'}`}>
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isMsg ? 'bg-primary/10' : isClubInvite ? 'bg-primary/15' : isScoutReport ? 'bg-blue-500/15' : 'bg-muted'}`}>
                       {isMsg
                         ? <Bell className="h-4 w-4 text-primary" />
                         : isClubInvite
                         ? <Building2 className="h-4 w-4 text-primary" />
+                        : isScoutReport
+                        ? <Sparkles className="h-4 w-4 text-blue-500" />
                         : <Bell className="h-4 w-4 text-muted-foreground" />
                       }
                     </div>
@@ -1012,7 +1015,15 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                       {n.actorName && (
                         <p className="text-xs font-black uppercase tracking-wide truncate">{n.actorName}</p>
                       )}
+                      {isScoutReport && n.title && (
+                        <p className="text-xs font-bold text-blue-600 dark:text-blue-400 leading-tight">{n.title}</p>
+                      )}
                       <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{n.message}</p>
+                      {isScoutReport && n.recommendation && (
+                        <span className="inline-block mt-1 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest border border-blue-200 dark:border-blue-800 rounded px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20">
+                          {n.recommendation}
+                        </span>
+                      )}
                       {n.createdAt && (
                         <p className="text-[10px] text-muted-foreground mt-1 font-bold">
                           {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
@@ -1029,7 +1040,7 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                           onClick={() => setActiveTab('home')}
                           className="inline-block mt-1.5 text-[10px] font-black text-primary uppercase tracking-widest hover:underline"
                         >
-                          {isMsg ? 'Reply →' : 'View →'}
+                          {isMsg ? 'Reply →' : isScoutReport ? 'View profile →' : 'View →'}
                         </Link>
                       )}
                     </div>

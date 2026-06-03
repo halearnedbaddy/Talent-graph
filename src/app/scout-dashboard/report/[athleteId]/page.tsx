@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import type { ScoutingReportOutput } from '@/ai/flows/scouting-report';
 import type { SavedScoutReport } from '@/app/club-dashboard/athletes/[athleteId]/reports/page';
 import { useToast } from '@/hooks/use-toast';
+import { smsSend } from '@/hooks/useSMS';
 
 function RadarChartSVG({ athlete }: { athlete: AthleteProfile }) {
   const metrics = [
@@ -169,7 +170,33 @@ function AIAnalysisSection({
         report,
       });
       setSavedId(ref.id);
-      toast({ title: 'Report saved', description: 'Visible to the club recruitment team.' });
+
+      const fullName = `${athlete.firstName} ${athlete.lastName}`;
+
+      // In-app notification — fires immediately, athlete sees it in their Alerts tab
+      addDoc(collection(firestore, 'notifications', athlete.uid, 'items'), {
+        type: 'scout_report_saved',
+        title: 'Scout Analysis Saved to Your Profile',
+        message: `${scoutName} has saved an AI scouting analysis to your profile. Verdict: ${report.recommendation}.`,
+        actorName: scoutName,
+        actorRole: 'scout',
+        scoutId,
+        reportId: ref.id,
+        recommendation: report.recommendation,
+        url: `/dashboard`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+
+      // SMS — non-blocking, rate-limited server-side
+      smsSend('scout-report-saved', {
+        athleteId: athlete.uid,
+        athleteName: fullName,
+        scoutName,
+        recommendation: report.recommendation,
+      });
+
+      toast({ title: 'Report saved', description: `${fullName} has been notified.` });
     } catch {
       toast({ title: 'Save failed', variant: 'destructive' });
     } finally {
