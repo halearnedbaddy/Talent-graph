@@ -19,28 +19,30 @@ import { PipelineTab } from './pipeline-tab';
 import { SavedSearchesTab } from './saved-searches-tab';
 import { ActivityTab } from './activity-tab';
 import { SettingsTab } from './settings-tab';
+import { MessagesTab } from './messages-tab';
 import {
   Search, Store, BarChart2, Bookmark, User,
-  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings
+  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings, MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 const TABS = [
-  { id: 'search',    label: 'Search Athletes',    icon: Search,             short: 'Search' },
-  { id: 'alerts',    label: 'Saved Searches',      icon: Bell,               short: 'Alerts' },
-  { id: 'market',    label: 'Marketplace',         icon: Store,              short: 'Market' },
-  { id: 'compare',   label: 'Compare Athletes',    icon: BarChart2,          short: 'Compare' },
-  { id: 'saved',     label: 'Saved Athletes',      icon: Bookmark,           short: 'Saved' },
+  { id: 'search',    label: 'Search Athletes',    icon: Search,              short: 'Search' },
+  { id: 'alerts',    label: 'Saved Searches',      icon: Bell,                short: 'Alerts' },
+  { id: 'market',    label: 'Marketplace',         icon: Store,               short: 'Market' },
+  { id: 'compare',   label: 'Compare Athletes',    icon: BarChart2,           short: 'Compare' },
+  { id: 'saved',     label: 'Saved Athletes',      icon: Bookmark,            short: 'Saved' },
   { id: 'pipeline',  label: 'Pipeline',            icon: GitPullRequestArrow, short: 'Pipeline' },
-  { id: 'activity',  label: 'My Activity',         icon: Activity,           short: 'Activity' },
-  { id: 'profile',   label: 'Profile',             icon: User,               short: 'Profile' },
-  { id: 'settings',  label: 'Settings',            icon: Settings,           short: 'Settings' },
+  { id: 'messages',  label: 'Messages',            icon: MessageSquare,       short: 'Messages' },
+  { id: 'activity',  label: 'My Activity',         icon: Activity,            short: 'Activity' },
+  { id: 'profile',   label: 'Profile',             icon: User,                short: 'Profile' },
+  { id: 'settings',  label: 'Settings',            icon: Settings,            short: 'Settings' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
 
-const BOTTOM_NAV_TABS = ['search', 'market', 'saved', 'pipeline'] as TabId[];
+const BOTTOM_NAV_TABS = ['search', 'market', 'pipeline', 'messages'] as TabId[];
 
 export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const auth = useAuth();
@@ -279,7 +281,10 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
             />
           )}
           {activeTab === 'pipeline' && (
-            <PipelineTab scoutProfile={scoutProfile} />
+            <PipelineTab scoutProfile={scoutProfile} onGoToSearch={() => setActiveTab('search')} />
+          )}
+          {activeTab === 'messages' && (
+            <MessagesTab scoutProfile={scoutProfile} />
           )}
           {activeTab === 'activity' && (
             <ActivityTab scoutProfile={scoutProfile} />
