@@ -44,6 +44,7 @@ export default function CoachVerifyPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [bulkVerifying, setBulkVerifying] = useState(false);
   const [viewAthlete, setViewAthlete] = useState<AthleteProfile | null>(null);
 
   // Per-stat correction state inside the modal
@@ -137,6 +138,67 @@ export default function CoachVerifyPage() {
     } finally {
       setProcessingId(null);
     }
+  };
+
+  const handleVerifyAll = async () => {
+    if (!firestore || !clubId || !user || !pending.length) return;
+    setBulkVerifying(true);
+    const now = new Date().toISOString();
+    const coachName = user.displayName || user.email || 'Coach';
+    let successCount = 0;
+    await Promise.allSettled(
+      pending.map(async (a) => {
+        try {
+          await updateDoc(doc(firestore, 'athletes', a.uid), {
+            isVerified: true,
+            attributesVerified: true,
+            verifiedBy: coachName,
+            verifiedAt: now,
+            updatedAt: now,
+          });
+          await addDoc(collection(firestore, 'verifications'), {
+            athleteId: a.uid,
+            athleteName: `${a.firstName} ${a.lastName}`,
+            coachId: user.uid,
+            coachName,
+            clubId,
+            statsSnapshot: {
+              compositeScoutingIndex: a.compositeScoutingIndex,
+              performanceIndex: a.performanceIndex,
+              consistencyIndex: a.consistencyIndex,
+              riskIndex: a.riskIndex,
+              heightCm: a.heightCm,
+              weightKg: a.weightKg,
+            },
+            corrections: [],
+            notes: 'Bulk verification — no stat corrections',
+            verifiedAt: now,
+          });
+          try {
+            await addDoc(collection(firestore, 'notifications', a.uid, 'items'), {
+              type: 'verification',
+              title: 'Profile Verified ✓',
+              body: `Your profile has been verified by ${coachName}. Your stats are now institutional truth visible to scouts.`,
+              coachId: user.uid,
+              coachName,
+              isRead: false,
+              createdAt: now,
+            });
+          } catch { }
+          smsSend('match-verified', {
+            athletePhone: a.phone,
+            athleteName: a.firstName,
+            clubName: undefined,
+          });
+          successCount++;
+        } catch { }
+      })
+    );
+    setBulkVerifying(false);
+    toast({
+      title: `${successCount} Athlete${successCount !== 1 ? 's' : ''} Verified ✓`,
+      description: 'All profiles are now institutional truth visible to scouts.',
+    });
   };
 
   const handleOpenModal = (a: AthleteProfile) => {
@@ -302,16 +364,35 @@ export default function CoachVerifyPage() {
               <p className="text-[#94A3B8] text-sm mt-1">No athletes pending verification.</p>
             </div>
           ) : (
-            pending.map(a => (
-              <AthleteVerifyCard
-                key={a.uid}
-                athlete={a}
-                loading={processingId === a.uid}
-                onVerify={() => handleQuickVerify(a, true)}
-                onDecline={() => handleQuickVerify(a, false)}
-                onView={() => handleOpenModal(a)}
-              />
-            ))
+            <>
+              <div className="flex items-center justify-between gap-3 pb-1">
+                <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">
+                  {pending.length} athlete{pending.length !== 1 ? 's' : ''} awaiting review
+                </p>
+                <Button
+                  size="sm"
+                  onClick={handleVerifyAll}
+                  disabled={bulkVerifying || !!processingId}
+                  className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase tracking-wide h-8 gap-2"
+                >
+                  {bulkVerifying ? (
+                    <><Loader2 className="h-3 w-3 animate-spin" /> Verifying all…</>
+                  ) : (
+                    <><ShieldCheck className="h-3 w-3" /> Verify All ({pending.length})</>
+                  )}
+                </Button>
+              </div>
+              {pending.map(a => (
+                <AthleteVerifyCard
+                  key={a.uid}
+                  athlete={a}
+                  loading={processingId === a.uid || bulkVerifying}
+                  onVerify={() => handleQuickVerify(a, true)}
+                  onDecline={() => handleQuickVerify(a, false)}
+                  onView={() => handleOpenModal(a)}
+                />
+              ))}
+            </>
           )}
         </TabsContent>
 
