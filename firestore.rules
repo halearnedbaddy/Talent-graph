@@ -68,6 +68,14 @@ service cloud.firestore {
       allow update: if isOwner(athleteId) || isScoutRole() || isClubAdmin() || isAdmin() ||
         isStaffRole();
       allow delete: if isOwner(athleteId) || isAdmin();
+
+      // AI Scouting Reports saved by scouts — readable by all signed-in users (clubs, coaches, etc.)
+      match /scout_reports/{reportId} {
+        allow read, list: if isSignedIn();
+        allow create: if isSignedIn() && isScoutRole() && request.resource.data.scoutId == request.auth.uid;
+        allow delete: if isSignedIn() && (resource.data.scoutId == request.auth.uid || isAdmin());
+        allow update: if false;
+      }
     }
     
     match /scouts/{scoutId} {

@@ -25,7 +25,7 @@ import { collection, query, where } from 'firebase/firestore';
 import type { AthleteProfile, ClubMember } from '@/lib/types';
 import {
   Loader2, ArrowUpDown, ShieldCheck, Clock, ExternalLink,
-  Search, MessageSquare, Users, UserCheck
+  Search, MessageSquare, Users, UserCheck, Sparkles,
 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -187,6 +187,17 @@ export default function SquadListPage() {
             onClick={() => openDM(row.original.uid)}
           >
             <MessageSquare className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            className="h-9 w-9 min-h-[44px] min-w-[44px] text-[#94A3B8] hover:text-blue-400"
+            title="AI Scout Reports"
+          >
+            <Link href={`/club-dashboard/athletes/${row.original.uid}/reports`}>
+              <Sparkles className="w-4 h-4" />
+            </Link>
           </Button>
           <Button variant="ghost" size="icon" asChild className="h-9 w-9 min-h-[44px] min-w-[44px]">
             <Link href={`/${row.original.username}`}>
