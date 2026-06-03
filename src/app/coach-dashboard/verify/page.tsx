@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ShieldCheck, ShieldX, Loader2, CheckCircle2, XCircle,
   AlertTriangle, Eye, Ruler, Weight, Zap, Clock,
-  ChevronDown, ChevronUp, Edit3, Check, RotateCcw
+  ChevronDown, ChevronUp, Edit3, Check, RotateCcw, Search, X
 } from 'lucide-react';
 import type { ClubMember, AthleteProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +46,8 @@ export default function CoachVerifyPage() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [bulkVerifying, setBulkVerifying] = useState(false);
   const [viewAthlete, setViewAthlete] = useState<AthleteProfile | null>(null);
+  const [search, setSearch] = useState('');
+  const [positionFilter, setPositionFilter] = useState<string>('all');
 
   // Per-stat correction state inside the modal
   const [corrections, setCorrections] = useState<StatCorrections>({});
@@ -70,6 +72,24 @@ export default function CoachVerifyPage() {
   const pending = useMemo(() => allAthletes?.filter(a => !a.isVerified) ?? [], [allAthletes]);
   const verified = useMemo(() => allAthletes?.filter(a => a.isVerified) ?? [], [allAthletes]);
   const verifiedLoading = pendingLoading;
+
+  const availablePositions = useMemo(() => {
+    const positions = pending.map(a => a.position).filter(Boolean) as string[];
+    return Array.from(new Set(positions)).sort();
+  }, [pending]);
+
+  const filteredPending = useMemo(() => {
+    let list = pending;
+    if (positionFilter !== 'all') list = list.filter(a => a.position === positionFilter);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(a =>
+        `${a.firstName} ${a.lastName}`.toLowerCase().includes(q) ||
+        (a.position ?? '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [pending, positionFilter, search]);
 
   const verificationsQuery = useMemoFirebase(() => (
     firestore && user
@@ -365,33 +385,98 @@ export default function CoachVerifyPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 pb-1">
+              {/* Search + Filter bar */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#94A3B8]" />
+                  <Input
+                    placeholder="Search by name or position…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-9 pr-9 h-9 bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#94A3B8] text-sm font-medium focus-visible:ring-[#00C853] focus-visible:border-[#00C853]"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                {availablePositions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setPositionFilter('all')}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide border transition-colors',
+                        positionFilter === 'all'
+                          ? 'bg-[#00C853] text-black border-[#00C853]'
+                          : 'bg-[#1C2333] text-[#94A3B8] border-[#1E293B] hover:border-[#00C853]/40 hover:text-white'
+                      )}
+                    >
+                      All
+                    </button>
+                    {availablePositions.map(pos => (
+                      <button
+                        key={pos}
+                        onClick={() => setPositionFilter(pos === positionFilter ? 'all' : pos)}
+                        className={cn(
+                          'px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide border transition-colors',
+                          positionFilter === pos
+                            ? 'bg-[#00C853] text-black border-[#00C853]'
+                            : 'bg-[#1C2333] text-[#94A3B8] border-[#1E293B] hover:border-[#00C853]/40 hover:text-white'
+                        )}
+                      >
+                        {pos}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Header row */}
+              <div className="flex items-center justify-between gap-3 pt-1">
                 <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">
-                  {pending.length} athlete{pending.length !== 1 ? 's' : ''} awaiting review
+                  {filteredPending.length === pending.length
+                    ? `${pending.length} athlete${pending.length !== 1 ? 's' : ''} awaiting review`
+                    : `${filteredPending.length} of ${pending.length} shown`}
                 </p>
                 <Button
                   size="sm"
                   onClick={handleVerifyAll}
-                  disabled={bulkVerifying || !!processingId}
+                  disabled={bulkVerifying || !!processingId || filteredPending.length === 0}
                   className="bg-[#00C853] hover:bg-[#00C853]/90 text-black font-black text-[10px] uppercase tracking-wide h-8 gap-2"
                 >
                   {bulkVerifying ? (
-                    <><Loader2 className="h-3 w-3 animate-spin" /> Verifying all…</>
+                    <><Loader2 className="h-3 w-3 animate-spin" /> Verifying…</>
                   ) : (
-                    <><ShieldCheck className="h-3 w-3" /> Verify All ({pending.length})</>
+                    <><ShieldCheck className="h-3 w-3" /> Verify All ({filteredPending.length})</>
                   )}
                 </Button>
               </div>
-              {pending.map(a => (
-                <AthleteVerifyCard
-                  key={a.uid}
-                  athlete={a}
-                  loading={processingId === a.uid || bulkVerifying}
-                  onVerify={() => handleQuickVerify(a, true)}
-                  onDecline={() => handleQuickVerify(a, false)}
-                  onView={() => handleOpenModal(a)}
-                />
-              ))}
+
+              {/* List */}
+              {filteredPending.length === 0 ? (
+                <div className="text-center py-10">
+                  <Search className="h-8 w-8 text-[#94A3B8] mx-auto mb-2 opacity-40" />
+                  <p className="text-[#94A3B8] font-bold text-sm">No athletes match your search</p>
+                  <button onClick={() => { setSearch(''); setPositionFilter('all'); }} className="mt-2 text-[10px] font-black text-[#00C853] uppercase hover:underline">
+                    Clear filters
+                  </button>
+                </div>
+              ) : (
+                filteredPending.map(a => (
+                  <AthleteVerifyCard
+                    key={a.uid}
+                    athlete={a}
+                    loading={processingId === a.uid || bulkVerifying}
+                    onVerify={() => handleQuickVerify(a, true)}
+                    onDecline={() => handleQuickVerify(a, false)}
+                    onView={() => handleOpenModal(a)}
+                  />
+                ))
+              )}
             </>
           )}
         </TabsContent>
