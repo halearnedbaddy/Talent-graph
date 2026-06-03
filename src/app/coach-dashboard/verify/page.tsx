@@ -59,19 +59,16 @@ export default function CoachVerifyPage() {
   const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
   const clubId = memberships?.[0]?.clubId;
 
-  const pendingQuery = useMemoFirebase(() => (
+  const allAthletesQuery = useMemoFirebase(() => (
     firestore && clubId
-      ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId), where('isVerified', '==', false))
+      ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId))
       : null
   ), [firestore, clubId]);
-  const { data: pending, isLoading: pendingLoading } = useCollection<AthleteProfile>(pendingQuery);
+  const { data: allAthletes, isLoading: pendingLoading } = useCollection<AthleteProfile>(allAthletesQuery);
 
-  const verifiedQuery = useMemoFirebase(() => (
-    firestore && clubId
-      ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId), where('isVerified', '==', true))
-      : null
-  ), [firestore, clubId]);
-  const { data: verified, isLoading: verifiedLoading } = useCollection<AthleteProfile>(verifiedQuery);
+  const pending = useMemo(() => allAthletes?.filter(a => !a.isVerified) ?? [], [allAthletes]);
+  const verified = useMemo(() => allAthletes?.filter(a => a.isVerified) ?? [], [allAthletes]);
+  const verifiedLoading = pendingLoading;
 
   const verificationsQuery = useMemoFirebase(() => (
     firestore && user
