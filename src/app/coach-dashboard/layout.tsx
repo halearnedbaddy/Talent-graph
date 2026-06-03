@@ -15,7 +15,7 @@ import { signOut } from 'firebase/auth';
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ClubMember, UserAccount } from '@/lib/types';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/coach/notification-bell';
 import { useCoachNotifications } from '@/hooks/useCoachNotifications';
 
@@ -124,6 +124,7 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
         <div className="px-4 py-3 border-b border-[#1E293B]">
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8 rounded-xl">
+              <AvatarImage src={(userAccount as any)?.photoUrl} className="object-cover rounded-xl" />
               <AvatarFallback className="rounded-xl bg-[#1C2333] text-[#94A3B8] text-xs font-black">{initials}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
