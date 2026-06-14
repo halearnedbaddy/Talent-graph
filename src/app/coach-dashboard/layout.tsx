@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, Bell, Building2, Settings, LogOut,
-  Menu, X, Zap, ChevronRight, Radio, Search, Link2
+  Menu, X, Zap, ChevronRight, Radio, Search, Link2, MessageSquare
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ const navItems = [
   { href: '/coach-dashboard/schedule', label: 'Schedule', icon: Calendar },
   { href: '/coach-dashboard/analytics', label: 'Performance Analytics', icon: BarChart3 },
   { href: '/coach-dashboard/alerts', label: 'Alerts', icon: Bell },
+  { href: '/coach-dashboard/notifications', label: 'Notification Centre', icon: MessageSquare },
   { href: '/coach-dashboard/club', label: 'Club Dashboard', icon: Building2 },
   { href: '/coach-dashboard/settings', label: 'Settings', icon: Settings },
   { href: '/coach-dashboard/find-club', label: 'Find Club', icon: Search, noClubOnly: true },

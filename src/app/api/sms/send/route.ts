@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (batch && Array.isArray(batch)) {
-      await sendSMSBatch(batch, message);
-      return NextResponse.json({ success: true, sent: batch.length });
+      const batchResult = await sendSMSBatch(batch, message);
+      return NextResponse.json({ success: batchResult.sent > 0, sent: batchResult.sent, failed: batchResult.failed });
     }
 
     if (!to) {

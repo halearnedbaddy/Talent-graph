@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { SendNotificationDialog, type NotificationEvent } from '@/components/coach/send-notification-dialog';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +60,9 @@ export default function CoachSchedulePage() {
     title: '', date: new Date().toISOString().slice(0, 10),
     time: '', type: 'match' as EventType, location: '', notes: '',
   });
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyEvent, setNotifyEvent] = useState<NotificationEvent | null>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
 
   const memberQuery = useMemoFirebase(() => (
     firestore && user
@@ -77,6 +81,10 @@ export default function CoachSchedulePage() {
     firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
   ), [firestore, clubId]);
   const { data: matches } = useCollection<ClubMatch>(matchesQuery);
+
+  useEffect(() => {
+    user?.getIdToken().then(setIdToken);
+  }, [user]);
 
   // Combine matches + custom events
   const allEvents = useMemo(() => {
@@ -121,7 +129,10 @@ export default function CoachSchedulePage() {
         createdAt: new Date().toISOString(),
       });
       toast({ title: 'Event Added ✓' });
+      const notifType = form.type === 'training' ? 'training' : form.type === 'match' ? 'match' : 'general';
+      setNotifyEvent({ type: notifType as NotificationEvent['type'], title: form.title, date: form.date, time: form.time, venue: form.location, notes: form.notes });
       setShowCreate(false);
+      setNotifyOpen(true);
       setForm({ title: '', date: new Date().toISOString().slice(0, 10), time: '', type: 'match', location: '', notes: '' });
     } catch {
       toast({ title: 'Error', variant: 'destructive' });
@@ -135,6 +146,17 @@ export default function CoachSchedulePage() {
 
   return (
     <div className="space-y-5">
+      {notifyEvent && (
+        <SendNotificationDialog
+          open={notifyOpen}
+          onClose={() => setNotifyOpen(false)}
+          event={notifyEvent}
+          clubId={clubId ?? ''}
+          clubName={memberships?.[0]?.clubName ?? 'Club'}
+          coachName={user?.displayName ?? 'Coach'}
+          userToken={idToken}
+        />
+      )}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase">Schedule</h1>

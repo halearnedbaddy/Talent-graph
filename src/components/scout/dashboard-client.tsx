@@ -22,8 +22,9 @@ import { SettingsTab } from './settings-tab';
 import { MessagesTab } from './messages-tab';
 import {
   Search, Store, BarChart2, Bookmark, User,
-  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings, MessageSquare
+  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings, MessageSquare, UserPlus
 } from 'lucide-react';
+import { InvitationFormTab } from './invitation-form-tab';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -34,7 +35,8 @@ const TABS = [
   { id: 'compare',   label: 'Compare Athletes',    icon: BarChart2,           short: 'Compare' },
   { id: 'saved',     label: 'Saved Athletes',      icon: Bookmark,            short: 'Saved' },
   { id: 'pipeline',  label: 'Pipeline',            icon: GitPullRequestArrow, short: 'Pipeline' },
-  { id: 'messages',  label: 'Messages',            icon: MessageSquare,       short: 'Messages' },
+  { id: 'messages',    label: 'Messages',           icon: MessageSquare, short: 'Messages' },
+  { id: 'invitations', label: 'Player Invitations', icon: UserPlus,      short: 'Invite' },
   { id: 'activity',  label: 'My Activity',         icon: Activity,            short: 'Activity' },
   { id: 'profile',   label: 'Profile',             icon: User,                short: 'Profile' },
   { id: 'settings',  label: 'Settings',            icon: Settings,            short: 'Settings' },
@@ -285,6 +287,9 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
           )}
           {activeTab === 'messages' && (
             <MessagesTab scoutProfile={scoutProfile} />
+          )}
+          {activeTab === 'invitations' && (
+            <InvitationFormTab scoutProfile={scoutProfile} />
           )}
           {activeTab === 'activity' && (
             <ActivityTab scoutProfile={scoutProfile} />

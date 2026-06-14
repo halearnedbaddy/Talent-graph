@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SendNotificationDialog, type NotificationEvent } from '@/components/coach/send-notification-dialog';
 import { Progress } from '@/components/ui/progress';
 import {
   Dumbbell, Plus, Loader2, CheckCircle2, Clock,
@@ -129,6 +130,9 @@ export default function CoachTrainingPage() {
     title: '', date: new Date().toISOString().slice(0, 10),
     duration: '90', focus: 'Mixed', notes: '',
   });
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyEvent, setNotifyEvent] = useState<NotificationEvent | null>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
 
   const memberQuery = useMemoFirebase(() => (
     firestore && user
@@ -167,6 +171,10 @@ export default function CoachTrainingPage() {
       } catch { }
     })();
   }, [firestore, clubId]);
+
+  useEffect(() => {
+    user?.getIdToken().then(setIdToken);
+  }, [user]);
 
   const allDrills = [...DRILL_LIBRARY, ...customDrills];
   const filteredDrills = categoryFilter === 'All' ? allDrills : allDrills.filter(d => d.category === categoryFilter);
@@ -246,7 +254,9 @@ export default function CoachTrainingPage() {
         attendees: [], attendance: {}, createdAt: new Date().toISOString(),
       });
       toast({ title: 'Session Created ✓', description: `${form.title} has been scheduled.` });
+      setNotifyEvent({ type: 'training', title: form.title, date: form.date, time: '', venue: '', notes: form.notes });
       setShowCreate(false);
+      setNotifyOpen(true);
       setForm({ title: '', date: new Date().toISOString().slice(0, 10), duration: '90', focus: 'Mixed', notes: '' });
       setSelectedDrills([]);
     } catch {
@@ -641,6 +651,19 @@ export default function CoachTrainingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {notifyEvent && (
+        <SendNotificationDialog
+          open={notifyOpen}
+          onClose={() => setNotifyOpen(false)}
+          event={notifyEvent}
+          athletes={athletes}
+          clubId={clubId ?? ''}
+          clubName={memberships?.[0]?.clubName ?? 'Club'}
+          coachName={user?.displayName ?? 'Coach'}
+          userToken={idToken}
+        />
+      )}
 
       {/* Add Custom Drill Dialog */}
       <Dialog open={addDrillOpen} onOpenChange={setAddDrillOpen}>
