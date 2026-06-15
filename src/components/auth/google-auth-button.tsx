@@ -73,7 +73,7 @@ export function GoogleAuthButton({ mode }: Props) {
           loginHistory: [new Date().toISOString()],
         }, { merge: true });
         trackEvent('sign_up', { method: 'google' });
-        router.push('/');
+        router.push('/onboarding');
       } else {
         const userDocRef = doc(firestore, 'users', user.uid);
         const snap = await getDoc(userDocRef);

@@ -60,7 +60,7 @@ export function AppleAuthButton({ mode }: Props) {
           loginHistory: [new Date().toISOString()],
         }, { merge: true });
         trackEvent('sign_up', { method: 'apple' });
-        router.push('/');
+        router.push('/onboarding');
       } else {
         const userDocRef = doc(firestore, 'users', user.uid);
         const snap = await getDoc(userDocRef);
