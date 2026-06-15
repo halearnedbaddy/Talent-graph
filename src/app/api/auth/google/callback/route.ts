@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FIREBASE_API_KEY, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { FIREBASE_API_KEY } from '@/lib/server-auth';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const appBase = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  const host = request.headers.get('host') ?? '';
+  const proto = host.includes('localhost') ? 'http' : 'https';
+  const appBase = `${proto}://${host}`;
+  const redirectUri = `${appBase}/api/auth/google/callback`;
 
   if (error || !code) {
     return NextResponse.redirect(`${appBase}/login?error=google_cancelled`);
@@ -14,10 +17,9 @@ export async function GET(request: NextRequest) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-  const redirectUri = `${appBase}/api/auth/google/callback`;
 
   try {
-    // 1. Exchange code for tokens
+    // 1. Exchange code for Google tokens
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
