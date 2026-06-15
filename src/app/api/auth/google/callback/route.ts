@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FIREBASE_API_KEY } from '@/lib/server-auth';
 
+const APP_URL = 'https://talent-graph.vercel.app';
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const host = request.headers.get('host') ?? '';
-  const proto = host.includes('localhost') ? 'http' : 'https';
-  const appBase = `${proto}://${host}`;
-  const redirectUri = `${appBase}/api/auth/google/callback`;
-
   if (error || !code) {
-    return NextResponse.redirect(`${appBase}/login?error=google_cancelled`);
+    return NextResponse.redirect(`${APP_URL}/login?error=google_cancelled`);
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
+  const redirectUri = `${APP_URL}/api/auth/google/callback`;
 
   try {
     // 1. Exchange code for Google tokens
@@ -35,7 +33,7 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenRes.json();
     if (!tokenRes.ok || !tokenData.id_token) {
       console.error('[google/callback] token exchange failed:', tokenData);
-      return NextResponse.redirect(`${appBase}/login?error=google_failed`);
+      return NextResponse.redirect(`${APP_URL}/login?error=google_failed`);
     }
 
     const googleIdToken: string = tokenData.id_token;
@@ -58,12 +56,12 @@ export async function GET(request: NextRequest) {
     const firebaseData = await firebaseRes.json();
     if (!firebaseRes.ok || !firebaseData.idToken) {
       console.error('[google/callback] Firebase signInWithIdp failed:', firebaseData);
-      return NextResponse.redirect(`${appBase}/login?error=firebase_failed`);
+      return NextResponse.redirect(`${APP_URL}/login?error=firebase_failed`);
     }
 
     const { idToken, localId, email, displayName, photoUrl, isNewUser } = firebaseData;
 
-    // 3. Redirect to a client page that picks up the token and finishes sign-in
+    // 3. Redirect to client page to complete sign-in
     const params = new URLSearchParams({
       token: idToken,
       uid: localId,
@@ -73,9 +71,9 @@ export async function GET(request: NextRequest) {
       isNew: isNewUser ? '1' : '0',
     });
 
-    return NextResponse.redirect(`${appBase}/auth/google-complete?${params.toString()}`);
+    return NextResponse.redirect(`${APP_URL}/auth/google-complete?${params.toString()}`);
   } catch (err: any) {
     console.error('[google/callback] unhandled error:', err);
-    return NextResponse.redirect(`${appBase}/login?error=server_error`);
+    return NextResponse.redirect(`${APP_URL}/login?error=server_error`);
   }
 }

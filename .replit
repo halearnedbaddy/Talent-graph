@@ -41,6 +41,7 @@ externalPort = 80
 BULKSMS_SENDER_ID = "XpressKard"
 VAPID_SUBJECT = "mailto:admin@talentgraph.ke"
 NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BCR9rT5Xsja2n2JkZ-pECoKUIans7COp1InTe4eNKdOYwl_t3ZWtt5fq1GswCZ7mjnnptlED8UTSK5psuhdrc5c"
+NEXT_PUBLIC_APP_URL = "https://talent-graph.vercel.app"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-861fa5b4-5e0b-48d7-9cb7-f5ce499e7c4b"

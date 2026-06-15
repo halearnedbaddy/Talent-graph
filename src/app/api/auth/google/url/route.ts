@@ -1,18 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+const APP_URL = 'https://talent-graph.vercel.app';
+
+export async function GET() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json({ error: 'Google OAuth not configured' }, { status: 500 });
   }
 
-  const host = request.headers.get('host') ?? '';
-  const proto = host.includes('localhost') ? 'http' : 'https';
-  const redirectUri = `${proto}://${host}/api/auth/google/callback`;
-
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: redirectUri,
+    redirect_uri: `${APP_URL}/api/auth/google/callback`,
     response_type: 'code',
     scope: 'openid email profile',
     prompt: 'select_account',
