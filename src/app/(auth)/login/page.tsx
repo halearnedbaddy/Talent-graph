@@ -19,6 +19,7 @@ import {
   User
 } from 'firebase/auth';
 import { GoogleAuthButton } from '@/components/auth/google-auth-button';
+import { AppleAuthButton } from '@/components/auth/apple-auth-button';
 import { doc, getDoc } from 'firebase/firestore';
 import { UserAccount } from '@/lib/types';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
@@ -193,7 +194,10 @@ export default function LoginPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-6 pt-0">
-              <GoogleAuthButton mode="login" />
+              <div className="space-y-3">
+                <GoogleAuthButton mode="login" />
+                <AppleAuthButton mode="login" />
+              </div>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border/50" />

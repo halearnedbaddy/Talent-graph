@@ -20,6 +20,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { GoogleAuthButton } from '@/components/auth/google-auth-button';
+import { AppleAuthButton } from '@/components/auth/apple-auth-button';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { trackEvent } from '@/lib/analytics';
 import { doc } from 'firebase/firestore';
@@ -203,7 +204,10 @@ export default function SignupPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-6 pt-0">
-              <GoogleAuthButton mode="signup" />
+              <div className="space-y-3">
+                <GoogleAuthButton mode="signup" />
+                <AppleAuthButton mode="signup" />
+              </div>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border/50" />
