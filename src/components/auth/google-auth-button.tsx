@@ -3,14 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { useAuth, useFirestore } from '@/firebase';
-import { GoogleAuthProvider, signInWithPopup, getAdditionalUserInfo } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { useRouter } from 'next/navigation';
+import { useAuth } from '@/firebase';
+import { GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import { trackEvent } from '@/lib/analytics';
-import type { UserAccount } from '@/lib/types';
 
 interface Props {
   mode: 'login' | 'signup';
@@ -41,8 +36,6 @@ function GoogleIcon() {
 
 export function GoogleAuthButton({ mode }: Props) {
   const auth = useAuth();
-  const firestore = useFirestore();
-  const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -51,47 +44,9 @@ export function GoogleAuthButton({ mode }: Props) {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      const info = getAdditionalUserInfo(result);
-      const isNew = info?.isNewUser ?? false;
-
-      if (isNew) {
-        const nameParts = (user.displayName ?? '').split(' ');
-        const firstName = nameParts[0] ?? '';
-        const lastName = nameParts.slice(1).join(' ') ?? '';
-        const userDocRef = doc(firestore, 'users', user.uid);
-        setDocumentNonBlocking(userDocRef, {
-          id: user.uid,
-          email: user.email,
-          firstName,
-          lastName,
-          photoUrl: user.photoURL ?? null,
-          creationTimestamp: new Date().toISOString(),
-          isEmailVerified: true,
-          subscribeToEmails: false,
-          loginHistory: [new Date().toISOString()],
-        }, { merge: true });
-        trackEvent('sign_up', { method: 'google' });
-        router.push('/onboarding');
-      } else {
-        const userDocRef = doc(firestore, 'users', user.uid);
-        const snap = await getDoc(userDocRef);
-        const data = snap.data() as UserAccount | undefined;
-
-        const now = new Date().toISOString();
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
-        const history = (data?.loginHistory ?? []).filter((ts: string) => ts >= thirtyDaysAgo);
-        history.push(now);
-        setDocumentNonBlocking(userDocRef, { loginHistory: history, isEmailVerified: true }, { merge: true });
-        trackEvent('login', { method: 'google' });
-
-        const role = data?.role;
-        router.push(role === 'coach' ? '/coach-dashboard' : role === 'scout' ? '/scout-dashboard' : '/');
-      }
+      await signInWithRedirect(auth, provider);
     } catch (err: unknown) {
       const code = (err as any)?.code ?? '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
       toast({
         variant: 'destructive',
         title: 'Google sign-in failed',
@@ -99,7 +54,6 @@ export function GoogleAuthButton({ mode }: Props) {
           ? 'An account already exists with this email using a different sign-in method.'
           : 'Could not sign in with Google. Please try again.',
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -114,7 +68,7 @@ export function GoogleAuthButton({ mode }: Props) {
     >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
       {loading
-        ? 'Signing in…'
+        ? 'Redirecting…'
         : mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
     </Button>
   );
