@@ -36,9 +36,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${APP_URL}/login?error=google_failed`);
     }
 
+    // This is the Google ID token — needed by GoogleAuthProvider.credential() on the client
     const googleIdToken: string = tokenData.id_token;
 
-    // 2. Sign into Firebase using the Google ID token via Identity Toolkit REST API
+    // 2. Call Firebase Identity Toolkit to resolve the Firebase UID and profile info
     const firebaseRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${FIREBASE_API_KEY}`,
       {
@@ -54,16 +55,16 @@ export async function GET(request: NextRequest) {
     );
 
     const firebaseData = await firebaseRes.json();
-    if (!firebaseRes.ok || !firebaseData.idToken) {
+    if (!firebaseRes.ok || !firebaseData.localId) {
       console.error('[google/callback] Firebase signInWithIdp failed:', firebaseData);
       return NextResponse.redirect(`${APP_URL}/login?error=firebase_failed`);
     }
 
-    const { idToken, localId, email, displayName, photoUrl, isNewUser } = firebaseData;
+    const { localId, email, displayName, photoUrl, isNewUser } = firebaseData;
 
-    // 3. Redirect to client page to complete sign-in
+    // 3. Pass the GOOGLE ID TOKEN (not Firebase token) to the client — needed for signInWithCredential
     const params = new URLSearchParams({
-      token: idToken,
+      googleToken: googleIdToken,
       uid: localId,
       email: email ?? '',
       name: displayName ?? '',

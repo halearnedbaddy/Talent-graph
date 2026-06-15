@@ -23,7 +23,7 @@ export default function GoogleCompletePage() {
     if (ran.current) return;
     ran.current = true;
 
-    const token = searchParams.get('token');
+    const googleToken = searchParams.get('googleToken');
     const uid = searchParams.get('uid');
     const email = searchParams.get('email') ?? '';
     const name = searchParams.get('name') ?? '';
@@ -33,15 +33,16 @@ export default function GoogleCompletePage() {
 
     if (error) {
       const msg =
-        error === 'google_cancelled'
-          ? 'Sign-in was cancelled.'
-          : 'Could not sign in with Google. Please try again.';
+        error === 'google_cancelled' ? 'Sign-in was cancelled.' :
+        error === 'google_failed' ? 'Could not connect to Google. Please try again.' :
+        error === 'firebase_failed' ? 'Could not authenticate with Firebase. Please try again.' :
+        'Something went wrong. Please try again.';
       toast({ variant: 'destructive', title: 'Google sign-in failed', description: msg });
       router.replace('/login');
       return;
     }
 
-    if (!token || !uid) {
+    if (!googleToken || !uid) {
       toast({ variant: 'destructive', title: 'Google sign-in failed', description: 'Invalid response. Please try again.' });
       router.replace('/login');
       return;
@@ -49,6 +50,10 @@ export default function GoogleCompletePage() {
 
     async function finish() {
       try {
+        // Use the Google ID token to create a Firebase session — no domain authorization needed
+        const credential = GoogleAuthProvider.credential(googleToken!);
+        await signInWithCredential(auth, credential);
+
         if (isNew) {
           const nameParts = name.split(' ');
           const firstName = nameParts[0] ?? '';
@@ -66,9 +71,6 @@ export default function GoogleCompletePage() {
             loginHistory: [new Date().toISOString()],
           }, { merge: true });
           trackEvent('sign_up', { method: 'google' });
-
-          // Sign in client-side with the Firebase ID token via custom credential
-          await signInWithIdToken(token!);
           router.replace('/onboarding');
         } else {
           const userDocRef = doc(firestore, 'users', uid!);
@@ -82,22 +84,17 @@ export default function GoogleCompletePage() {
           setDocumentNonBlocking(userDocRef, { loginHistory: history, isEmailVerified: true }, { merge: true });
           trackEvent('login', { method: 'google' });
 
-          await signInWithIdToken(token!);
-
           const role = data?.role;
           router.replace(role === 'coach' ? '/coach-dashboard' : role === 'scout' ? '/scout-dashboard' : '/');
         }
       } catch (err: any) {
         console.error('[google-complete] error:', err);
-        toast({ variant: 'destructive', title: 'Google sign-in failed', description: 'Could not complete sign-in. Please try again.' });
+        const description = err?.code === 'auth/invalid-credential'
+          ? 'Google token has expired. Please try signing in again.'
+          : err?.message || 'Could not complete sign-in. Please try again.';
+        toast({ variant: 'destructive', title: 'Google sign-in failed', description });
         router.replace('/login');
       }
-    }
-
-    // Use signInWithCredential with the Google ID token
-    async function signInWithIdToken(idToken: string) {
-      const credential = GoogleAuthProvider.credential(idToken);
-      await signInWithCredential(auth, credential);
     }
 
     finish();
