@@ -19,6 +19,7 @@ import {
   sendEmailVerification, 
   updateProfile
 } from 'firebase/auth';
+import { GoogleAuthButton } from '@/components/auth/google-auth-button';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { trackEvent } from '@/lib/analytics';
 import { doc } from 'firebase/firestore';
@@ -202,6 +203,15 @@ export default function SignupPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-6 pt-0">
+              <GoogleAuthButton mode="signup" />
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border/50" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-background px-3 text-muted-foreground font-medium">or continue with email</span>
+                </div>
+              </div>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
