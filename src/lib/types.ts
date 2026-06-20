@@ -602,3 +602,113 @@ export interface DirectMessage {
     originalContent: string;
   };
 }
+
+// ─── Client Support ───────────────────────────────────────────────────────────
+
+export type TicketStatus = 'open' | 'pending_user' | 'pending_internal' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high';
+export type TicketSource = 'in_app' | 'email';
+export type TicketTag = 'billing' | 'verification' | 'technical' | 'onboarding' | 'other';
+
+export interface SupportTicket {
+  id: string;
+  senderUserId: string | null;
+  senderEmail: string;
+  senderName: string;
+  source: TicketSource;
+  subject: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  tags: TicketTag[];
+  assignedAgentId: string | null;
+  slaDeadline: string;
+  csatRating: 'up' | 'down' | null;
+  accountProvisioned: boolean;
+  provisionedUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMessage?: string;
+}
+
+export interface SupportMessage {
+  id: string;
+  senderType: 'user' | 'agent';
+  senderName?: string;
+  body: string;
+  sentVia: 'app' | 'email';
+  sentAt: string;
+}
+
+export interface InternalNote {
+  id: string;
+  agentId: string;
+  agentName?: string;
+  note: string;
+  createdAt: string;
+}
+
+export interface CannedResponse {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  createdBy: string;
+}
+
+// ─── Marketing ────────────────────────────────────────────────────────────────
+
+export interface MarketingSegment {
+  id: string;
+  name: string;
+  filterCriteria: {
+    role?: string;
+    lastActiveDaysAgo?: number;
+    geography?: { country?: string; county?: string };
+  };
+  memberCount: number;
+  createdBy: string;
+  lastRefreshedAt: string;
+  createdAt: string;
+}
+
+export type CampaignChannel = 'email' | 'sms' | 'both';
+export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent';
+
+export interface MarketingCampaign {
+  id: string;
+  name: string;
+  channel: CampaignChannel;
+  segmentId: string;
+  segmentName?: string;
+  template: {
+    subject?: string;
+    emailBody?: string;
+    smsBody?: string;
+  };
+  status: CampaignStatus;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  analytics: {
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+    optedOut: number;
+    converted: number;
+  };
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface MarketingAutomation {
+  id: string;
+  name: string;
+  trigger: { type: 'days_since_signup' | 'days_since_provisioned'; value: number };
+  channel: CampaignChannel;
+  template: { subject?: string; emailBody?: string; smsBody?: string };
+  status: 'active' | 'paused';
+  triggeredCount: number;
+  conversionCount: number;
+  createdAt: string;
+}

@@ -1,0 +1,629 @@
+Understood — here is the complete engineering prompt covering only Client Support and Marketing, with the routing/admin scaffolding left out.
+
+---
+
+## Talent Graph — Client Support & Marketing
+### Full Engineering Specification
+
+---
+
+## PART A — Client Support Module
+
+### Firestore Schema
+
+```typescript
+support_tickets/{ticketId} {
+  senderUserId: string | null,      // null = unregistered sender
+  senderEmail: string,
+  senderName: string,
+  source: 'in_app' | 'email',
+  subject: string,
+  status: 'open' | 'pending_user' | 'pending_internal' | 'resolved' | 'closed',
+  priority: 'low' | 'medium' | 'high',
+  tags: string[],                    // billing, verification, technical, onboarding
+  assignedAgentId: string | null,
+  slaDeadline: Timestamp,
+  accountProvisioned: boolean,
+  provisionedUserId: string | null,
+  csatRating: 'up' | 'down' | null,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+}
+
+support_tickets/{ticketId}/messages/{messageId} {
+  senderType: 'user' | 'agent',
+  body: string,
+  sentVia: 'app' | 'email',
+  sentAt: Timestamp,
+}
+
+support_tickets/{ticketId}/internalNotes/{noteId} {
+  agentId: string,
+  note: string,
+  createdAt: Timestamp,
+}
+
+canned_responses/{responseId} {
+  title: string,
+  body: string,        // supports {{first_name}}, {{role}} merge fields
+  category: string,
+  createdBy: string,
+}
+
+provisioning_requests/{requestId} {
+  ticketId: string,
+  email: string,
+  name: string,
+  assignedRole: UserRole,
+  triggeredBy: string,   // agentId
+  status: 'link_sent' | 'completed' | 'expired' | 'revoked',
+  expiresAt: Timestamp,
+  createdAt: Timestamp,
+}
+
+suppression_list/{contactHash} {
+  // SHA-256 hash of normalized email or phone — shared with Marketing
+  type: 'email' | 'sms',
+  contact: string,
+  reason: 'user_request' | 'bounced' | 'spam_complaint',
+  source: 'support_ticket' | 'campaign_unsubscribe',
+  createdAt: Timestamp,
+}
+```
+
+---
+
+### Step 1 — Inbound Email → Ticket (Webhook)
+
+```typescript
+// app/api/support/inbound-email/route.ts
+// Configure SendGrid Inbound Parse (or equivalent) to POST here
+
+export async function POST(req: Request) {
+  const formData = await req.formData()
+  const fromEmail = formData.get('from')
+  const subject = formData.get('subject')
+  const body = formData.get('text')
+
+  verifyInboundWebhookSignature(req) // reject if signature invalid
+
+  const existingUser = await findUserByEmail(fromEmail)
+  const existingTicket = await findOpenTicketBySender(fromEmail)
+
+  if (existingTicket) {
+    await appendMessage(existingTicket.id, { senderType: 'user', body, sentVia: 'email' })
+    return Response.json({ success: true })
+  }
+
+  const priority = detectPriority(subject + body)
+  const ticketRef = await createDoc('support_tickets', {
+    senderUserId: existingUser?.uid ?? null,
+    senderEmail: fromEmail,
+    senderName: extractNameFromSignature(body) ?? fromEmail,
+    source: 'email',
+    subject,
+    status: 'open',
+    priority,
+    slaDeadline: addHours(new Date(), priority === 'high' ? 1 : 4),
+    accountProvisioned: false,
+    createdAt: serverTimestamp(),
+  })
+
+  await appendMessage(ticketRef.id, { senderType: 'user', body, sentVia: 'email' })
+  return Response.json({ success: true })
+}
+
+function detectPriority(text: string): 'low' | 'medium' | 'high' {
+  const highKeywords = ['payment', 'paid', "can't login", 'charged', 'urgent']
+  return highKeywords.some(k => text.toLowerCase().includes(k)) ? 'high' : 'medium'
+}
+```
+
+---
+
+### Step 2 — Agent Reply (Dual Channel)
+
+```typescript
+// app/api/support/tickets/[id]/reply/route.ts
+export async function POST(req: Request, { params }) {
+  const agent = await verifyAgentToken(req) // role: admin | support_agent
+  const { body } = await req.json()
+  const ticket = await getTicket(params.id)
+
+  await addDoc(`support_tickets/${params.id}/messages`, {
+    senderType: 'agent', body, sentVia: 'email', sentAt: serverTimestamp(),
+  })
+
+  await sendEmail(ticket.senderEmail, ticket.subject, body)
+
+  if (ticket.senderUserId) {
+    await createNotification(ticket.senderUserId, {
+      type: 'support_reply', ticketId: params.id, preview: body.slice(0, 80),
+    })
+  }
+
+  await updateDoc(`support_tickets/${params.id}`, {
+    status: 'pending_user', updatedAt: serverTimestamp(),
+  })
+}
+```
+
+---
+
+### Step 3 — Ticket-to-Account Provisioning
+
+```typescript
+// app/api/admin/support/provision-account/route.ts
+export async function POST(req: Request) {
+  const agent = await verifyAgentToken(req) // admin | support_agent only
+  const { ticketId, email, name, role } = await req.json()
+
+  const ticket = await getTicket(ticketId)
+  if (ticket.senderEmail !== email) throw new Error('Email mismatch with ticket')
+
+  const existing = await findUserByEmail(email)
+  if (existing) throw new Error('Account already exists for this email')
+
+  // Identity Toolkit REST API — consistent with rest of platform, no Admin SDK
+  await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requestType: 'EMAIL_SIGN_IN',
+      email,
+      continueUrl: `${BASE_URL}/auth/complete?ticketId=${ticketId}`,
+      canHandleCodeInApp: true,
+    }),
+  })
+
+  const reqRef = await addDoc('provisioning_requests', {
+    ticketId, email, name, assignedRole: role,
+    triggeredBy: agent.uid, status: 'link_sent',
+    expiresAt: addHours(new Date(), 24), createdAt: serverTimestamp(),
+  })
+
+  await updateDoc(`support_tickets/${ticketId}`, { accountProvisioned: false })
+  return Response.json({ success: true, requestId: reqRef.id })
+}
+```
+
+---
+
+### Step 4 — Account Completion Page (No Signup Form)
+
+```typescript
+// app/auth/complete/page.tsx
+'use client'
+export default function CompleteAuth() {
+  const [needsEmail, setNeedsEmail] = useState(false)
+
+  useEffect(() => {
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      let email = window.localStorage.getItem('emailForSignIn')
+      if (!email) { setNeedsEmail(true); return }
+      completeSignIn(email)
+    }
+  }, [])
+
+  async function completeSignIn(email: string) {
+    const result = await signInWithEmailLink(auth, email, window.location.href)
+    const idToken = await result.user.getIdToken()
+    const ticketId = new URLSearchParams(window.location.search).get('ticketId')
+
+    const res = await fetch('/api/auth/complete-provisioning', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ ticketId }),
+    })
+    const { redirectTo } = await res.json()
+    router.push(redirectTo)
+  }
+
+  if (needsEmail) return <ConfirmEmailForm onSubmit={completeSignIn} />
+  return <LoadingSpinner message="Setting up your dashboard..." />
+}
+```
+
+```typescript
+// app/api/auth/complete-provisioning/route.ts
+export async function POST(req: Request) {
+  const idToken = req.headers.get('Authorization')?.split(' ')[1]
+  const decoded = await verifyIdToken(idToken)
+  const { ticketId } = await req.json()
+
+  const provReq = await getDocByField('provisioning_requests', 'ticketId', ticketId)
+  if (provReq.email !== decoded.email) throw new Error('Email mismatch — security check failed')
+  if (provReq.status !== 'link_sent') throw new Error('Link already used, expired, or revoked')
+
+  await batchWrite([
+    { ref: `users/${decoded.uid}`, data: {
+      uid: decoded.uid, email: decoded.email, displayName: provReq.name,
+      role: provReq.assignedRole, accountStatus: 'provisional',
+      provisionedFromTicketId: ticketId, onboardingCompleted: [],
+      createdAt: serverTimestamp(),
+    }},
+    { ref: `${roleCollection(provReq.assignedRole)}/${decoded.uid}`, data: minimalStarterDoc(provReq) },
+    { ref: `support_tickets/${ticketId}`, data: { accountProvisioned: true, provisionedUserId: decoded.uid } },
+    { ref: `provisioning_requests/${provReq.id}`, data: { status: 'completed' } },
+  ])
+
+  return Response.json({ role: provReq.assignedRole, redirectTo: roleToDashboard(provReq.assignedRole) })
+}
+```
+
+---
+
+### Step 5 — Resend / Revoke Controls
+
+```typescript
+// app/api/admin/support/provisioning/[id]/resend/route.ts
+export async function POST(req: Request, { params }) {
+  await verifyAgentToken(req)
+  const provReq = await getProvisioningRequest(params.id)
+  
+  // Re-trigger sendOobCode with same continueUrl
+  await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requestType: 'EMAIL_SIGN_IN', email: provReq.email,
+      continueUrl: `${BASE_URL}/auth/complete?ticketId=${provReq.ticketId}`,
+      canHandleCodeInApp: true,
+    }),
+  })
+  
+  await updateDoc(`provisioning_requests/${params.id}`, { 
+    expiresAt: addHours(new Date(), 24), status: 'link_sent' 
+  })
+}
+
+// app/api/admin/support/provisioning/[id]/revoke/route.ts
+export async function POST(req: Request, { params }) {
+  await verifyAgentToken(req)
+  await updateDoc(`provisioning_requests/${params.id}`, { status: 'revoked' })
+  // /api/auth/complete-provisioning checks status !== 'link_sent' and rejects
+}
+```
+
+---
+
+### Step 6 — UI Components
+
+```
+components/admin/support/
+  TicketInbox.tsx            — list: source, sender (+ "Unregistered" badge), status, priority, SLA badge
+  TicketDetail.tsx           — full thread + reply box
+  UserContextPanel.tsx       — role, tier, last 5 actions, ticket history
+  ProvisionAccountModal.tsx  — name / email (locked) / role dropdown → Send Account Access
+  CannedResponsePicker.tsx   — dropdown insert with merge field rendering
+  InternalNotesPanel.tsx     — agent-only, visually distinct background
+  SlaTimer.tsx                — countdown, turns red on breach
+  TicketTagSelector.tsx
+```
+
+---
+
+### Step 7 — Support Analytics
+
+```typescript
+// app/api/admin/support/analytics/route.ts
+async function getSupportAnalytics(dateRange) {
+  return {
+    avgFirstResponseTime: await calcAvgFirstResponse(dateRange),
+    avgResolutionTime: await calcAvgResolution(dateRange),
+    ticketsByCategory: await groupByTag(dateRange),
+    perAgentStats: await getAgentPerformance(dateRange), // closed count, avg time, csat
+    csatScore: await calcCsatPercentage(dateRange),
+  }
+}
+```
+
+---
+
+## PART B — Marketing Module
+
+### Firestore Schema
+
+```typescript
+marketing_segments/{segmentId} {
+  name: string,
+  filterCriteria: {
+    role?: UserRole, lastActiveDaysAgo?: number,
+    geography?: { country?: string, county?: string },
+    customFilters?: Record<string, any>,
+  },
+  sourceCollection: 'users' | 'waitlist', // waitlist = read-only aggregate
+  memberCount: number,
+  createdBy: string,
+  lastRefreshedAt: Timestamp,
+}
+
+marketing_campaigns/{campaignId} {
+  name: string,
+  channel: 'email' | 'sms' | 'both',
+  segmentId: string,
+  template: { subject?: string, emailBody?: string, smsBody?: string },
+  abTest?: { variantB_subject: string, splitPercent: number },
+  status: 'draft' | 'scheduled' | 'sending' | 'sent',
+  scheduledAt: Timestamp | null,
+  sentAt: Timestamp | null,
+  analytics: {
+    sent: number, delivered: number, opened: number,
+    clicked: number, bounced: number, optedOut: number, converted: number,
+  },
+}
+
+marketing_automations/{automationId} {
+  name: string,
+  trigger: { type: 'days_since_signup' | 'days_since_provisioned', value: number },
+  condition: Record<string, any>,
+  templateId: string,
+  status: 'active' | 'paused',
+  triggeredCount: number,
+  conversionCount: number,
+}
+
+campaign_link_clicks/{clickId} {
+  campaignId, userId, originalUrl, utmParams, clickedAt
+}
+```
+
+---
+
+### Step 1 — Segment Builder & Nightly Refresh
+
+```typescript
+// app/api/admin/marketing/segments/route.ts
+async function buildSegmentQuery(criteria: SegmentFilters) {
+  let q = query(collection(db, 'users'))
+  if (criteria.role) q = query(q, where('role', '==', criteria.role))
+  if (criteria.lastActiveDaysAgo) {
+    const cutoff = subDays(new Date(), criteria.lastActiveDaysAgo)
+    q = query(q, where('lastActiveAt', '<=', cutoff))
+  }
+  if (criteria.geography?.country) {
+    q = query(q, where('country', '==', criteria.geography.country))
+  }
+  return q
+}
+
+// Cloud Function — nightly
+exports.refreshSegmentCounts = functions.pubsub.schedule('every day 02:00').onRun(async () => {
+  const segments = await getAllSegments()
+  for (const seg of segments) {
+    const q = await buildSegmentQuery(seg.filterCriteria)
+    const snap = await getCountFromServer(q)
+    await updateDoc(seg.ref, { memberCount: snap.data().count, lastRefreshedAt: serverTimestamp() })
+  }
+})
+```
+
+---
+
+### Step 2 — Campaign Send (With Suppression + Frequency Cap)
+
+```typescript
+// app/api/admin/marketing/campaigns/[id]/send/route.ts
+export async function POST(req, { params }) {
+  const manager = await verifyAgentToken(req) // admin | marketing_manager
+  const campaign = await getCampaign(params.id)
+  const segment = await getSegment(campaign.segmentId)
+  const recipients = await resolveSegmentMembers(segment)
+
+  const eligible = []
+  for (const user of recipients) {
+    if (await isSuppressed(user.email, user.phone)) continue
+    if (await exceedsFrequencyCap(user.uid)) continue // max 2 sends per 7 days
+    eligible.push(user)
+  }
+
+  let sentCount = 0
+  for (const user of eligible) {
+    if (['email', 'both'].includes(campaign.channel)) {
+      await sendCampaignEmail(user, campaign, trackingPixel(campaign.id, user.uid))
+    }
+    if (['sms', 'both'].includes(campaign.channel)) {
+      await sendCampaignSms(user, campaign) // via existing Africa's Talking integration
+    }
+    await logSendEvent(campaign.id, user.uid)
+    sentCount++
+  }
+
+  await updateDoc(`marketing_campaigns/${params.id}`, {
+    status: 'sent', sentAt: serverTimestamp(), 'analytics.sent': sentCount,
+  })
+}
+
+async function isSuppressed(email: string, phone?: string): Promise<boolean> {
+  const emailHash = sha256(normalize(email))
+  const doc = await getDoc(`suppression_list/${emailHash}`)
+  return doc.exists()
+}
+
+async function exceedsFrequencyCap(userId: string): Promise<boolean> {
+  const recentSends = await countSendsLast7Days(userId)
+  return recentSends >= 2
+}
+```
+
+---
+
+### Step 3 — Unsubscribe (Writes to Shared Suppression List)
+
+```typescript
+// app/api/marketing/unsubscribe/route.ts
+export async function POST(req: Request) {
+  const { email, phone, source } = await req.json() // 'campaign_link' | 'sms_stop_reply'
+
+  if (email) {
+    await setDoc(`suppression_list/${sha256(normalize(email))}`, {
+      type: 'email', contact: email, reason: 'user_request',
+      source: 'campaign_unsubscribe', createdAt: serverTimestamp(),
+    })
+  }
+  if (phone) {
+    await setDoc(`suppression_list/${sha256(normalize(phone))}`, {
+      type: 'sms', contact: phone, reason: 'user_request',
+      source: 'campaign_unsubscribe', createdAt: serverTimestamp(),
+    })
+  }
+  // Same suppression_list used by Support — a ticket marked 
+  // "user requested no contact" writes here too
+}
+```
+
+---
+
+### Step 4 — Automation Engine
+
+```typescript
+// Cloud Function — daily
+exports.runMarketingAutomations = functions.pubsub.schedule('every day 09:00').onRun(async () => {
+  const automations = await getActiveAutomations()
+
+  for (const auto of automations) {
+    const matchingUsers = await findUsersMatchingTrigger(auto.trigger, auto.condition)
+
+    for (const user of matchingUsers) {
+      if (await isSuppressed(user.email)) continue
+      if (await wasAlreadyTriggered(auto.id, user.uid)) continue
+
+      await sendTemplate(user, auto.templateId)
+      await logAutomationTrigger(auto.id, user.uid)
+      await incrementDoc(`marketing_automations/${auto.id}`, { triggeredCount: increment(1) })
+    }
+  }
+})
+
+// Cloud Function — checks 7-day-old triggers for conversion
+exports.checkAutomationConversions = functions.pubsub.schedule('every day 10:00').onRun(async () => {
+  const dueTriggers = await getTriggersFromDaysAgo(7)
+  for (const trig of dueTriggers) {
+    const converted = await checkConditionResolved(trig.userId, trig.automationId)
+    if (converted) {
+      await incrementDoc(`marketing_automations/${trig.automationId}`, { conversionCount: increment(1) })
+    }
+  }
+})
+```
+
+---
+
+### Step 5 — Campaign Analytics: Tracking Pixel & Link Clicks
+
+```typescript
+// app/api/marketing/track/open/route.ts
+// 1x1 transparent pixel embedded in email template
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const campaignId = url.searchParams.get('c')
+  const userId = url.searchParams.get('u')
+
+  await incrementDoc(`marketing_campaigns/${campaignId}`, { 'analytics.opened': increment(1) })
+  await logOpenEvent(campaignId, userId)
+
+  return new Response(TRANSPARENT_PIXEL_BUFFER, {
+    headers: { 'Content-Type': 'image/gif' },
+  })
+}
+
+// app/api/marketing/track/click/route.ts
+// All campaign links route through this redirect first
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const campaignId = url.searchParams.get('c')
+  const userId = url.searchParams.get('u')
+  const destination = url.searchParams.get('to')
+
+  await addDoc('campaign_link_clicks', {
+    campaignId, userId, originalUrl: destination,
+    utmParams: extractUtm(destination), clickedAt: serverTimestamp(),
+  })
+  await incrementDoc(`marketing_campaigns/${campaignId}`, { 'analytics.clicked': increment(1) })
+
+  return Response.redirect(destination, 302)
+}
+
+// Conversion check — 7 days after click, did the target action occur
+exports.checkCampaignConversions = functions.pubsub.schedule('every day 11:00').onRun(async () => {
+  const recentClicks = await getClicksFromDaysAgo(7)
+  for (const click of recentClicks) {
+    const converted = await checkUserConvertedSinceClick(click.userId, click.clickedAt)
+    if (converted) {
+      await incrementDoc(`marketing_campaigns/${click.campaignId}`, { 'analytics.converted': increment(1) })
+    }
+  }
+})
+```
+
+---
+
+### Step 6 — UI Components
+
+```
+components/admin/marketing/
+  SegmentBuilder.tsx        — filter form: role, activity, geography, custom
+  SegmentList.tsx           — saved segments with live member counts
+  CampaignBuilder.tsx       — channel select, template editor, schedule picker
+  CampaignList.tsx          — draft/scheduled/sent with status badges
+  CampaignAnalytics.tsx     — sent/delivered/opened/clicked/converted breakdown
+  AutomationBuilder.tsx     — trigger + condition + template selector
+  AutomationList.tsx        — active/paused with triggered + conversion counts
+  TemplateEditor.tsx        — merge field support, A/B subject input
+  CampaignCalendar.tsx      — week/month scheduled view
+```
+
+---
+
+## Shared Requirement — Non-Negotiable Before Either Module Ships
+
+```
+The suppression_list collection must be checked by BOTH:
+  - Marketing campaign sends (Part B, Step 2)
+  - Any future support-side "do not contact" action
+
+A user who tells a support agent "stop contacting me" and a user 
+who clicks "unsubscribe" on a marketing email must hit the exact 
+same suppression mechanism. Build and test this shared check first, 
+before either module's send/reply functionality goes live.
+```
+
+---
+
+## Build Order
+
+```
+Week 1 — Client Support Foundation
+  ✓ Firestore schema + security rules (agent role checks)
+  ✓ Inbound email webhook + ticket creation
+  ✓ Unified inbox UI + ticket detail view
+  ✓ Agent reply (dual channel: email + in-app)
+
+Week 2 — Provisioning Flow
+  ✓ Provision account endpoint + Identity Toolkit integration
+  ✓ /auth/complete page + cross-device email confirmation
+  ✓ complete-provisioning endpoint with security cross-check
+  ✓ Resend / Revoke controls
+
+Week 3 — Support Polish + Suppression Foundation
+  ✓ Canned responses, internal notes, SLA timers, tagging
+  ✓ Support analytics dashboard
+  ✓ suppression_list collection + shared check function
+  ✓ CSAT rating flow
+
+Week 4 — Marketing Foundation
+  ✓ Segment builder + nightly refresh Cloud Function
+  ✓ Campaign builder UI + template editor with merge fields
+  ✓ Campaign send endpoint with suppression + frequency cap
+
+Week 5 — Marketing Analytics + Automations
+  ✓ Tracking pixel (opens) + click redirect (clicks)
+  ✓ Conversion checking Cloud Functions
+  ✓ Automation engine + scheduled triggers
+  ✓ Campaign analytics dashboard + calendar view
+
+Week 6 — Integration Testing
+  ✓ Test: ticket → provision → user lands in correct dashboard
+  ✓ Test: unsubscribe via campaign link suppresses future sends
+  ✓ Test: suppression list shared correctly between both modules
+  ✓ Test: frequency cap prevents overlapping campaign spam
+  ✓ Load test: segment query performance at 10,000+ users
+```
