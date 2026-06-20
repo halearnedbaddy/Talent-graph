@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyBearerToken, FIREBASE_API_KEY, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { sendNewTicketNotification } from '@/lib/email';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
   const priority = params.get('priority');
 
   try {
-    let url = `${FIRESTORE_BASE}/support_tickets?orderBy=updatedAt desc&pageSize=50`;
+    const url = `${FIRESTORE_BASE}/support_tickets?orderBy=updatedAt desc&pageSize=50`;
     const res = await fetch(url);
     const data = await res.json();
     let tickets = (data.documents || []).map(docToTicket);
@@ -57,7 +58,15 @@ export async function POST(req: NextRequest) {
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { senderEmail, senderName, subject, message, priority = 'medium', source = 'in_app' } = body;
+  const {
+    senderEmail,
+    senderName,
+    subject,
+    message,
+    priority = 'medium',
+    tag = 'technical',
+    source = 'in_app',
+  } = body;
 
   if (!senderEmail || !subject || !message) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 });
@@ -76,7 +85,7 @@ export async function POST(req: NextRequest) {
       subject: { stringValue: subject },
       status: { stringValue: 'open' },
       priority: { stringValue: priority },
-      tags: { arrayValue: { values: [] } },
+      tags: { arrayValue: { values: [{ stringValue: tag }] } },
       assignedAgentId: { nullValue: null },
       slaDeadline: { stringValue: slaDeadline },
       csatRating: { nullValue: null },
@@ -104,12 +113,25 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       fields: {
         senderType: { stringValue: 'user' },
+        senderName: { stringValue: senderName || senderEmail },
         body: { stringValue: message },
         sentVia: { stringValue: source },
         sentAt: { stringValue: now },
       },
     }),
   });
+
+  // Send email notification (fire-and-forget — never blocks the response)
+  sendNewTicketNotification({
+    ticketId,
+    subject,
+    message,
+    priority,
+    tag,
+    senderName: senderName || senderEmail,
+    senderEmail,
+    slaDeadline,
+  }).catch(err => console.error('[email] Failed to send ticket notification:', err));
 
   return Response.json({ success: true, ticketId });
 }

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, collection, query, orderBy, where, addDoc } from 'firebase/firestore';
-import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import type { SupportThread, SupportMessage, UserAccount } from '@/lib/types';
 import {
   Dialog,
@@ -95,42 +95,35 @@ export function SupportDialog({ open: externalOpen, onOpenChange: externalOnOpen
 
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firestore || !user || !form.subject.trim() || !form.message.trim()) return;
+    if (!user || !form.subject.trim() || !form.message.trim()) return;
     setSubmitting(true);
 
-    const now = new Date().toISOString();
-    const slaHours = PRIORITY_SLA[form.priority] ?? 4;
-    const slaDeadline = new Date(Date.now() + slaHours * 3600000).toISOString();
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/support/tickets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          senderEmail: user.email ?? '',
+          senderName: user.displayName ?? user.email ?? 'User',
+          subject: form.subject,
+          message: form.message,
+          priority: form.priority,
+          tag: form.tag,
+          source: 'in_app',
+        }),
+      });
 
-    const ticketRef = await addDoc(collection(firestore, 'support_tickets'), {
-      senderUserId: user.uid,
-      senderEmail: user.email ?? '',
-      senderName: user.displayName ?? user.email ?? 'User',
-      source: 'in_app',
-      subject: form.subject,
-      status: 'open',
-      priority: form.priority,
-      tags: [form.tag],
-      assignedAgentId: null,
-      slaDeadline,
-      csatRating: null,
-      accountProvisioned: false,
-      provisionedUserId: null,
-      lastMessage: form.message.slice(0, 100),
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await addDoc(collection(firestore, 'support_tickets', ticketRef.id, 'messages'), {
-      senderType: 'user',
-      senderName: user.displayName ?? user.email ?? 'User',
-      body: form.message,
-      sentVia: 'in_app',
-      sentAt: now,
-    });
-
-    setSubmitting(false);
-    setSubmitted(true);
+      if (!res.ok) throw new Error('Failed to submit');
+      setSubmitted(true);
+    } catch (err) {
+      console.error('[SupportDialog] ticket submit failed', err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleReply = async (e: React.FormEvent) => {
