@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import {
   Home, Users, Trophy, BarChart3,
-  Settings, LogOut, Menu, X, Radio, FileText, ChevronRight
+  Settings, LogOut, Menu, X, Radio, FileText, ChevronRight, Headphones
 } from 'lucide-react';
+import { SupportDialog } from '@/components/support/support-dialog';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -111,6 +112,12 @@ export default function AnalystDashboardLayout({ children }: { children: React.R
             <p className="text-[9px] font-bold text-[#00C853] uppercase tracking-widest">Analyst</p>
           </div>
         </div>
+        <SupportDialog trigger={
+          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-white/60 hover:bg-white/5 hover:text-white transition-all">
+            <Headphones className="w-4 h-4 shrink-0" />
+            Contact Support
+          </button>
+        } />
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-white/60 hover:bg-white/5 hover:text-white transition-all"

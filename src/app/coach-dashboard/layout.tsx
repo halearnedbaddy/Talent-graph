@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Home, Users, ShieldCheck, Trophy, Dumbbell, Calendar,
   BarChart3, Bell, Building2, Settings, LogOut,
-  Menu, X, Zap, ChevronRight, Radio, Search, Link2, MessageSquare
+  Menu, X, Zap, ChevronRight, Radio, Search, Link2, MessageSquare, Headphones
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ import type { ClubMember, UserAccount } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/coach/notification-bell';
 import { useCoachNotifications } from '@/hooks/useCoachNotifications';
+import { SupportDialog } from '@/components/support/support-dialog';
 
 const navItems = [
   { href: '/coach-dashboard', label: 'Overview', icon: Home, exact: true },
@@ -167,6 +168,12 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
       {/* Footer */}
       <div className="border-t border-[#1E293B] p-3 space-y-1 shrink-0">
+        <SupportDialog trigger={
+          <Button size="sm" variant="ghost" className="w-full justify-start text-[#94A3B8] hover:text-white hover:bg-[#1C2333] gap-2 h-9 font-semibold">
+            <Headphones className="h-4 w-4" />
+            Support
+          </Button>
+        } />
         <Button
           size="sm" variant="ghost"
           className="w-full justify-start text-[#94A3B8] hover:text-red-400 hover:bg-red-400/10 gap-2 h-9 font-semibold"

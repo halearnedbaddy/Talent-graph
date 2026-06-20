@@ -20,9 +20,10 @@ import { SavedSearchesTab } from './saved-searches-tab';
 import { ActivityTab } from './activity-tab';
 import { SettingsTab } from './settings-tab';
 import { MessagesTab } from './messages-tab';
+import { SupportDialog } from '@/components/support/support-dialog';
 import {
   Search, Store, BarChart2, Bookmark, User,
-  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings, MessageSquare, UserPlus
+  GitPullRequestArrow, Bell, Activity, Menu, X, Zap, ChevronRight, Settings, MessageSquare, UserPlus, Headphones
 } from 'lucide-react';
 import { InvitationFormTab } from './invitation-form-tab';
 import { cn } from '@/lib/utils';
@@ -171,8 +172,14 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
         ))}
       </nav>
 
-      {/* Sign out */}
-      <div className="border-t border-[#1E293B] p-3 shrink-0">
+      {/* Footer */}
+      <div className="border-t border-[#1E293B] p-3 shrink-0 space-y-1">
+        <SupportDialog trigger={
+          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#94A3B8] hover:text-white hover:bg-[#1C2333] transition-all text-[13px] font-semibold">
+            <Headphones className="h-4 w-4 shrink-0" />
+            Contact Support
+          </button>
+        } />
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#94A3B8] hover:text-red-400 hover:bg-red-400/10 transition-all text-[13px] font-semibold"
