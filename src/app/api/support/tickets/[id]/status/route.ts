@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyBearerToken, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { sendTicketResolvedNotification } from '@/lib/email';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
@@ -24,6 +25,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
+
+  // Fire resolved email when status changes to "resolved"
+  if (updates.status === 'resolved') {
+    const ticketRes = await fetch(`${FIRESTORE_BASE}/support_tickets/${params.id}`);
+    if (ticketRes.ok) {
+      const ticketDoc = await ticketRes.json();
+      const f = ticketDoc.fields || {};
+      const senderEmail = f.senderEmail?.stringValue;
+      const senderName = f.senderName?.stringValue || senderEmail;
+      const subject = f.subject?.stringValue || '(no subject)';
+
+      if (senderEmail) {
+        const csatBaseUrl = req.nextUrl.origin;
+        sendTicketResolvedNotification({
+          ticketId: params.id,
+          subject,
+          senderName: senderName || senderEmail,
+          senderEmail,
+          csatBaseUrl,
+        }).catch(err => console.error('[email] Failed to send resolved notification:', err));
+      }
+    }
+  }
 
   return Response.json({ success: true });
 }
