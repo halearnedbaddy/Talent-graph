@@ -349,6 +349,76 @@ export async function sendAgentReplyNotification(payload: AgentReplyEmailPayload
   });
 }
 
+export async function sendCampaignEmail(params: {
+  to: string;
+  firstName: string;
+  role: string;
+  subject: string;
+  rawBody: string;
+  campaignId: string;
+  unsubscribeBaseUrl: string;
+}): Promise<boolean> {
+  const transport = createTransport();
+  if (!transport) return false;
+
+  try {
+    const personalizedBody = params.rawBody
+      .replace(/\{\{first_name\}\}/gi, escHtml(params.firstName))
+      .replace(/\{\{role\}\}/gi, escHtml(params.role));
+
+    const unsubscribeUrl = `${params.unsubscribeBaseUrl}/api/marketing/unsubscribe?email=${encodeURIComponent(params.to)}&campaign=${params.campaignId}`;
+    const personalizedSubject = params.subject
+      .replace(/\{\{first_name\}\}/gi, params.firstName)
+      .replace(/\{\{role\}\}/gi, params.role);
+
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#0F172A;font-family:system-ui,-apple-system,sans-serif;color:#E2E8F0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0F172A;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#1E293B;border-radius:16px;overflow:hidden;max-width:100%;">
+
+        <tr>
+          <td style="background:#4F46E5;padding:12px 32px;">
+            <p style="margin:0;font-size:13px;font-weight:900;color:#fff;letter-spacing:1px;">TALENT GRAPH KENYA</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:32px;">
+            <div style="font-size:14px;line-height:1.7;color:#CBD5E1;white-space:pre-line;">${personalizedBody}</div>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="background:#0F172A;padding:16px 32px;border-top:1px solid #1E293B;">
+            <p style="margin:0;font-size:11px;color:#475569;">
+              Talent Graph Kenya &nbsp;·&nbsp;
+              <a href="${unsubscribeUrl}" style="color:#6366F1;text-decoration:underline;">Unsubscribe</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    await transport.sendMail({
+      from: `"Talent Graph Kenya" <${process.env.SMTP_USER}>`,
+      to: params.to,
+      subject: personalizedSubject,
+      html,
+    });
+    return true;
+  } catch (err) {
+    console.error('[email] Campaign send error:', err);
+    return false;
+  }
+}
+
 function escHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')

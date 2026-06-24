@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2, Send, Search, MessageSquare, AlertCircle, Clock, CheckCircle2,
   Tag, StickyNote, Filter, Plus, ThumbsUp, ThumbsDown, X, ChevronDown,
-  TicketCheck, Users, Timer, TrendingUp, Star
+  TicketCheck, Users, Timer, TrendingUp, Star, StarHalf
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
@@ -401,7 +401,19 @@ export function ClientSupportDashboard() {
                     </p>
                     <div className="flex items-center justify-between">
                       <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded border', sc.color)}>{sc.label}</span>
-                      <SlaTimer deadline={ticket.slaDeadline} />
+                      <div className="flex items-center gap-1.5">
+                        {ticket.csatRating && (
+                          <span className={cn(
+                            'text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5',
+                            Number(ticket.csatRating) >= 4 ? 'bg-green-100 text-green-700'
+                              : Number(ticket.csatRating) >= 3 ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-red-100 text-red-600'
+                          )}>
+                            <Star className="w-2.5 h-2.5 fill-current" />{ticket.csatRating}/5
+                          </span>
+                        )}
+                        <SlaTimer deadline={ticket.slaDeadline} />
+                      </div>
                     </div>
                   </button>
                 );
@@ -428,6 +440,21 @@ export function ClientSupportDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">{selectedTicket.senderName} · {selectedTicket.senderEmail}</p>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <SlaTimer deadline={selectedTicket.slaDeadline} />
+                      {selectedTicket.csatRating && (
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border',
+                          Number(selectedTicket.csatRating) >= 4 ? 'bg-green-50 text-green-700 border-green-200'
+                            : Number(selectedTicket.csatRating) >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                            : 'bg-red-50 text-red-600 border-red-200'
+                        )}>
+                          {[1,2,3,4,5].map(n => (
+                            <Star key={n} className={cn('w-2.5 h-2.5',
+                              n <= Number(selectedTicket.csatRating) ? 'fill-current' : 'opacity-25'
+                            )} />
+                          ))}
+                          <span className="ml-0.5">CSAT {selectedTicket.csatRating}/5</span>
+                        </span>
+                      )}
                       {(selectedTicket.tags || []).map(tag => (
                         <span key={tag} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">{tag}</span>
                       ))}
