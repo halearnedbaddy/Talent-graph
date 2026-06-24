@@ -18,6 +18,7 @@ import {
   TicketCheck, Users, Timer, TrendingUp, Star, StarHalf
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import type { SupportTicket, SupportMessage, InternalNote, TicketStatus, TicketPriority } from '@/lib/types';
 
@@ -57,6 +58,7 @@ function SlaTimer({ deadline }: { deadline: string }) {
 
 function NewTicketForm({ onClose, agentId, agentName }: { onClose: () => void; agentId: string; agentName: string }) {
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [form, setForm] = useState({ senderEmail: '', senderName: '', subject: '', message: '', priority: 'medium' as TicketPriority });
   const [saving, setSaving] = useState(false);
 
@@ -64,38 +66,44 @@ function NewTicketForm({ onClose, agentId, agentName }: { onClose: () => void; a
     e.preventDefault();
     if (!firestore || !form.senderEmail || !form.subject || !form.message) return;
     setSaving(true);
-    const now = new Date();
-    const slaHours = form.priority === 'high' ? 1 : form.priority === 'medium' ? 4 : 24;
-    const slaDeadline = new Date(now.getTime() + slaHours * 3600000).toISOString();
+    try {
+      const now = new Date();
+      const slaHours = form.priority === 'high' ? 1 : form.priority === 'medium' ? 4 : 24;
+      const slaDeadline = new Date(now.getTime() + slaHours * 3600000).toISOString();
 
-    const ticketRef = await addDoc(collection(firestore, 'support_tickets'), {
-      senderUserId: null,
-      senderEmail: form.senderEmail,
-      senderName: form.senderName || form.senderEmail,
-      source: 'in_app',
-      subject: form.subject,
-      status: 'open',
-      priority: form.priority,
-      tags: [],
-      assignedAgentId: agentId,
-      slaDeadline,
-      csatRating: null,
-      accountProvisioned: false,
-      provisionedUserId: null,
-      lastMessage: form.message.slice(0, 100),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    });
+      const ticketRef = await addDoc(collection(firestore, 'support_tickets'), {
+        senderUserId: null,
+        senderEmail: form.senderEmail,
+        senderName: form.senderName || form.senderEmail,
+        source: 'in_app',
+        subject: form.subject,
+        status: 'open',
+        priority: form.priority,
+        tags: [],
+        assignedAgentId: agentId,
+        slaDeadline,
+        csatRating: null,
+        accountProvisioned: false,
+        provisionedUserId: null,
+        lastMessage: form.message.slice(0, 100),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
 
-    await addDoc(collection(firestore, 'support_tickets', ticketRef.id, 'messages'), {
-      senderType: 'user',
-      body: form.message,
-      sentVia: 'in_app',
-      sentAt: now.toISOString(),
-    });
+      await addDoc(collection(firestore, 'support_tickets', ticketRef.id, 'messages'), {
+        senderType: 'user',
+        body: form.message,
+        sentVia: 'in_app',
+        sentAt: now.toISOString(),
+      });
 
-    setSaving(false);
-    onClose();
+      toast({ title: 'Ticket created', description: `#${ticketRef.id.slice(0, 8)} — ${form.subject}` });
+      onClose();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to create ticket', description: err?.message ?? 'Please check your connection and try again.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -217,53 +225,72 @@ export function ClientSupportDashboard() {
     : csatAvg >= 3 ? 'text-yellow-500'
     : 'text-red-500';
 
+  const { toast } = useToast();
+
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !user || !selectedId || !replyText.trim()) return;
     setSending(true);
-    const now = new Date().toISOString();
-    await addDoc(collection(firestore, 'support_tickets', selectedId, 'messages'), {
-      senderType: 'agent',
-      senderName: user.displayName || user.email || 'Support Agent',
-      body: replyText,
-      sentVia: 'app',
-      sentAt: now,
-    });
-    await updateDoc(doc(firestore, 'support_tickets', selectedId), {
-      status: 'pending_user',
-      updatedAt: now,
-      lastMessage: replyText.slice(0, 100),
-    });
-    setReplyText('');
-    setSending(false);
+    try {
+      const now = new Date().toISOString();
+      await addDoc(collection(firestore, 'support_tickets', selectedId, 'messages'), {
+        senderType: 'agent',
+        senderName: user.displayName || user.email || 'Support Agent',
+        body: replyText,
+        sentVia: 'app',
+        sentAt: now,
+      });
+      await updateDoc(doc(firestore, 'support_tickets', selectedId), {
+        status: 'pending_user',
+        updatedAt: now,
+        lastMessage: replyText.slice(0, 100),
+      });
+      setReplyText('');
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to send reply', description: 'Please try again.' });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !user || !selectedId || !noteText.trim()) return;
-    await addDoc(collection(firestore, 'support_tickets', selectedId, 'internalNotes'), {
-      agentId: user.uid,
-      agentName: user.displayName || user.email || 'Agent',
-      note: noteText,
-      createdAt: new Date().toISOString(),
-    });
-    setNoteText('');
+    try {
+      await addDoc(collection(firestore, 'support_tickets', selectedId, 'internalNotes'), {
+        agentId: user.uid,
+        agentName: user.displayName || user.email || 'Agent',
+        note: noteText,
+        createdAt: new Date().toISOString(),
+      });
+      setNoteText('');
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to save note', description: 'Please try again.' });
+    }
   };
 
   const handleStatusChange = async (status: TicketStatus) => {
     if (!firestore || !selectedId) return;
-    await updateDoc(doc(firestore, 'support_tickets', selectedId), {
-      status,
-      updatedAt: new Date().toISOString(),
-    });
+    try {
+      await updateDoc(doc(firestore, 'support_tickets', selectedId), {
+        status,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to update status', description: 'Please try again.' });
+    }
   };
 
   const handlePriorityChange = async (priority: TicketPriority) => {
     if (!firestore || !selectedId) return;
-    await updateDoc(doc(firestore, 'support_tickets', selectedId), {
-      priority,
-      updatedAt: new Date().toISOString(),
-    });
+    try {
+      await updateDoc(doc(firestore, 'support_tickets', selectedId), {
+        priority,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to update priority', description: 'Please try again.' });
+    }
   };
 
   const handleToggleTag = async (tag: string) => {
@@ -272,10 +299,14 @@ export function ClientSupportDashboard() {
     const next = current.includes(tag as any)
       ? current.filter(t => t !== tag)
       : [...current, tag as any];
-    await updateDoc(doc(firestore, 'support_tickets', selectedId), {
-      tags: next,
-      updatedAt: new Date().toISOString(),
-    });
+    try {
+      await updateDoc(doc(firestore, 'support_tickets', selectedId), {
+        tags: next,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to update tags', description: 'Please try again.' });
+    }
   };
 
   const agentName = user?.displayName || user?.email || 'Agent';

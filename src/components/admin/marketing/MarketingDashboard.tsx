@@ -18,6 +18,7 @@ import {
   MousePointerClick, Target, ArrowRight, ChevronRight, Filter,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { MarketingSegment, MarketingCampaign, MarketingAutomation, CampaignChannel, CampaignStatus } from '@/lib/types';
 
@@ -254,6 +255,7 @@ function SendConfirmModal({
 function SegmentBuilder({ onClose }: { onClose: () => void }) {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { toast } = useToast();
   const [form, setForm] = useState({ name: '', role: '', lastActiveDaysAgo: '', country: '', county: '' });
   const [saving, setSaving] = useState(false);
 
@@ -261,18 +263,24 @@ function SegmentBuilder({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     if (!firestore || !user || !form.name.trim()) return;
     setSaving(true);
-    const filterCriteria: any = {};
-    if (form.role) filterCriteria.role = form.role;
-    if (form.lastActiveDaysAgo) filterCriteria.lastActiveDaysAgo = Number(form.lastActiveDaysAgo);
-    if (form.country) filterCriteria['geography.country'] = form.country;
-    if (form.county) filterCriteria['geography.county'] = form.county;
-    const now = new Date().toISOString();
-    await addDoc(collection(firestore, 'marketing_segments'), {
-      name: form.name, filterCriteria, memberCount: 0,
-      createdBy: user.uid, lastRefreshedAt: now, createdAt: now,
-    });
-    setSaving(false);
-    onClose();
+    try {
+      const filterCriteria: any = {};
+      if (form.role) filterCriteria.role = form.role;
+      if (form.lastActiveDaysAgo) filterCriteria.lastActiveDaysAgo = Number(form.lastActiveDaysAgo);
+      if (form.country) filterCriteria['geography.country'] = form.country;
+      if (form.county) filterCriteria['geography.county'] = form.county;
+      const now = new Date().toISOString();
+      await addDoc(collection(firestore, 'marketing_segments'), {
+        name: form.name, filterCriteria, memberCount: 0,
+        createdBy: user.uid, lastRefreshedAt: now, createdAt: now,
+      });
+      toast({ title: 'Segment created', description: `"${form.name}" is ready to use in campaigns.` });
+      onClose();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to create segment', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -333,6 +341,7 @@ function SegmentBuilder({ onClose }: { onClose: () => void }) {
 function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segments: MarketingSegment[] }) {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     name: '', channel: 'email' as CampaignChannel, segmentId: '',
@@ -347,31 +356,37 @@ function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segm
     e.preventDefault();
     if (!firestore || !user) return;
     setSaving(true);
-    const now = new Date().toISOString();
+    try {
+      const now = new Date().toISOString();
 
-    const baseDoc: any = {
-      name: form.name, channel: form.channel, segmentId: form.segmentId,
-      status: form.scheduledAt ? 'scheduled' : 'draft',
-      scheduledAt: form.scheduledAt || null, sentAt: null,
-      template: { subject: form.subject, emailBody: form.emailBody, smsBody: form.smsBody },
-      analytics: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, optedOut: 0, converted: 0 },
-      createdAt: now, createdBy: user.uid,
-    };
-
-    if (form.abTest) {
-      baseDoc.abTest = {
-        enabled: true,
-        variantA: { subject: form.variantASubject, emailBody: form.variantABody },
-        variantB: { subject: form.variantBSubject, emailBody: form.variantBBody },
-        analyticsA: { sent: 0, opened: 0, clicked: 0, converted: 0 },
-        analyticsB: { sent: 0, opened: 0, clicked: 0, converted: 0 },
-        winner: null,
+      const baseDoc: any = {
+        name: form.name, channel: form.channel, segmentId: form.segmentId,
+        status: form.scheduledAt ? 'scheduled' : 'draft',
+        scheduledAt: form.scheduledAt || null, sentAt: null,
+        template: { subject: form.subject, emailBody: form.emailBody, smsBody: form.smsBody },
+        analytics: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, optedOut: 0, converted: 0 },
+        createdAt: now, createdBy: user.uid,
       };
-    }
 
-    await addDoc(collection(firestore, 'marketing_campaigns'), baseDoc);
-    setSaving(false);
-    onClose();
+      if (form.abTest) {
+        baseDoc.abTest = {
+          enabled: true,
+          variantA: { subject: form.variantASubject, emailBody: form.variantABody },
+          variantB: { subject: form.variantBSubject, emailBody: form.variantBBody },
+          analyticsA: { sent: 0, opened: 0, clicked: 0, converted: 0 },
+          analyticsB: { sent: 0, opened: 0, clicked: 0, converted: 0 },
+          winner: null,
+        };
+      }
+
+      await addDoc(collection(firestore, 'marketing_campaigns'), baseDoc);
+      toast({ title: 'Campaign saved', description: `"${form.name}" added as ${form.scheduledAt ? 'scheduled' : 'draft'}.` });
+      onClose();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to save campaign', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canNext = step === 1 ? !!(form.name && form.channel && form.segmentId) : true;
@@ -571,20 +586,28 @@ function AutomationBuilder({ onClose }: { onClose: () => void }) {
   });
   const [saving, setSaving] = useState(false);
 
+  const { toast } = useToast();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !user || !form.name.trim()) return;
     setSaving(true);
-    await addDoc(collection(firestore, 'marketing_automations'), {
-      name: form.name,
-      trigger: { type: form.trigger, value: Number(form.triggerValue) },
-      channel: form.channel,
-      template: { subject: form.subject, emailBody: form.emailBody, smsBody: form.smsBody },
-      status: 'active', triggeredCount: 0, conversionCount: 0,
-      createdAt: new Date().toISOString(),
-    });
-    setSaving(false);
-    onClose();
+    try {
+      await addDoc(collection(firestore, 'marketing_automations'), {
+        name: form.name,
+        trigger: { type: form.trigger, value: Number(form.triggerValue) },
+        channel: form.channel,
+        template: { subject: form.subject, emailBody: form.emailBody, smsBody: form.smsBody },
+        status: 'active', triggeredCount: 0, conversionCount: 0,
+        createdAt: new Date().toISOString(),
+      });
+      toast({ title: 'Automation created', description: `"${form.name}" is now active.` });
+      onClose();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to create automation', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -854,54 +877,88 @@ export function MarketingDashboard() {
     })
     .slice(0, 5);
 
+  const { toast } = useToast();
+
   const handleSendCampaign = async () => {
     if (!user || !sendCandidate || sending) return;
     setSending(true);
-    const idToken = await user.getIdToken();
-    await fetch(`/api/marketing/campaigns/${sendCandidate.id}/send`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
-    setSending(false);
-    setSendCandidate(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/campaigns/${sendCandidate.id}/send`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      toast({ title: 'Campaign sent', description: `"${sendCandidate.name}" is now sending.` });
+      setSendCandidate(null);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to send campaign', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleClone = async (id: string) => {
     if (!user) return;
-    const idToken = await user.getIdToken();
-    await fetch(`/api/marketing/campaigns/${id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/campaigns/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      toast({ title: 'Campaign cloned' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to clone campaign', description: err?.message ?? 'Please try again.' });
+    }
   };
 
   const handleDeleteCampaign = async (id: string) => {
     if (!user || !confirm('Delete this campaign? This cannot be undone.')) return;
-    const idToken = await user.getIdToken();
-    await fetch(`/api/marketing/campaigns/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/campaigns/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      toast({ title: 'Campaign deleted' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to delete campaign', description: err?.message ?? 'Please try again.' });
+    }
   };
 
   const handleDeleteSegment = async (id: string) => {
     if (!user || !confirm('Delete this segment? Campaigns using it will lose their audience reference.')) return;
-    const idToken = await user.getIdToken();
-    await fetch(`/api/marketing/segments/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/segments/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      toast({ title: 'Segment deleted' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to delete segment', description: err?.message ?? 'Please try again.' });
+    }
   };
 
   const handleRefreshSegment = async (id: string) => {
     if (!user || refreshingId) return;
     setRefreshingId(id);
-    const idToken = await user.getIdToken();
-    await fetch(`/api/marketing/segments/${id}/refresh`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
-    setRefreshingId(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/segments/${id}/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      toast({ title: 'Segment refreshed' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to refresh segment', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setRefreshingId(null);
+    }
   };
 
   const handleDeleteAutomation = async (id: string) => {
