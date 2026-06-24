@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2, Send, Search, MessageSquare, AlertCircle, Clock, CheckCircle2,
   Tag, StickyNote, Filter, Plus, ThumbsUp, ThumbsDown, X, ChevronDown,
-  TicketCheck, Users, Timer, TrendingUp
+  TicketCheck, Users, Timer, TrendingUp, Star
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
@@ -206,6 +206,17 @@ export function ClientSupportDashboard() {
     return updated.toDateString() === today.toDateString();
   }).length;
 
+  const csatRatings = (allTickets || [])
+    .map(t => parseInt(t.csatRating ?? '', 10))
+    .filter(n => !isNaN(n) && n >= 1 && n <= 5);
+  const csatAvg = csatRatings.length
+    ? (csatRatings.reduce((a, b) => a + b, 0) / csatRatings.length)
+    : null;
+  const csatColor = csatAvg === null ? 'text-muted-foreground'
+    : csatAvg >= 4 ? 'text-green-500'
+    : csatAvg >= 3 ? 'text-yellow-500'
+    : 'text-red-500';
+
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !user || !selectedId || !replyText.trim()) return;
@@ -280,7 +291,7 @@ export function ClientSupportDashboard() {
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: 'Open Tickets', value: openCount, icon: TicketCheck, color: 'text-blue-500' },
           { label: 'High Priority', value: highPriorityCount, icon: AlertCircle, color: 'text-red-500' },
@@ -297,6 +308,32 @@ export function ClientSupportDashboard() {
             </div>
           </Card>
         ))}
+
+        {/* CSAT Score card */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Avg CSAT</p>
+              {csatAvg === null ? (
+                <p className="text-sm font-bold text-muted-foreground mt-1">No ratings yet</p>
+              ) : (
+                <>
+                  <p className={cn('text-3xl font-black mt-1', csatColor)}>
+                    {csatAvg.toFixed(1)}<span className="text-base font-bold text-muted-foreground">/5</span>
+                  </p>
+                  <div className="flex items-center gap-0.5 mt-1">
+                    {[1,2,3,4,5].map(n => (
+                      <Star key={n} className={cn('w-3 h-3', n <= Math.round(csatAvg!) ? csatColor : 'text-muted-foreground/30')}
+                        fill={n <= Math.round(csatAvg!) ? 'currentColor' : 'none'} />
+                    ))}
+                    <span className="text-[10px] text-muted-foreground ml-1">({csatRatings.length})</span>
+                  </div>
+                </>
+              )}
+            </div>
+            <Star className={cn('w-8 h-8 opacity-20', csatColor)} />
+          </div>
+        </Card>
       </div>
 
       {/* Main Panel */}
