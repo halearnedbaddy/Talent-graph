@@ -80,16 +80,58 @@ function FunnelBar({ label, value, total, color }: { label: string; value: numbe
   );
 }
 
+// ─── Email body preview block ──────────────────────────────────────────────────
+
+function EmailBodyPreview({ subject, body, label }: { subject?: string; body?: string; label?: string }) {
+  if (!subject && !body) return null;
+  return (
+    <div className="bg-muted/30 rounded-lg p-3 space-y-3">
+      {label && <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>}
+      {subject && (
+        <div>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Subject</p>
+          <p className="text-sm font-bold">{subject}</p>
+        </div>
+      )}
+      {body && (
+        <div>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Body</p>
+          <div className="bg-background border rounded-lg p-4">
+            <div className="bg-indigo-600 rounded-t-lg px-4 py-2 -mx-4 -mt-4 mb-4">
+              <p className="text-xs font-black text-white tracking-widest">TALENT GRAPH KENYA</p>
+            </div>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{body}</p>
+            <div className="border-t mt-4 pt-3">
+              <p className="text-[10px] text-muted-foreground">Talent Graph Kenya · <span className="underline text-indigo-500">Unsubscribe</span></p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Template Preview Modal ───────────────────────────────────────────────────
 
 function TemplatePreviewModal({ campaign, onClose }: { campaign: MarketingCampaign; onClose: () => void }) {
   const cc = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email;
+  const isAb = campaign.abTest?.enabled;
+  const [activeVariant, setActiveVariant] = useState<'A' | 'B'>('A');
+
+  const variantA = isAb ? campaign.abTest!.variantA : null;
+  const variantB = isAb ? campaign.abTest!.variantB : null;
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between pb-2 shrink-0">
           <div>
-            <CardTitle className="text-base font-bold">{campaign.name}</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base font-bold">{campaign.name}</CardTitle>
+              {isAb && (
+                <span className="text-[9px] font-black bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded">A/B TEST</span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
               <cc.icon className={cn('w-3 h-3', cc.color)} />{cc.label}
             </p>
@@ -97,38 +139,57 @@ function TemplatePreviewModal({ campaign, onClose }: { campaign: MarketingCampai
           <Button variant="ghost" size="icon" onClick={onClose}><X className="w-4 h-4" /></Button>
         </CardHeader>
         <CardContent className="overflow-y-auto space-y-4">
-          {campaign.template?.subject && (
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Email Subject</p>
-              <p className="text-sm font-bold">{campaign.template.subject}</p>
-            </div>
-          )}
-          {campaign.template?.emailBody && (
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Email Body</p>
-              <div className="bg-background border rounded-lg p-4">
-                <div className="bg-indigo-600 rounded-t-lg px-4 py-2 -mx-4 -mt-4 mb-4">
-                  <p className="text-xs font-black text-white tracking-widest">TALENT GRAPH KENYA</p>
+          {isAb ? (
+            <>
+              {/* Variant toggle */}
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Preview:</p>
+                <div className="flex bg-muted rounded-lg p-0.5">
+                  {(['A', 'B'] as const).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setActiveVariant(v)}
+                      className={cn(
+                        'px-4 py-1 text-xs font-black rounded transition-all',
+                        activeVariant === v ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Variant {v}
+                    </button>
+                  ))}
                 </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{campaign.template.emailBody}</p>
-                <div className="border-t mt-4 pt-3">
-                  <p className="text-[10px] text-muted-foreground">Talent Graph Kenya · <span className="underline text-indigo-500">Unsubscribe</span></p>
+                {/* Winner badge */}
+                {campaign.abTest?.winner && (
+                  <span className={cn(
+                    'text-[9px] font-black px-2 py-0.5 rounded border flex items-center gap-1',
+                    'bg-amber-50 text-amber-700 border-amber-200'
+                  )}>
+                    🏆 Variant {campaign.abTest.winner} winning
+                  </span>
+                )}
+              </div>
+              <EmailBodyPreview
+                subject={activeVariant === 'A' ? variantA?.subject : variantB?.subject}
+                body={activeVariant === 'A' ? variantA?.emailBody : variantB?.emailBody}
+              />
+            </>
+          ) : (
+            <>
+              <EmailBodyPreview subject={campaign.template?.subject} body={campaign.template?.emailBody} />
+              {campaign.template?.smsBody && (
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">SMS Body</p>
+                  <div className="bg-background border rounded-xl p-4 max-w-xs font-mono text-sm">
+                    {campaign.template.smsBody}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">{campaign.template.smsBody.length}/160 characters</p>
                 </div>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> Merge fields: {'{{first_name}}'}, {'{{role}}'}
-              </p>
-            </div>
+              )}
+            </>
           )}
-          {campaign.template?.smsBody && (
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">SMS Body</p>
-              <div className="bg-background border rounded-xl p-4 max-w-xs font-mono text-sm">
-                {campaign.template.smsBody}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">{campaign.template.smsBody.length}/160 characters</p>
-            </div>
-          )}
+          <p className="text-[10px] text-muted-foreground flex items-center gap-1 pb-2">
+            <AlertCircle className="w-3 h-3" /> Merge fields: {'{{first_name}}'}, {'{{role}}'}
+          </p>
         </CardContent>
       </Card>
     </div>
@@ -276,6 +337,9 @@ function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segm
   const [form, setForm] = useState({
     name: '', channel: 'email' as CampaignChannel, segmentId: '',
     subject: '', emailBody: '', smsBody: '', scheduledAt: '',
+    abTest: false,
+    variantASubject: '', variantABody: '',
+    variantBSubject: '', variantBBody: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -284,14 +348,28 @@ function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segm
     if (!firestore || !user) return;
     setSaving(true);
     const now = new Date().toISOString();
-    await addDoc(collection(firestore, 'marketing_campaigns'), {
+
+    const baseDoc: any = {
       name: form.name, channel: form.channel, segmentId: form.segmentId,
       status: form.scheduledAt ? 'scheduled' : 'draft',
       scheduledAt: form.scheduledAt || null, sentAt: null,
       template: { subject: form.subject, emailBody: form.emailBody, smsBody: form.smsBody },
       analytics: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, optedOut: 0, converted: 0 },
       createdAt: now, createdBy: user.uid,
-    });
+    };
+
+    if (form.abTest) {
+      baseDoc.abTest = {
+        enabled: true,
+        variantA: { subject: form.variantASubject, emailBody: form.variantABody },
+        variantB: { subject: form.variantBSubject, emailBody: form.variantBBody },
+        analyticsA: { sent: 0, opened: 0, clicked: 0, converted: 0 },
+        analyticsB: { sent: 0, opened: 0, clicked: 0, converted: 0 },
+        winner: null,
+      };
+    }
+
+    await addDoc(collection(firestore, 'marketing_campaigns'), baseDoc);
     setSaving(false);
     onClose();
   };
@@ -367,7 +445,29 @@ function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segm
                   <AlertCircle className="w-3.5 h-3.5 shrink-0 text-primary" />
                   Merge fields supported: <code className="bg-muted px-1 rounded">{'{{first_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{role}}'}</code>
                 </div>
+
+                {/* A/B Test toggle (email only) */}
                 {(form.channel === 'email' || form.channel === 'both') && (
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="text-xs font-bold">Enable A/B Testing</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Split audience 50/50 across two subject + body variants</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, abTest: !f.abTest }))}
+                      className={cn(
+                        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                        form.abTest ? 'bg-indigo-600' : 'bg-muted-foreground/30'
+                      )}
+                    >
+                      <span className={cn('inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform', form.abTest ? 'translate-x-4' : 'translate-x-1')} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Normal template (no A/B) */}
+                {!form.abTest && (form.channel === 'email' || form.channel === 'both') && (
                   <>
                     <div>
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Email Subject</label>
@@ -375,10 +475,61 @@ function CampaignBuilderModal({ onClose, segments }: { onClose: () => void; segm
                     </div>
                     <div>
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Email Body</label>
-                      <Textarea value={form.emailBody} onChange={e => setForm(f => ({ ...f, emailBody: e.target.value }))} placeholder={`Hi {{first_name}},\n\nWelcome to Talent Graph Kenya...`} rows={7} className="text-sm font-mono" />
+                      <Textarea value={form.emailBody} onChange={e => setForm(f => ({ ...f, emailBody: e.target.value }))} placeholder={`Hi {{first_name}},\n\nWelcome to Talent Graph Kenya...`} rows={6} className="text-sm font-mono" />
                     </div>
                   </>
                 )}
+
+                {/* A/B Test variant fields */}
+                {form.abTest && (form.channel === 'email' || form.channel === 'both') && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Variant A */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
+                          <span className="text-[10px] font-black text-white">A</span>
+                        </div>
+                        <p className="text-xs font-bold">Variant A</p>
+                      </div>
+                      <Input
+                        value={form.variantASubject}
+                        onChange={e => setForm(f => ({ ...f, variantASubject: e.target.value }))}
+                        placeholder="Subject line A…"
+                        className="text-xs"
+                      />
+                      <Textarea
+                        value={form.variantABody}
+                        onChange={e => setForm(f => ({ ...f, variantABody: e.target.value }))}
+                        placeholder={`Hi {{first_name}},\n\nVersion A of the message…`}
+                        rows={6}
+                        className="text-xs font-mono"
+                      />
+                    </div>
+                    {/* Variant B */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center">
+                          <span className="text-[10px] font-black text-white">B</span>
+                        </div>
+                        <p className="text-xs font-bold">Variant B</p>
+                      </div>
+                      <Input
+                        value={form.variantBSubject}
+                        onChange={e => setForm(f => ({ ...f, variantBSubject: e.target.value }))}
+                        placeholder="Subject line B…"
+                        className="text-xs"
+                      />
+                      <Textarea
+                        value={form.variantBBody}
+                        onChange={e => setForm(f => ({ ...f, variantBBody: e.target.value }))}
+                        placeholder={`Hi {{first_name}},\n\nVersion B of the message…`}
+                        rows={6}
+                        className="text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {(form.channel === 'sms' || form.channel === 'both') && (
                   <div>
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">SMS Body</label>
@@ -563,26 +714,98 @@ function CampaignCard({
 
         {campaign.status === 'sent' && a.sent > 0 && (
           <div className="mt-4 pt-3 border-t">
-            <div className="grid grid-cols-4 gap-3 mb-3">
-              {[
-                { label: 'Sent',       value: a.sent,      color: 'text-foreground' },
-                { label: 'Opened',     value: a.opened,    color: rateColor(openRate),  rate: `${openRate}%` },
-                { label: 'Clicked',    value: a.clicked,   color: rateColor(clickRate), rate: `${clickRate}%` },
-                { label: 'Converted',  value: a.converted, color: 'text-green-600',     rate: convRate > 0 ? `${convRate}%` : undefined },
-              ].map(stat => (
-                <div key={stat.label} className="text-center bg-muted/30 rounded-lg p-2">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-                  <p className={cn('text-lg font-black leading-tight', stat.color)}>{stat.value.toLocaleString()}</p>
-                  {stat.rate && <p className={cn('text-[10px] font-bold', stat.color)}>{stat.rate}</p>}
+
+            {/* ── A/B Test comparison ── */}
+            {campaign.abTest?.enabled ? (() => {
+              const aa = campaign.abTest!.analyticsA || { sent: 0, opened: 0, clicked: 0, converted: 0 };
+              const ab = campaign.abTest!.analyticsB || { sent: 0, opened: 0, clicked: 0, converted: 0 };
+              const openA  = aa.sent > 0 ? Math.round((aa.opened  / aa.sent) * 100) : 0;
+              const openB  = ab.sent > 0 ? Math.round((ab.opened  / ab.sent) * 100) : 0;
+              const clickA = aa.sent > 0 ? Math.round((aa.clicked / aa.sent) * 100) : 0;
+              const clickB = ab.sent > 0 ? Math.round((ab.clicked / ab.sent) * 100) : 0;
+              const winner = openA > openB + 2 ? 'A' : openB > openA + 2 ? 'B' : null;
+
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">A/B Test Results</p>
+                    {winner && (
+                      <span className="text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded flex items-center gap-1">
+                        🏆 Variant {winner} leading ({winner === 'A' ? openA : openB}% open rate)
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'A', an: aa, openRate: openA, clickRate: clickA, isWinner: winner === 'A' },
+                      { label: 'B', an: ab, openRate: openB, clickRate: clickB, isWinner: winner === 'B' },
+                    ].map(v => (
+                      <div key={v.label} className={cn(
+                        'rounded-lg border p-3 space-y-2 transition-all',
+                        v.isWinner ? 'border-amber-300 bg-amber-50/50' : 'border-border bg-muted/20'
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <div className={cn(
+                            'w-5 h-5 rounded-full flex items-center justify-center',
+                            v.label === 'A' ? 'bg-indigo-600' : 'bg-purple-600'
+                          )}>
+                            <span className="text-[10px] font-black text-white">{v.label}</span>
+                          </div>
+                          {v.isWinner && <span className="text-xs">🏆</span>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          <div className="text-center">
+                            <p className="text-[9px] text-muted-foreground">Sent</p>
+                            <p className="text-sm font-black">{v.an.sent.toLocaleString()}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] text-muted-foreground">Opened</p>
+                            <p className={cn('text-sm font-black', rateColor(v.openRate))}>{v.openRate}%</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] text-muted-foreground">Clicked</p>
+                            <p className={cn('text-sm font-black', rateColor(v.clickRate))}>{v.clickRate}%</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] text-muted-foreground">Converted</p>
+                            <p className="text-sm font-black text-green-600">{v.an.converted.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <Progress
+                          value={v.openRate}
+                          className={cn('h-1', v.label === 'A' ? 'text-indigo-500' : 'text-purple-500')}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Total sent: {a.sent.toLocaleString()} · Open rates update as recipients open emails</p>
                 </div>
-              ))}
-            </div>
-            <div className="space-y-1.5">
-              <FunnelBar label="Open rate"    value={a.opened}    total={a.sent} color="text-blue-500" />
-              <FunnelBar label="Click rate"   value={a.clicked}   total={a.sent} color="text-indigo-500" />
-              <FunnelBar label="Conversion"   value={a.converted} total={a.sent} color="text-green-500" />
-              {a.bounced > 0 && <FunnelBar label="Bounced" value={a.bounced} total={a.sent} color="text-red-500" />}
-            </div>
+              );
+            })() : (
+              /* ── Normal analytics ── */
+              <>
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  {[
+                    { label: 'Sent',      value: a.sent,      color: 'text-foreground' },
+                    { label: 'Opened',    value: a.opened,    color: rateColor(openRate),  rate: `${openRate}%` },
+                    { label: 'Clicked',   value: a.clicked,   color: rateColor(clickRate), rate: `${clickRate}%` },
+                    { label: 'Converted', value: a.converted, color: 'text-green-600',     rate: convRate > 0 ? `${convRate}%` : undefined },
+                  ].map(stat => (
+                    <div key={stat.label} className="text-center bg-muted/30 rounded-lg p-2">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+                      <p className={cn('text-lg font-black leading-tight', stat.color)}>{stat.value.toLocaleString()}</p>
+                      {stat.rate && <p className={cn('text-[10px] font-bold', stat.color)}>{stat.rate}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-1.5">
+                  <FunnelBar label="Open rate"  value={a.opened}    total={a.sent} color="text-blue-500" />
+                  <FunnelBar label="Click rate" value={a.clicked}   total={a.sent} color="text-indigo-500" />
+                  <FunnelBar label="Conversion" value={a.converted} total={a.sent} color="text-green-500" />
+                  {a.bounced > 0 && <FunnelBar label="Bounced" value={a.bounced} total={a.sent} color="text-red-500" />}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

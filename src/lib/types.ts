@@ -674,6 +674,13 @@ export interface MarketingSegment {
 export type CampaignChannel = 'email' | 'sms' | 'both';
 export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent';
 
+export interface AbTestVariantAnalytics {
+  sent: number;
+  opened: number;
+  clicked: number;
+  converted: number;
+}
+
 export interface MarketingCampaign {
   id: string;
   name: string;
@@ -684,6 +691,14 @@ export interface MarketingCampaign {
     subject?: string;
     emailBody?: string;
     smsBody?: string;
+  };
+  abTest?: {
+    enabled: boolean;
+    variantA: { subject: string; emailBody: string; smsBody?: string };
+    variantB: { subject: string; emailBody: string; smsBody?: string };
+    analyticsA: AbTestVariantAnalytics;
+    analyticsB: AbTestVariantAnalytics;
+    winner?: 'A' | 'B' | null;
   };
   status: CampaignStatus;
   scheduledAt: string | null;
