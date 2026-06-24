@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   ShieldCheck, Flag, MessageSquare, LayoutDashboard, LogOut, Loader2,
-  Users, BarChart3, Headphones, Megaphone, ChevronRight, ArrowLeft
+  Users, BarChart3, Headphones, Megaphone, ChevronRight, ArrowLeft, UserCog
 } from 'lucide-react';
 import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { signOut } from 'firebase/auth';
@@ -21,6 +21,7 @@ import { WaitingListViewer } from '@/components/admin/waiting-list-viewer';
 import { PlatformAnalytics } from '@/components/admin/platform-analytics';
 import { ClientSupportDashboard } from '@/components/admin/support/ClientSupportDashboard';
 import { MarketingDashboard } from '@/components/admin/marketing/MarketingDashboard';
+import { UserManager } from '@/components/admin/user-manager';
 
 type Workspace = 'command' | 'support' | 'marketing';
 
@@ -221,6 +222,9 @@ export default function AdminDashboard() {
                 <TabsTrigger value="support" className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" /> Support Inbox
                 </TabsTrigger>
+                <TabsTrigger value="users" className="flex items-center gap-2">
+                  <UserCog className="w-4 h-4" /> Users
+                </TabsTrigger>
                 <TabsTrigger value="waiting-list" className="flex items-center gap-2">
                   <Users className="w-4 h-4" /> Waiting List
                 </TabsTrigger>
@@ -276,6 +280,10 @@ export default function AdminDashboard() {
 
             <TabsContent value="support">
               <SupportInbox />
+            </TabsContent>
+
+            <TabsContent value="users">
+              <UserManager />
             </TabsContent>
 
             <TabsContent value="waiting-list">
