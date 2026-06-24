@@ -521,7 +521,7 @@ ${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${teamS
             isVerified: true, statsLogged: true,
             updatedAt: new Date().toISOString(), clubMatchId: matchRef.id,
           };
-          const updatedHistory = [...existing, newEntry];
+          const updatedHistory = [...existing, newEntry] as any[];
           let scoreUpdates: Record<string, any> = {};
           try {
             const userSnap = await getDoc(doc(firestore, 'users', ps.athleteId));

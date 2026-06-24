@@ -52,7 +52,7 @@ export function AthleteClubInvitations({ athleteUid, athleteName, onAccepted }: 
       const clubSnap = await getDoc(doc(firestore, 'clubs', inv.clubId));
       const clubData = clubSnap.data() as ClubProfile | undefined;
       const resolvedClubName = clubData?.clubName || inv.clubName;
-      const clubAdminId = clubData?.adminUserId || inv.clubId;
+      const clubAdminId = (clubData as any)?.adminUserId || inv.clubId;
 
       const batch = writeBatch(firestore);
 
@@ -119,7 +119,7 @@ export function AthleteClubInvitations({ athleteUid, athleteName, onAccepted }: 
 
       const clubSnap = await getDoc(doc(firestore, 'clubs', inv.clubId));
       const clubData = clubSnap.data() as ClubProfile | undefined;
-      const clubAdminId = clubData?.adminUserId || inv.clubId;
+      const clubAdminId = (clubData as any)?.adminUserId || inv.clubId;
 
       await sendInAppNotification(firestore, clubAdminId, {
         type: 'invitation_declined',

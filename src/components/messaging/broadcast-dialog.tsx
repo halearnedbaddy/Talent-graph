@@ -76,7 +76,7 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
       squadMembers?.forEach(m => {
         if (m.userId) {
           participantInfo[m.userId] = {
-            name: m.displayName || m.firstName || 'Squad Member',
+            name: m.displayName || (m as any).firstName || 'Squad Member',
             role: m.role || 'athlete',
           };
         }

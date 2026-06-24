@@ -657,7 +657,7 @@ export default function CoachTrainingPage() {
           open={notifyOpen}
           onClose={() => setNotifyOpen(false)}
           event={notifyEvent}
-          athletes={athletes}
+          athletes={(athletes ?? undefined) as any}
           clubId={clubId ?? ''}
           clubName={memberships?.[0]?.clubName ?? 'Club'}
           coachName={user?.displayName ?? 'Coach'}

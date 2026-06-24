@@ -46,7 +46,7 @@ async function tryUpload(
   const res = await fetch(url, {
     method: 'POST',
     headers: buildHeaders(strategy, idToken, contentType),
-    body: buffer,
+    body: buffer as unknown as BodyInit,
   });
 
   if (res.ok) {

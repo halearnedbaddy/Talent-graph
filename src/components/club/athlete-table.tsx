@@ -227,7 +227,7 @@ function useHydratedAthleteData(connections: ScoutConnection[] | null): { data: 
                     return { connection: conn, athlete, scout };
                 }
                 return null;
-            }).filter((item): item is AthleteData => item !== null);
+            }).filter(Boolean) as AthleteData[];
             
             setHydratedData(data);
             setIsLoading(false);

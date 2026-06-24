@@ -112,7 +112,7 @@ function useClubScoutsData(): { data: ScoutData[], isLoading: boolean } {
       const scoutConnections = connections?.filter(c => c.scoutId === scout.uid) || [];
       const activeAthletes = scoutConnections.length;
 
-      const scoutAthletes = scoutConnections.map(c => athleteMap.get(c.athleteId)).filter((a): a is AthleteProfile => !!a);
+      const scoutAthletes = scoutConnections.map(c => athleteMap.get(c.athleteId)).filter(Boolean) as AthleteProfile[];
       const totalScore = scoutAthletes.reduce((acc, a) => acc + (a.talentGraphScore || 0), 0);
       const avgAthleteScore = activeAthletes > 0 ? Math.round(totalScore / activeAthletes) : 'N/A';
 

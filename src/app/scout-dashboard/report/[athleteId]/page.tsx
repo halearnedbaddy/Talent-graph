@@ -823,7 +823,7 @@ export default function ScoutingReportPage() {
                 athlete={athlete}
                 idToken={idToken}
                 scoutId={user!.uid}
-                scoutName={userAccount?.displayName || user!.displayName || 'Scout'}
+                scoutName={(userAccount as any)?.displayName || user!.displayName || 'Scout'}
                 firestore={firestore}
               />
             )}

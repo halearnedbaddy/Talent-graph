@@ -88,10 +88,10 @@ export function calculateTalentGraphScore(athlete: AthleteProfile, user: UserAcc
     'Illinois Agility': getLatestMetricScore(athlete, 'illinoisAgility'),
     '30m Sprint': getLatestMetricScore(athlete, 'sprint30m'),
     'Vertical Jump': getLatestMetricScore(athlete, 'verticalJump'),
-    'Physical': calculatePillarAvg(athlete, 'Physical'),
-    'Tactical': calculatePillarAvg(athlete, 'Mental'),
-    'Impact': matchScores.performanceIndex,
-    'Technical': calculatePillarAvg(athlete, 'Technical'),
+    Physical: calculatePillarAvg(athlete, 'Physical'),
+    Tactical: calculatePillarAvg(athlete, 'Mental'),
+    Impact: matchScores.performanceIndex,
+    Technical: calculatePillarAvg(athlete, 'Technical'),
     'Pass Completion': getLatestMetricScore(athlete, 'passCompletion')
   };
 
@@ -141,8 +141,8 @@ function getLatestMetricScore(athlete: AthleteProfile, metricId: string): number
   return Math.min(100, Math.max(0, isNaN(score) ? 50 : Math.round(score)));
 }
 
-function calculatePillarAvg(athlete: AthleteProfile, pillar: keyof typeof athlete.detailedAttributes): number {
-  const attrs = athlete.detailedAttributes?.[pillar as any];
+function calculatePillarAvg(athlete: AthleteProfile, pillar: string): number {
+  const attrs = (athlete.detailedAttributes as any)?.[pillar];
   if (!attrs) return 50;
   const vals = Object.values(attrs).map(v => Number(v)).filter(v => !isNaN(v));
   if (vals.length === 0) return 50;

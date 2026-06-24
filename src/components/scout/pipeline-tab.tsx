@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import type { ScoutProfile, AthleteProfile, ScoutConnection } from '@/lib/types';
-import { useAuth, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -238,7 +238,7 @@ interface Props {
 
 export function PipelineTab({ scoutProfile, onGoToSearch }: Props) {
   const firestore = useFirestore();
-  const { user } = useAuth();
+  const { user } = useUser();
   const { toast } = useToast();
   const [moving, setMoving] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<Stage | 'all'>('all');
@@ -311,7 +311,7 @@ export function PipelineTab({ scoutProfile, onGoToSearch }: Props) {
 
   const handleNoteSave = async (id: string) => {
     if (!firestore) return;
-    const note = editNotes[id] ?? connections?.find(c => c.id === id)?.notes ?? '';
+    const note = editNotes[id] ?? (connections?.find(c => c.id === id) as any)?.notes ?? '';
     setSavingNote(id);
     try {
       await updateDoc(doc(firestore, 'scout_connections', id), {
@@ -326,7 +326,7 @@ export function PipelineTab({ scoutProfile, onGoToSearch }: Props) {
   };
 
   const getNoteValue = (conn: ScoutConnection) => {
-    return editNotes[conn.id] !== undefined ? editNotes[conn.id] : (conn.notes ?? '');
+    return editNotes[conn.id] !== undefined ? editNotes[conn.id] : ((conn as any).notes ?? '');
   };
 
   const handleAiShortlist = async () => {
@@ -353,7 +353,7 @@ export function PipelineTab({ scoutProfile, onGoToSearch }: Props) {
           isVerified: a?.isVerified,
           activelyLooking: a?.activelyLooking,
           recruitment_stage: c.recruitment_stage,
-          scoutNotes: getNoteValue(c) || c.notes,
+          scoutNotes: getNoteValue(c) || (c as any).notes,
           heightCm: a?.heightCm,
           dominantFoot: a?.dominantFoot,
         };

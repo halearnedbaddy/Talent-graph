@@ -85,8 +85,8 @@ export function MatchStatisticsTable({ matchHistory, onEdit, onDelete }: Props) 
               </TableCell>
               <TableCell className="text-center">
                 <div className="flex items-center justify-center gap-1">
-                  {m.manOfTheMatch && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" title="Man of the Match" />}
-                  {m.cleanSheet && <Shield className="w-3 h-3 text-green-500" title="Clean Sheet" />}
+                  {m.manOfTheMatch && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" aria-label="Man of the Match" />}
+                  {m.cleanSheet && <Shield className="w-3 h-3 text-green-500" aria-label="Clean Sheet" />}
                 </div>
               </TableCell>
               <TableCell className="text-right">
