@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { verifyBearerToken, FIREBASE_API_KEY, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { verifyBearerToken, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { sendAgentReplyNotification } from '@/lib/email';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
@@ -41,6 +42,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }),
     }
   );
+
+  // Fetch ticket to get sender details for email notification
+  const ticketRes = await fetch(`${FIRESTORE_BASE}/support_tickets/${ticketId}`);
+  if (ticketRes.ok) {
+    const ticketDoc = await ticketRes.json();
+    const f = ticketDoc.fields || {};
+    const senderEmail = f.senderEmail?.stringValue;
+    const senderName = f.senderName?.stringValue || senderEmail;
+    const subject = f.subject?.stringValue || '(no subject)';
+
+    if (senderEmail) {
+      sendAgentReplyNotification({
+        ticketId,
+        subject,
+        replyBody: body,
+        agentName: agentName || 'Support Agent',
+        senderName: senderName || senderEmail,
+        senderEmail,
+      }).catch(err => console.error('[email] Failed to send reply notification:', err));
+    }
+  }
 
   return Response.json({ success: true });
 }

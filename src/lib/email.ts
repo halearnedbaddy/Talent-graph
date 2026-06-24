@@ -158,6 +158,84 @@ export async function sendNewTicketNotification(payload: TicketEmailPayload): Pr
   });
 }
 
+export interface AgentReplyEmailPayload {
+  ticketId: string;
+  subject: string;
+  replyBody: string;
+  agentName: string;
+  senderName: string;
+  senderEmail: string;
+}
+
+export async function sendAgentReplyNotification(payload: AgentReplyEmailPayload): Promise<void> {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn('[email] SMTP_USER / SMTP_PASS not set — skipping reply notification');
+    return;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0F172A;font-family:system-ui,sans-serif;color:#E2E8F0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0F172A;padding:32px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#1E293B;border-radius:16px;overflow:hidden;max-width:100%;">
+        <tr>
+          <td style="background:#4F46E5;padding:4px 24px;">
+            <p style="margin:0;font-size:12px;font-weight:800;color:#fff;letter-spacing:2px;text-transform:uppercase;">Agent Reply</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px 0;">
+            <p style="margin:0 0 4px;font-size:20px;font-weight:900;color:#F8FAFC;">Support Update</p>
+            <p style="margin:0;font-size:13px;color:#94A3B8;">Talent Graph Kenya · Client Support</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#0F172A;border-radius:12px;padding:20px;border:1px solid #334155;">
+              <tr>
+                <td style="padding-bottom:14px;">
+                  <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#64748B;letter-spacing:1.5px;text-transform:uppercase;">Ticket</p>
+                  <p style="margin:0;font-size:15px;font-weight:800;color:#F8FAFC;">${escHtml(payload.subject)}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="border-top:1px solid #1E293B;padding-top:14px;padding-bottom:14px;">
+                  <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#64748B;letter-spacing:1.5px;text-transform:uppercase;">Reply from ${escHtml(payload.agentName)}</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#CBD5E1;">${escHtml(payload.replyBody).replace(/\n/g, '<br/>')}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 32px;">
+            <p style="margin:0 0 4px;font-size:12px;color:#64748B;">Hi ${escHtml(payload.senderName)}, the support team has responded to your ticket.</p>
+            <p style="margin:14px 0 0;font-size:11px;color:#475569;">Ticket ID: ${payload.ticketId}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#0F172A;padding:16px 32px;border-top:1px solid #1E293B;">
+            <p style="margin:0;font-size:11px;color:#475569;">Talent Graph Kenya · Automated notification · Do not reply to this email</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  await transport.sendMail({
+    from: `"Talent Graph Support" <${process.env.SMTP_USER}>`,
+    to: payload.senderEmail,
+    subject: `Re: ${payload.subject}`,
+    html,
+  });
+}
+
 function escHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
