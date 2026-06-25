@@ -38,6 +38,8 @@ export default function CoachAnalyticsPage() {
   const preselected = searchParams.get('athlete');
 
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(preselected ?? 'squad');
+  const [analyticsPositionFilter, setAnalyticsPositionFilter] = useState('All');
+  const [analyticsSortBy, setAnalyticsSortBy] = useState<'csi' | 'risk' | 'age'>('csi');
 
   const memberQuery = useMemoFirebase(() => (
     firestore && user
@@ -172,6 +174,34 @@ export default function CoachAnalyticsPage() {
       .reverse();
   }, [matches]);
 
+  const seasonSummary = useMemo(() => {
+    const ml = matches ?? [];
+    const wins = ml.filter((m: any) => m.result === 'W').length;
+    const draws = ml.filter((m: any) => m.result === 'D').length;
+    const losses = ml.filter((m: any) => m.result === 'L').length;
+    const goalsFor = ml.reduce((s: number, m: any) => s + (m.goalsFor ?? 0), 0);
+    const goalsAgainst = ml.reduce((s: number, m: any) => s + (m.goalsAgainst ?? 0), 0);
+    return { wins, draws, losses, goalsFor, goalsAgainst, total: ml.length };
+  }, [matches]);
+
+  const positionDistribution = useMemo(() => {
+    const posMap: Record<string, number> = {};
+    (athletes ?? []).forEach(a => { posMap[a.position ?? 'Unknown'] = (posMap[a.position ?? 'Unknown'] ?? 0) + 1; });
+    return Object.entries(posMap).sort((a, b) => b[1] - a[1]);
+  }, [athletes]);
+
+  const filteredSquad = useMemo(() => {
+    let list = [...(athletes ?? [])];
+    if (analyticsPositionFilter !== 'All') list = list.filter(a => a.position === analyticsPositionFilter || a.altPositions?.includes(analyticsPositionFilter));
+    return list.sort((a, b) => {
+      if (analyticsSortBy === 'csi') return (b.compositeScoutingIndex ?? 0) - (a.compositeScoutingIndex ?? 0);
+      if (analyticsSortBy === 'risk') return (b.riskIndex ?? 0) - (a.riskIndex ?? 0);
+      return (a.age ?? 0) - (b.age ?? 0);
+    });
+  }, [athletes, analyticsPositionFilter, analyticsSortBy]);
+
+  const maxCSI = useMemo(() => Math.max(...(athletes ?? []).map(a => a.compositeScoutingIndex ?? 0), 1), [athletes]);
+
   const isLoading = memberLoading || athletesLoading;
 
   return (
@@ -286,6 +316,41 @@ export default function CoachAnalyticsPage() {
             </Card>
           )}
 
+          {/* Season Record */}
+          {seasonSummary.total > 0 && (
+            <Card className="border border-[#1E293B] bg-[#111827]">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                  <Target className="h-4 w-4 text-[#00C853]" /> Season Record
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  { label: 'Wins', value: seasonSummary.wins, color: 'bg-[#00C853]' },
+                  { label: 'Draws', value: seasonSummary.draws, color: 'bg-yellow-500' },
+                  { label: 'Losses', value: seasonSummary.losses, color: 'bg-red-500' },
+                ].map(r => (
+                  <div key={r.label} className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-[#94A3B8]">{r.label}</span>
+                      <span className="font-black text-sm text-white">{r.value}</span>
+                    </div>
+                    <div className="w-full bg-[#1E293B] rounded-full h-1.5 overflow-hidden">
+                      <div className={`h-full rounded-full ${r.color} transition-all`} style={{ width: seasonSummary.total > 0 ? `${Math.round((r.value / seasonSummary.total) * 100)}%` : '0%' }} />
+                    </div>
+                  </div>
+                ))}
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase text-[#94A3B8]">Goal Difference</p>
+                  <p className={`text-xl font-black ${seasonSummary.goalsFor >= seasonSummary.goalsAgainst ? 'text-[#00C853]' : 'text-red-400'}`}>
+                    {seasonSummary.goalsFor >= seasonSummary.goalsAgainst ? '+' : ''}{seasonSummary.goalsFor - seasonSummary.goalsAgainst}
+                  </p>
+                  <p className="text-[9px] text-[#94A3B8]">{seasonSummary.goalsFor}F — {seasonSummary.goalsAgainst}A</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Squad radar */}
             <Card className="border border-[#1E293B] bg-[#111827]">
@@ -338,6 +403,30 @@ export default function CoachAnalyticsPage() {
             </Card>
           </div>
 
+          {/* Position Distribution */}
+          {positionDistribution.length > 0 && (
+            <Card className="border border-[#1E293B] bg-[#111827]">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                  <Users className="h-4 w-4 text-[#00C853]" /> Position Distribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {positionDistribution.map(([pos, count]) => (
+                  <div key={pos} className="flex items-center gap-3">
+                    <Badge className="w-14 justify-center text-[9px] font-black uppercase shrink-0 bg-[#1C2333] text-[#94A3B8] border-[#1E293B]">{pos}</Badge>
+                    <div className="flex-1">
+                      <div className="w-full bg-[#1E293B] rounded-full h-1.5 overflow-hidden">
+                        <div className="h-full rounded-full bg-[#00C853] transition-all" style={{ width: `${Math.round((count / (athletes?.length ?? 1)) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-xs font-black text-white w-4 text-right">{count}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Most Improved */}
           {mostImproved.length > 0 && (
             <Card className="border border-[#1E293B] bg-[#111827]">
@@ -373,7 +462,83 @@ export default function CoachAnalyticsPage() {
             </Card>
           )}
 
-          {/* Full squad table */}
+          {/* Player Intelligence Table */}
+          <Card className="border border-[#1E293B] bg-[#111827]">
+            <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+                <Brain className="h-4 w-4 text-[#00C853]" /> Player Intelligence
+              </CardTitle>
+              <div className="flex gap-2 flex-wrap">
+                <Select value={analyticsPositionFilter} onValueChange={setAnalyticsPositionFilter}>
+                  <SelectTrigger className="w-20 h-8 text-xs font-bold bg-[#1C2333] border-[#1E293B] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1C2333] border-[#1E293B]">
+                    {['All', 'GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST', 'CF'].map(p => (
+                      <SelectItem key={p} value={p} className="text-white font-bold">{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={analyticsSortBy} onValueChange={(v: any) => setAnalyticsSortBy(v)}>
+                  <SelectTrigger className="w-24 h-8 text-xs font-bold bg-[#1C2333] border-[#1E293B] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1C2333] border-[#1E293B]">
+                    <SelectItem value="csi" className="text-white font-bold">By CSI</SelectItem>
+                    <SelectItem value="risk" className="text-white font-bold">By Risk</SelectItem>
+                    <SelectItem value="age" className="text-white font-bold">By Age</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 mt-3">
+              {filteredSquad.length === 0 ? (
+                <p className="text-center text-[#94A3B8] text-sm py-8">No athletes found</p>
+              ) : (
+                <div className="divide-y divide-[#1E293B]">
+                  {filteredSquad.map((a, i) => {
+                    const risk = (a.riskIndex ?? 0);
+                    const riskLabel = risk < 25 ? 'Low' : risk < 50 ? 'Moderate' : risk < 75 ? 'High' : 'Very High';
+                    const riskColor = risk < 25 ? 'text-[#00C853]' : risk < 50 ? 'text-yellow-400' : risk < 75 ? 'text-[#FF6D00]' : 'text-red-400';
+                    return (
+                      <button
+                        key={a.uid}
+                        onClick={() => setSelectedAthleteId(a.uid)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1C2333] transition-colors text-left"
+                      >
+                        <span className="text-[10px] font-black text-[#94A3B8] w-4 shrink-0">{i + 1}</span>
+                        <Avatar className="h-8 w-8 shrink-0 rounded-lg">
+                          <AvatarImage src={a.photoUrl} className="object-cover" />
+                          <AvatarFallback className="rounded-lg bg-[#0A0E1A] text-[#94A3B8] text-[10px] font-black">{a.firstName?.[0]}{a.lastName?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-black text-white truncate">{a.firstName} {a.lastName}</p>
+                            {a.isVerified && <Shield className="w-3 h-3 text-[#00C853] shrink-0" />}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Badge className="text-[8px] h-4 font-black px-1.5 bg-[#1E293B] text-[#94A3B8] border-0">{a.position ?? '—'}</Badge>
+                            <span className={`text-[9px] font-black ${riskColor}`}>{riskLabel} Risk</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-black text-[#00C853]">{a.compositeScoutingIndex ?? '—'}</p>
+                          <p className="text-[9px] text-[#94A3B8]">CSI</p>
+                        </div>
+                        <div className="w-20 hidden sm:block">
+                          <div className="w-full bg-[#1E293B] rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-[#00C853] rounded-full" style={{ width: `${Math.round(((a.compositeScoutingIndex ?? 0) / maxCSI) * 100)}%` }} />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Full squad detail table */}
           <Card className="border border-[#1E293B] bg-[#111827]">
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Full Squad Metrics</CardTitle>
@@ -394,8 +559,8 @@ export default function CoachAnalyticsPage() {
                         <td className="py-2 px-2"><span className="font-black text-white">{a.firstName} {a.lastName}</span></td>
                         <td className="py-2 px-2 text-[#94A3B8] font-bold">{a.position ?? '—'}</td>
                         <td className="py-2 px-2 text-[#94A3B8] font-bold">{a.age}</td>
-                        {[a.compositeScoutingIndex, a.performanceIndex, a.efficiencyIndex, a.consistencyIndex, a.developmentIndex].map((v, i) => (
-                          <td key={i} className={cn('py-2 px-2 font-black', (v ?? 0) >= 70 ? 'text-[#00C853]' : (v ?? 0) >= 50 ? 'text-white' : 'text-[#94A3B8]')}>
+                        {[a.compositeScoutingIndex, a.performanceIndex, a.efficiencyIndex, a.consistencyIndex, a.developmentIndex].map((v, idx) => (
+                          <td key={idx} className={cn('py-2 px-2 font-black', (v ?? 0) >= 70 ? 'text-[#00C853]' : (v ?? 0) >= 50 ? 'text-white' : 'text-[#94A3B8]')}>
                             {v ?? '—'}
                           </td>
                         ))}

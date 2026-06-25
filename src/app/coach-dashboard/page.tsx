@@ -308,6 +308,62 @@ export default function CoachOverviewPage() {
         ))}
       </div>
 
+      {/* Performance Intelligence Banner */}
+      {(athletes?.length ?? 0) > 0 && (
+        <Link href="/coach-dashboard/analytics">
+          <Card className="border border-[#1E293B] bg-gradient-to-r from-[#111827] to-[#0d1f2d] hover:border-[#00C853]/30 transition-colors cursor-pointer">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-[10px] font-black text-[#00C853] uppercase tracking-widest mb-1">Performance Intelligence</p>
+                  <div className="flex items-center gap-5 flex-wrap">
+                    <div>
+                      <span className="text-xl font-black text-white">{stats.avgCSI}</span>
+                      <span className="text-[9px] font-black text-[#94A3B8] ml-1 uppercase">Avg CSI</span>
+                    </div>
+                    <div>
+                      <span className="text-xl font-black text-red-400">
+                        {athletes?.filter(a => (a.riskIndex ?? 0) >= 60).length ?? 0}
+                      </span>
+                      <span className="text-[9px] font-black text-[#94A3B8] ml-1 uppercase">High Risk</span>
+                    </div>
+                    <div>
+                      <span className="text-xl font-black text-[#00C853]">
+                        {matches?.filter(m => m.result === 'W').length ?? 0}W
+                      </span>
+                      <span className="text-xl font-black text-yellow-400 ml-2">
+                        {matches?.filter(m => m.result === 'D').length ?? 0}D
+                      </span>
+                      <span className="text-xl font-black text-red-400 ml-2">
+                        {matches?.filter(m => m.result === 'L').length ?? 0}L
+                      </span>
+                      <span className="text-[9px] font-black text-[#94A3B8] ml-1 uppercase">Season</span>
+                    </div>
+                    {(() => {
+                      const gf = (matches ?? []).reduce((s, m) => s + ((m as any).goalsFor ?? 0), 0);
+                      const ga = (matches ?? []).reduce((s, m) => s + ((m as any).goalsAgainst ?? 0), 0);
+                      const gd = gf - ga;
+                      return (matches ?? []).length > 0 ? (
+                        <div>
+                          <span className={`text-xl font-black ${gd >= 0 ? 'text-[#00C853]' : 'text-red-400'}`}>
+                            {gd >= 0 ? '+' : ''}{gd}
+                          </span>
+                          <span className="text-[9px] font-black text-[#94A3B8] ml-1 uppercase">GD</span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-[#94A3B8]">
+                  <span className="text-[10px] font-black uppercase">View Analytics</span>
+                  <ChevronRight className="h-4 w-4" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
       {/* Pending Verifications strip */}
       {pendingVerification.length > 0 ? (
         <Card className="border border-[#FF6D00]/30 bg-[#FF6D00]/5">
