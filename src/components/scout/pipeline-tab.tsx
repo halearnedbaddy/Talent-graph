@@ -103,7 +103,7 @@ function PipelineCard({
           </div>
           <p className={cn('text-[11px] leading-snug', fitStyle.text)}>{aiRank.headline}</p>
           {/* Expand reasons */}
-          {(aiRank.reasons?.length > 0 || aiRank.concerns?.length > 0) && (
+          {((aiRank.reasons?.length ?? 0) > 0 || (aiRank.concerns?.length ?? 0) > 0) && (
             <button
               onClick={() => setReasonsOpen(o => !o)}
               className={cn('flex items-center gap-1 text-[10px] font-bold opacity-70 hover:opacity-100', fitStyle.text)}

@@ -204,7 +204,7 @@ export default function ClubAthleteReportsPage() {
 
   const allowedRoles = new Set(['club', 'coach', 'assistant_coach', 'analyst', 'gk_coach', 'scout', 'admin']);
   useEffect(() => {
-    if (userAccount && !allowedRoles.has(userAccount.role)) router.push('/dashboard');
+    if (userAccount && !allowedRoles.has(userAccount.role ?? '')) router.push('/dashboard');
   }, [userAccount, router]);
 
   const handleDelete = async (reportId: string) => {
