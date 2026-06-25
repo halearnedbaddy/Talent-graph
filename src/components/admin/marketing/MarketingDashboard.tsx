@@ -849,6 +849,8 @@ export function MarketingDashboard() {
   const [sendCandidate, setSendCandidate] = useState<MarketingCampaign | null>(null);
   const [sending, setSending] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [runningScheduler, setRunningScheduler] = useState(false);
+  const [schedulerResult, setSchedulerResult] = useState<{ processed: number; results: any[] } | null>(null);
 
   const segmentsQuery  = useMemoFirebase(() => firestore ? query(collection(firestore, 'marketing_segments'),  orderBy('createdAt', 'desc')) : null, [firestore]);
   const campaignsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'marketing_campaigns'), orderBy('createdAt', 'desc')) : null, [firestore]);
@@ -966,6 +968,29 @@ export function MarketingDashboard() {
     if (firestore) await deleteDoc(doc(firestore, 'marketing_automations', id));
   };
 
+  const handleRunScheduler = async () => {
+    if (!user || runningScheduler) return;
+    setRunningScheduler(true);
+    setSchedulerResult(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/cron/send-scheduled-campaigns', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await res.json();
+      setSchedulerResult({ processed: data.processed ?? 0, results: data.results ?? [] });
+      if (data.processed > 0) {
+        toast({ title: `Scheduler ran — ${data.processed} campaign(s) sent` });
+      } else {
+        toast({ title: 'Scheduler ran', description: 'No campaigns were due at this time.' });
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Scheduler error', description: err?.message ?? 'Please try again.' });
+    } finally {
+      setRunningScheduler(false);
+    }
+  };
+
   const handleToggleAutomation = async (automation: MarketingAutomation) => {
     if (!firestore) return;
     await updateDoc(doc(firestore, 'marketing_automations', automation.id), {
@@ -1008,7 +1033,19 @@ export function MarketingDashboard() {
             <TabsTrigger value="automations" className="text-xs gap-1.5"><Zap         className="w-3 h-3" />Automations</TabsTrigger>
             <TabsTrigger value="analytics"   className="text-xs gap-1.5"><BarChart3   className="w-3 h-3" />Analytics</TabsTrigger>
           </TabsList>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              size="sm" variant="outline"
+              className="h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+              onClick={handleRunScheduler}
+              disabled={runningScheduler}
+              title="Check for scheduled campaigns that are due and send them now"
+            >
+              {runningScheduler
+                ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                : <Clock className="w-3.5 h-3.5 mr-1" />}
+              {runningScheduler ? 'Running…' : 'Run Scheduler'}
+            </Button>
             <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowSegmentBuilder(true)}>
               <Plus className="w-3.5 h-3.5 mr-1" />Segment
             </Button>
@@ -1023,6 +1060,37 @@ export function MarketingDashboard() {
 
         {/* ── Campaigns ── */}
         <TabsContent value="campaigns" className="space-y-3">
+          {/* Scheduler result banner */}
+          {schedulerResult && (
+            <div className={cn(
+              'rounded-lg border p-3 flex items-start gap-3',
+              schedulerResult.processed > 0 ? 'bg-green-50 border-green-200' : 'bg-muted/30 border-border'
+            )}>
+              <CheckCircle2 className={cn('w-4 h-4 mt-0.5 shrink-0', schedulerResult.processed > 0 ? 'text-green-600' : 'text-muted-foreground')} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold">
+                  {schedulerResult.processed > 0
+                    ? `Scheduler sent ${schedulerResult.processed} campaign${schedulerResult.processed > 1 ? 's' : ''}`
+                    : 'No campaigns were due'}
+                </p>
+                {schedulerResult.results.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {schedulerResult.results.map((r: any, i: number) => (
+                      <p key={i} className="text-[10px] text-muted-foreground">
+                        {r.status === 'sent'
+                          ? `✓ "${r.name}" — ${r.totalSent} recipients`
+                          : `✗ "${r.name}" — ${r.error}`}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setSchedulerResult(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {camsLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="animate-spin" /></div>
           ) : !campaigns?.length ? (
