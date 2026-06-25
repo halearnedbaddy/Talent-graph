@@ -57,9 +57,6 @@ service cloud.firestore {
 
     // ----------------------------------------------------------------------
     // Users
-    // FIX: Restrict read — users can read their own doc; scouts/coaches/admins
-    //      can read for legitimate recruitment/management purposes only.
-    //      Previously: any signed-in user could read ALL user PII.
     // ----------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin() || isScoutRole() || isStaffRole() || isClubAdmin();
@@ -70,8 +67,6 @@ service cloud.firestore {
 
     // ----------------------------------------------------------------------
     // Athletes
-    // Athletes are discoverable by scouts/coaches but sensitive fields
-    // are protected by not being stored in the public athlete doc.
     // ----------------------------------------------------------------------
     match /athletes/{athleteId} {
       allow read: if isSignedIn();
@@ -221,8 +216,6 @@ service cloud.firestore {
       }
     }
 
-    // FIX: live_matches / live_match_events were open to any signed-in user.
-    //      Now restricted to club staff and owners only.
     match /live_matches/{matchId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && (
@@ -240,7 +233,6 @@ service cloud.firestore {
       allow delete: if isAdmin() || isClubAdmin();
     }
 
-    // FIX: match_invitations were fully open. Now restrict writes to staff/admins.
     match /match_invitations/{inviteId} {
       allow read: if isSignedIn() && (
         resource.data.athleteId == request.auth.uid ||
@@ -326,7 +318,6 @@ service cloud.firestore {
       }
     }
 
-    // FIX: club_conversations were fully open. Now restricted to club members and owners.
     match /club_conversations/{conversationId} {
       allow read: if isSignedIn() && (
         isClubAdmin() || isStaffRole() || isAdmin() ||
@@ -409,7 +400,7 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // Support Tickets (Admin Client Support Dashboard)
+    // Support Tickets
     // ----------------------------------------------------------------------
     match /support_tickets/{ticketId} {
       allow read, list: if isAdmin();
@@ -430,7 +421,6 @@ service cloud.firestore {
       }
     }
 
-    // Legacy support threads
     match /support_threads/{threadId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
@@ -446,7 +436,6 @@ service cloud.firestore {
       );
 
       match /messages/{msgId} {
-        // FIX: Was fully open to any signed-in user. Now restricted to thread participants.
         allow read, write: if isSignedIn() && (
           isAdmin() ||
           get(/databases/$(database)/documents/support_threads/$(threadId)).data.userId == request.auth.uid
@@ -455,7 +444,7 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // Marketing (Admin Marketing Dashboard)
+    // Marketing
     // ----------------------------------------------------------------------
     match /marketing_segments/{segmentId} {
       allow read, list, create, update, delete: if isAdmin();
@@ -545,97 +534,6 @@ service cloud.firestore {
       allow read, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
-    }
-
-    // ----------------------------------------------------------------------
-    // Direct Messages (coach ↔ athlete / staff 1:1 threads)
-    // ----------------------------------------------------------------------
-    match /messages/{messageId} {
-      allow read, list: if isSignedIn() && (
-        resource.data.senderId == request.auth.uid ||
-        resource.data.recipientId == request.auth.uid ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() &&
-        request.resource.data.senderId == request.auth.uid;
-      allow update: if isSignedIn() && (
-        resource.data.recipientId == request.auth.uid ||
-        resource.data.senderId == request.auth.uid ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-
-    // ----------------------------------------------------------------------
-    // Announcements (club-wide broadcast posts from coaches / admins)
-    // ----------------------------------------------------------------------
-    match /announcements/{clubId}/posts/{postId} {
-      allow read, list: if isSignedIn() && (
-        isActiveMemberOfClub(clubId) ||
-        clubId == ('club_' + request.auth.uid) ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        isActiveMemberOfClub(clubId) ||
-        clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow update, delete: if isSignedIn() && (
-        resource.data.authorId == request.auth.uid ||
-        clubId == ('club_' + request.auth.uid) ||
-        isAdmin()
-      );
-    }
-
-    // ----------------------------------------------------------------------
-    // Schedule Events (coach schedule page)
-    // ----------------------------------------------------------------------
-    match /schedule_events/{eventId} {
-      allow read, list: if isSignedIn() && (
-        isActiveMemberOfClub(resource.data.clubId) ||
-        resource.data.clubId == ('club_' + request.auth.uid) ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        isActiveMemberOfClub(request.resource.data.clubId) ||
-        request.resource.data.clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow update, delete: if isSignedIn() && (
-        isActiveMemberOfClub(resource.data.clubId) ||
-        resource.data.clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-    }
-
-    // ----------------------------------------------------------------------
-    // Verifications (athlete stat verification requests from coaches)
-    // ----------------------------------------------------------------------
-    match /verifications/{verificationId} {
-      allow read, list: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        resource.data.clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        isActiveMemberOfClub(request.resource.data.clubId) ||
-        request.resource.data.clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow update: if isSignedIn() && (
-        resource.data.athleteId == request.auth.uid ||
-        isActiveMemberOfClub(resource.data.clubId) ||
-        resource.data.clubId == ('club_' + request.auth.uid) ||
-        isStaffRole() ||
-        isAdmin()
-      );
-      allow delete: if isAdmin() || isClubAdmin();
     }
   }
 }
