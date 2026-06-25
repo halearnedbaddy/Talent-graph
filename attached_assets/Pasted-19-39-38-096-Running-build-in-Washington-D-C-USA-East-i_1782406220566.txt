@@ -1,0 +1,51 @@
+19:39:38.096 Running build in Washington, D.C., USA (East) – iad1
+19:39:38.096 Build machine configuration: 2 cores, 8 GB
+19:39:38.110 Cloning github.com/halearnedbaddy/Talent-graph (Branch: main, Commit: c2a477f)
+19:39:38.111 Skipping build cache, deployment was triggered without cache.
+19:39:39.318 Cloning completed: 1.207s
+19:39:39.761 Running "vercel build"
+19:39:39.780 Vercel CLI 54.17.1
+19:39:40.223 Installing dependencies...
+19:39:59.563 npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+19:40:05.950 npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+19:40:21.577 
+19:40:21.578 added 1281 packages in 41s
+19:40:21.579 
+19:40:21.579 149 packages are looking for funding
+19:40:21.579   run `npm fund` for details
+19:40:21.658 Detected Next.js version: 16.2.9
+19:40:21.669 Running "npm run build"
+19:40:21.783 
+19:40:21.783 > nextn@0.1.0 build
+19:40:21.783 > NODE_ENV=production next build
+19:40:21.783 
+19:40:22.321   Applying modifyConfig from Vercel
+19:40:22.327 Attention: Next.js now collects completely anonymous telemetry regarding usage.
+19:40:22.327 This information is used to shape Next.js' roadmap and prioritize features.
+19:40:22.328 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+19:40:22.328 https://nextjs.org/telemetry
+19:40:22.328 
+19:40:22.351 ▲ Next.js 16.2.9 (Turbopack)
+19:40:22.353 
+19:40:22.355 ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+19:40:22.409   Creating an optimized production build ...
+19:41:01.967 ✓ Compiled successfully in 39.2s
+19:41:01.979   Running TypeScript ...
+19:41:02.246 
+19:41:02.246   We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+19:41:02.246   The following mandatory changes were made to your tsconfig.json:
+19:41:02.247 
+19:41:02.247   	- jsx was set to react-jsx (next.js uses the React automatic runtime)
+19:41:02.247 
+19:41:29.959 Failed to type check.
+19:41:29.960 
+19:41:29.960 Type error: Type 'typeof import("/vercel/path0/src/app/api/marketing/automations/[id]/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/marketing/automations/[id]">'.
+19:41:29.961   Types of property 'PATCH' are incompatible.
+19:41:29.961     Type '(req: NextRequest, { params }: { params: { id: string; }; }) => Promise<Response>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ id: string; }>; }) => void | Response | Promise<void | Response>'.
+19:41:29.961       Types of parameters '__1' and 'context' are incompatible.
+19:41:29.961         Type '{ params: Promise<{ id: string; }>; }' is not assignable to type '{ params: { id: string; }; }'.
+19:41:29.961           Types of property 'params' are incompatible.
+19:41:29.961             Property 'id' is missing in type 'Promise<{ id: string; }>' but required in type '{ id: string; }'.
+19:41:29.962 
+19:41:30.037 Next.js build worker exited with code: 1 and signal: null
+19:41:30.135 Error: Command "npm run build" exited with 1
