@@ -3,11 +3,12 @@ import { verifyBearerToken, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const segRes = await fetch(`${FIRESTORE_BASE}/marketing_segments/${params.id}`);
+  const { id } = await params;
+  const segRes = await fetch(`${FIRESTORE_BASE}/marketing_segments/${id}`);
   if (!segRes.ok) return Response.json({ error: 'Segment not found' }, { status: 404 });
 
   const segDoc = await segRes.json();
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const now = new Date().toISOString();
   await fetch(
-    `${FIRESTORE_BASE}/marketing_segments/${params.id}?updateMask.fieldPaths=memberCount&updateMask.fieldPaths=lastRefreshedAt`,
+    `${FIRESTORE_BASE}/marketing_segments/${id}?updateMask.fieldPaths=memberCount&updateMask.fieldPaths=lastRefreshedAt`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

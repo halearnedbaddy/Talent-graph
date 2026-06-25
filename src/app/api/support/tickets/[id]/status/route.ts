@@ -4,10 +4,11 @@ import { sendTicketResolvedNotification } from '@/lib/email';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const { id } = await params;
   const updates = await req.json();
   const now = new Date().toISOString();
 
@@ -19,8 +20,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (updates.assignedAgentId !== undefined) { fields.assignedAgentId = updates.assignedAgentId ? { stringValue: updates.assignedAgentId } : { nullValue: null }; mask.push('assignedAgentId'); }
   if (updates.tags) { fields.tags = { arrayValue: { values: updates.tags.map((t: string) => ({ stringValue: t })) } }; mask.push('tags'); }
 
-  const maskQuery = mask.map(f => `updateMask.fieldPaths=${f}`).join('&');
-  await fetch(`${FIRESTORE_BASE}/support_tickets/${params.id}?${maskQuery}`, {
+  const maskQuery = mask.map(m => `updateMask.fieldPaths=${m}`).join('&');
+  await fetch(`${FIRESTORE_BASE}/support_tickets/${id}?${maskQuery}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
@@ -28,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Fire resolved email when status changes to "resolved"
   if (updates.status === 'resolved') {
-    const ticketRes = await fetch(`${FIRESTORE_BASE}/support_tickets/${params.id}`);
+    const ticketRes = await fetch(`${FIRESTORE_BASE}/support_tickets/${id}`);
     if (ticketRes.ok) {
       const ticketDoc = await ticketRes.json();
       const f = ticketDoc.fields || {};
@@ -39,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (senderEmail) {
         const csatBaseUrl = req.nextUrl.origin;
         sendTicketResolvedNotification({
-          ticketId: params.id,
+          ticketId: id,
           subject,
           senderName: senderName || senderEmail,
           senderEmail,

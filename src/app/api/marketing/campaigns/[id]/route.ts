@@ -3,20 +3,22 @@ import { verifyBearerToken, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  await fetch(`${FIRESTORE_BASE}/marketing_campaigns/${params.id}`, { method: 'DELETE' });
+  const { id } = await params;
+  await fetch(`${FIRESTORE_BASE}/marketing_campaigns/${id}`, { method: 'DELETE' });
   return Response.json({ success: true });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Clone campaign
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const camRes = await fetch(`${FIRESTORE_BASE}/marketing_campaigns/${params.id}`);
+  const { id } = await params;
+  const camRes = await fetch(`${FIRESTORE_BASE}/marketing_campaigns/${id}`);
   if (!camRes.ok) return Response.json({ error: 'Campaign not found' }, { status: 404 });
 
   const camDoc = await camRes.json();
@@ -52,6 +54,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
 
   if (!res.ok) return Response.json({ error: 'Clone failed' }, { status: 500 });
-  const doc = await res.json();
-  return Response.json({ success: true, id: doc.name?.split('/').pop() });
+  const docResult = await res.json();
+  return Response.json({ success: true, id: docResult.name?.split('/').pop() });
 }

@@ -41,11 +41,11 @@ async function sendBatch(
   return sent;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const campaignId = params.id;
+  const { id: campaignId } = await params;
   const origin = req.nextUrl.origin;
 
   const camRes = await fetch(`${FIRESTORE_BASE}/marketing_campaigns/${campaignId}`);
@@ -116,14 +116,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   let sentA = 0;
   let sentB = 0;
 
-  // ── Email sending ───────────────────────────────────────────────────────────
+  // ── Email sending ────────────────────────────────────────────────────────────
   if (channel === 'email' || channel === 'both') {
     const emailUsers = eligible.filter((u: any) => u.fields?.email?.stringValue);
     const allEmails = emailUsers.map((u: any) => u.fields.email.stringValue);
     const suppressed = await buildSuppressedSet(allEmails);
 
     if (isAbTest) {
-      // A/B split: 50/50
       const abFields = f.abTest.mapValue.fields;
       const subjectA = abFields.variantA?.mapValue?.fields?.subject?.stringValue   || defaultSubject;
       const bodyA    = abFields.variantA?.mapValue?.fields?.emailBody?.stringValue  || defaultBody;
@@ -144,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  // ── SMS sending ─────────────────────────────────────────────────────────────
+  // ── SMS sending ──────────────────────────────────────────────────────────────
   if ((channel === 'sms' || channel === 'both') && smsBody) {
     const phoneUsers = eligible.filter((u: any) => u.fields?.phone?.stringValue?.length > 5);
     smsSent = phoneUsers.length;
@@ -166,10 +165,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const totalSent = emailSent + smsSent;
 
-  // ── Determine initial A/B winner (by sent ratio — real winner by open rate later) ──
-  const winner = isAbTest ? null : undefined;
-
-  // ── Write final analytics to Firestore ──────────────────────────────────────
+  // ── Write final analytics to Firestore ───────────────────────────────────────
   const updateFields: Record<string, any> = {
     status:     { stringValue: 'sent' },
     sentAt:     { stringValue: now },

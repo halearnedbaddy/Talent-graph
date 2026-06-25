@@ -4,15 +4,15 @@ import { sendAgentReplyNotification } from '@/lib/email';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await verifyBearerToken(req);
   if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const { id: ticketId } = await params;
   const { body, agentName } = await req.json();
   if (!body?.trim()) return Response.json({ error: 'Message body required' }, { status: 400 });
 
   const now = new Date().toISOString();
-  const ticketId = params.id;
 
   await fetch(`${FIRESTORE_BASE}/support_tickets/${ticketId}/messages`, {
     method: 'POST',
