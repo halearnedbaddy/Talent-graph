@@ -13,6 +13,17 @@ import { trackEvent } from '@/lib/analytics';
 const CARD_REASONS = ['Foul', 'Dissent', 'Time Wasting', 'Handball', 'Simulation', 'Violent Conduct', 'Two Yellow Cards'];
 const GOAL_TYPES   = ['Open Play', 'Penalty', 'Free Kick', 'Header', 'Own Goal', 'Counter Attack'];
 
+// ─── XSS-safe HTML escaping for print/document.write output ──────────────────
+function escHtml(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
 // ─── local types ─────────────────────────────────────────────────────────────
 type SquadPlayer = { id: string; name: string; number: number | null; position: string };
 
@@ -341,25 +352,26 @@ export default function CoachMatchEntryPage() {
 
     const goalLog = goals.map(g => `
       <div class="event">
-        <span class="min">${g.minute}'</span>
+        <span class="min">${escHtml(g.minute)}'</span>
         <span class="icon">⚽</span>
-        <span>${getPlayer(g.scorer)?.name ?? '?'}${g.assister ? ` <em>(assist: ${getPlayer(g.assister)?.name})</em>` : ''}</span>
-        <span class="tag">${g.type}${g.ownGoal ? ' (OG)' : ''}</span>
+        <span>${escHtml(getPlayer(g.scorer)?.name ?? '?')}${g.assister ? ` <em>(assist: ${escHtml(getPlayer(g.assister)?.name)})</em>` : ''}</span>
+        <span class="tag">${escHtml(g.type)}${g.ownGoal ? ' (OG)' : ''}</span>
       </div>`).join('') || '<p class="empty">No goals recorded</p>';
 
     const cardLog = discipline.map(d => `
       <div class="event">
-        <span class="min">${d.minute}'</span>
+        <span class="min">${escHtml(d.minute)}'</span>
         <span class="icon" style="color:${d.type === 'Red' ? '#DC2626' : '#D97706'}">${d.type === 'Red' ? '🟥' : '🟨'}</span>
-        <span>${getPlayer(d.player)?.name ?? '?'}</span>
-        <span class="tag">${d.reason}</span>
+        <span>${escHtml(getPlayer(d.player)?.name ?? '?')}</span>
+        <span class="tag">${escHtml(d.reason)}</span>
       </div>`).join('') || '<p class="empty">No cards recorded</p>';
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Match Report — ${match.opponent || 'Unknown'} — ${match.date}</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>Match Report — ${escHtml(match.opponent || 'Unknown')} — ${escHtml(match.date)}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111; background: #fff; padding: 32px; font-size: 13px; }
@@ -372,8 +384,7 @@ export default function CoachMatchEntryPage() {
   .meta { font-size: 12px; color: #555; line-height: 2; }
   .meta strong { color: #111; }
   .result-badge { display: inline-block; padding: 4px 14px; border-radius: 999px; font-weight: 900; font-size: 12px;
-    background: ${teamStats.result === 'Win' ? '#D1FAE5' : teamStats.result === 'Loss' ? '#FEE2E2' : '#F3F4F6'};
-    color: ${teamStats.result === 'Win' ? '#065F46' : teamStats.result === 'Loss' ? '#991B1B' : '#374151'}; }
+    background: #F3F4F6; color: #374151; }
   .motm { background: #FFFBEB; border: 2px solid #FCD34D; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
   .motm-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #92400E; }
   .motm-name { font-size: 17px; font-weight: 900; color: #78350F; }
@@ -395,42 +406,42 @@ export default function CoachMatchEntryPage() {
 <body>
 <div class="header">
   <div class="meta">
-    <div><strong>Date:</strong> ${match.date || '—'}</div>
-    <div><strong>Kickoff:</strong> ${match.kickoff || '—'}</div>
-    <div><strong>Venue:</strong> ${match.venue}</div>
-    <div><strong>Competition:</strong> ${match.competition || '—'}</div>
-    <div><strong>Season:</strong> ${match.season}</div>
-    <div style="margin-top:8px"><span class="result-badge">${teamStats.result.toUpperCase()}</span></div>
+    <div><strong>Date:</strong> ${escHtml(match.date || '—')}</div>
+    <div><strong>Kickoff:</strong> ${escHtml(match.kickoff || '—')}</div>
+    <div><strong>Venue:</strong> ${escHtml(match.venue)}</div>
+    <div><strong>Competition:</strong> ${escHtml(match.competition || '—')}</div>
+    <div><strong>Season:</strong> ${escHtml(match.season)}</div>
+    <div style="margin-top:8px"><span class="result-badge">${escHtml(teamStats.result.toUpperCase())}</span></div>
   </div>
   <div class="scoreline">
-    <div class="score">${teamStats.goalsFor} – ${teamStats.goalsAgainst}</div>
-    <div class="teams">Your Team vs ${match.opponent || 'Opponent'}</div>
+    <div class="score">${escHtml(teamStats.goalsFor)} – ${escHtml(teamStats.goalsAgainst)}</div>
+    <div class="teams">Your Team vs ${escHtml(match.opponent || 'Opponent')}</div>
   </div>
   <div class="meta" style="text-align:right">
-    <div><strong>Possession:</strong> ${teamStats.possession}%</div>
-    <div><strong>Shots on Target:</strong> ${teamStats.shotsOnTarget}</div>
-    <div><strong>Shots off Target:</strong> ${teamStats.shotsOffTarget}</div>
-    <div><strong>Corners:</strong> ${teamStats.corners}</div>
-    <div><strong>Fouls:</strong> ${teamStats.fouls}</div>
-    ${teamStats.attendance ? `<div><strong>Attendance:</strong> ${teamStats.attendance}</div>` : ''}
+    <div><strong>Possession:</strong> ${escHtml(teamStats.possession)}%</div>
+    <div><strong>Shots on Target:</strong> ${escHtml(teamStats.shotsOnTarget)}</div>
+    <div><strong>Shots off Target:</strong> ${escHtml(teamStats.shotsOffTarget)}</div>
+    <div><strong>Corners:</strong> ${escHtml(teamStats.corners)}</div>
+    <div><strong>Fouls:</strong> ${escHtml(teamStats.fouls)}</div>
+    ${teamStats.attendance ? `<div><strong>Attendance:</strong> ${escHtml(teamStats.attendance)}</div>` : ''}
   </div>
 </div>
 
 ${motmPlayer ? `
 <h2>🏆 Man of the Match</h2>
 <div class="motm">
-  <div style="width:40px;height:40px;border-radius:50%;background:#FCD34D;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">${motmPlayer.number ?? motmPlayer.name[0]}</div>
+  <div style="width:40px;height:40px;border-radius:50%;background:#FCD34D;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">${escHtml(motmPlayer.number ?? motmPlayer.name[0])}</div>
   <div>
     <div class="motm-label">Man of the Match</div>
-    <div class="motm-name">${motmPlayer.name}</div>
-    <div class="motm-pos">${motmPlayer.position}</div>
+    <div class="motm-name">${escHtml(motmPlayer.name)}</div>
+    <div class="motm-pos">${escHtml(motmPlayer.position)}</div>
   </div>
 </div>` : ''}
 
-<h2>⚽ Goals (${goals.length})</h2>
+<h2>⚽ Goals (${escHtml(goals.length)})</h2>
 ${goalLog}
 
-<h2>🟨 Discipline (${discipline.length})</h2>
+<h2>🟨 Discipline (${escHtml(discipline.length)})</h2>
 ${cardLog}
 
 <h2>👤 Player Statistics</h2>
@@ -441,7 +452,7 @@ ${cardLog}
   <tbody>${tableRows}</tbody>
 </table>
 
-${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${teamStats.matchReport}</div>` : ''}
+${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${escHtml(teamStats.matchReport)}</div>` : ''}
 
 <div class="footer">Generated by Talent Graph · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
 <script>window.onload = () => window.print();</script>

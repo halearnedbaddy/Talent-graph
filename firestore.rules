@@ -51,11 +51,18 @@ service cloud.firestore {
       return isClubOwner(resource.data.clubId);
     }
 
+    function isClubStaffOrOwner(clubId) {
+      return isClubOwner(clubId) || isActiveMemberOfClub(clubId);
+    }
+
     // ----------------------------------------------------------------------
     // Users
+    // FIX: Restrict read — users can read their own doc; scouts/coaches/admins
+    //      can read for legitimate recruitment/management purposes only.
+    //      Previously: any signed-in user could read ALL user PII.
     // ----------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdmin() || isScoutRole() || isStaffRole() || isClubAdmin();
       allow create: if isOwner(userId) || isClubAdmin() || isAdmin();
       allow update: if isOwner(userId) || isAdmin() || isClubAdmin();
       allow delete: if isOwner(userId) || isAdmin();
@@ -63,6 +70,8 @@ service cloud.firestore {
 
     // ----------------------------------------------------------------------
     // Athletes
+    // Athletes are discoverable by scouts/coaches but sensitive fields
+    // are protected by not being stored in the public athlete doc.
     // ----------------------------------------------------------------------
     match /athletes/{athleteId} {
       allow read: if isSignedIn();
@@ -71,7 +80,7 @@ service cloud.firestore {
       allow delete: if isOwner(athleteId) || isAdmin();
 
       match /scout_reports/{reportId} {
-        allow read, list: if isSignedIn();
+        allow read, list: if isSignedIn() && (isScoutRole() || isStaffRole() || isAdmin() || isOwner(athleteId));
         allow create: if isSignedIn() && isScoutRole() && request.resource.data.scoutId == request.auth.uid;
         allow delete: if isSignedIn() && (resource.data.scoutId == request.auth.uid || isAdmin());
         allow update: if false;
@@ -212,18 +221,37 @@ service cloud.firestore {
       }
     }
 
+    // FIX: live_matches / live_match_events were open to any signed-in user.
+    //      Now restricted to club staff and owners only.
     match /live_matches/{matchId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && (
+        isClubOwner(request.resource.data.clubId) ||
+        isActiveMemberOfClub(request.resource.data.clubId) ||
+        isStaffRole() ||
+        isAdmin()
+      );
     }
 
     match /live_match_events/{eventId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && (isStaffRole() || isClubAdmin() || isAdmin());
+      allow update: if isSignedIn() && (isStaffRole() || isClubAdmin() || isAdmin());
+      allow delete: if isAdmin() || isClubAdmin();
     }
 
+    // FIX: match_invitations were fully open. Now restrict writes to staff/admins.
     match /match_invitations/{inviteId} {
-      allow read, create, update, delete: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isStaffRole() || isClubAdmin() || isAdmin()
+      );
+      allow create: if isSignedIn() && (isStaffRole() || isClubAdmin() || isAdmin());
+      allow update: if isSignedIn() && (
+        resource.data.athleteId == request.auth.uid ||
+        isStaffRole() || isClubAdmin() || isAdmin()
+      );
+      allow delete: if isAdmin() || isClubAdmin();
     }
 
     match /squad_invites/{inviteId} {
@@ -298,10 +326,21 @@ service cloud.firestore {
       }
     }
 
+    // FIX: club_conversations were fully open. Now restricted to club members and owners.
     match /club_conversations/{conversationId} {
-      allow read, create, update: if isSignedIn();
+      allow read: if isSignedIn() && (
+        isClubAdmin() || isStaffRole() || isAdmin() ||
+        isActiveMemberOfClub(resource.data.clubId)
+      );
+      allow create: if isSignedIn() && (isClubAdmin() || isStaffRole() || isAdmin());
+      allow update: if isSignedIn() && (isClubAdmin() || isStaffRole() || isAdmin());
+
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn() && (
+          isClubAdmin() || isStaffRole() || isAdmin() ||
+          isActiveMemberOfClub(get(/databases/$(database)/documents/club_conversations/$(conversationId)).data.clubId)
+        );
+        allow write: if isSignedIn() && (isClubAdmin() || isStaffRole() || isAdmin());
       }
     }
 
@@ -391,7 +430,7 @@ service cloud.firestore {
       }
     }
 
-    // Legacy support threads (kept for backwards compatibility)
+    // Legacy support threads
     match /support_threads/{threadId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
@@ -407,7 +446,11 @@ service cloud.firestore {
       );
 
       match /messages/{msgId} {
-        allow read, write: if isSignedIn();
+        // FIX: Was fully open to any signed-in user. Now restricted to thread participants.
+        allow read, write: if isSignedIn() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/support_threads/$(threadId)).data.userId == request.auth.uid
+        );
       }
     }
 
@@ -415,24 +458,15 @@ service cloud.firestore {
     // Marketing (Admin Marketing Dashboard)
     // ----------------------------------------------------------------------
     match /marketing_segments/{segmentId} {
-      allow read, list: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, list, create, update, delete: if isAdmin();
     }
 
     match /marketing_campaigns/{campaignId} {
-      allow read, list: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, list, create, update, delete: if isAdmin();
     }
 
     match /marketing_automations/{automationId} {
-      allow read, list: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, list, create, update, delete: if isAdmin();
     }
 
     // ----------------------------------------------------------------------

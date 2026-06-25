@@ -1,22 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken, FIREBASE_API_KEY, FIREBASE_PROJECT_ID } from '@/lib/server-auth';
+import { randomInt } from 'crypto';
 
+// ── Cryptographically secure password generation ──────────────────────────────
 function generateTempPassword(): string {
-  const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const digits = '23456789';
+  const upper   = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const lower   = 'abcdefghjkmnpqrstuvwxyz';
+  const digits  = '23456789';
   const special = '@#!';
-  const all = upper + lower + digits;
-  let pw = '';
-  pw += upper[Math.floor(Math.random() * upper.length)];
-  pw += upper[Math.floor(Math.random() * upper.length)];
-  pw += lower[Math.floor(Math.random() * lower.length)];
-  pw += lower[Math.floor(Math.random() * lower.length)];
-  pw += digits[Math.floor(Math.random() * digits.length)];
-  pw += digits[Math.floor(Math.random() * digits.length)];
-  pw += special[Math.floor(Math.random() * special.length)];
-  for (let i = 0; i < 5; i++) pw += all[Math.floor(Math.random() * all.length)];
-  return pw.split('').sort(() => Math.random() - 0.5).join('');
+  const all     = upper + lower + digits;
+
+  const pick = (charset: string) => charset[randomInt(charset.length)];
+
+  // Guarantee at least one of each required character class
+  const required = [
+    pick(upper), pick(upper),
+    pick(lower), pick(lower),
+    pick(digits), pick(digits),
+    pick(special),
+  ];
+
+  // Fill remaining characters from the full set
+  const extra: string[] = [];
+  for (let i = 0; i < 5; i++) extra.push(pick(all));
+
+  // Fisher-Yates shuffle using crypto.randomInt
+  const chars = [...required, ...extra];
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 function toFirestoreValue(val: unknown): unknown {
@@ -93,6 +107,10 @@ async function firestoreGet(collection: string, docId: string, bearerToken?: str
   return res.json();
 }
 
+// ── Input validation helpers ──────────────────────────────────────────────────
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALID_ROLES = ['coach', 'assistant_coach', 'analyst', 'gk_coach', 'scout'] as const;
+
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -119,12 +137,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields: email, displayName, role, clubId' }, { status: 400 });
     }
 
-    const validRoles = ['coach', 'assistant_coach', 'analyst', 'gk_coach', 'scout'];
-    if (!validRoles.includes(role)) {
+    // Validate email format
+    if (!EMAIL_RE.test(email) || email.length > 254) {
+      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
+    }
+
+    // Validate display name length
+    if (displayName.trim().length < 2 || displayName.length > 100) {
+      return NextResponse.json({ error: 'Display name must be 2–100 characters' }, { status: 400 });
+    }
+
+    if (!VALID_ROLES.includes(role as any)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
 
-    // Strategy 1: The club owner's UID IS the clubId (club_<uid> → uid matches)
+    // Strategy 1: The club owner's UID IS the clubId
     const isDirectOwner = adminUid === clubId || clubId === `club_${adminUid}`;
 
     // Strategy 2: Check users/{adminUid}.role === 'club'
@@ -175,7 +202,6 @@ export async function POST(request: NextRequest) {
 
     const tempPassword = generateTempPassword();
 
-    // Create the new Firebase Auth user and get their ID token for secure Firestore writes
     const signUpRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
       {
@@ -202,7 +228,6 @@ export async function POST(request: NextRequest) {
 
     const userRole = role === 'analyst' ? 'analyst' : role === 'scout' ? 'scout' : 'coach';
 
-    // Write the new user's profile using their own token so Firestore rules pass (isOwner check)
     await firestorePatch('users', newUid, {
       id: newUid,
       email,
@@ -219,7 +244,6 @@ export async function POST(request: NextRequest) {
       updatedAt: now,
     }, newUserIdToken);
 
-    // Write the club_members entry using the admin's token (isClubAdmin check)
     await firestorePost('club_members', {
       userId: newUid,
       clubId,
@@ -235,6 +259,9 @@ export async function POST(request: NextRequest) {
       createdAt: now,
     }, adminIdToken);
 
+    // NOTE: tempPassword is returned intentionally so the admin can hand it to the new staff member.
+    // This is a deliberate UX trade-off. Ensure this response is only transmitted over HTTPS and
+    // the admin is instructed to share via a secure channel (not email in plaintext).
     return NextResponse.json({
       success: true,
       uid: newUid,
@@ -242,10 +269,11 @@ export async function POST(request: NextRequest) {
       displayName,
       role,
       tempPassword,
-      message: `Account created. Share these credentials with ${displayName}.`,
+      message: `Account created. Share these credentials securely with ${displayName}.`,
     });
   } catch (err: any) {
-    console.error('[staff/create]', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    // Never expose raw error messages to the client
+    console.error('[staff/create]', err?.message ?? err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -2,3 +2,4 @@
 - [MessagesHub defaultConversationId sync](messages-hub-default-conv.md) — useState init doesn't react to prop changes; always add a useEffect to sync when prop arrives async
 - [Club admin clubId lookup](club-admin-clubid.md) — club admin's clubId lives in club_members where userId==uid (no status filter); admin has role='admin'
 - [SMS / BulkSMS architecture](sms-bulksms-arch.md) — BulkSMS Kenya uses api.bulksms.com + Basic auth (username:password); lib/bulksms.ts is the core client, lib/sms.ts wraps it; idToken for coach pages comes from user.getIdToken() in a useEffect
+- [Security audit decisions](security-audit.md) — Firebase API key in config.ts is a false positive (public by design); no Admin SDK; internal auth uses SMS_SECRET header; key remaining risks: no rate limiting, no token revocation
