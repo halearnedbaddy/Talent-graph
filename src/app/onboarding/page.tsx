@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { AthleteProfile, ScoutProfile, ClubProfile, UserAccount } from '@/lib/types';
+import { claimGhostStats } from '@/lib/ghost-claim';
 import { signOut } from 'firebase/auth';
 import { useAuth } from '@/firebase';
 import { Badge } from '@/components/ui/badge';
@@ -235,7 +236,27 @@ const AthleteProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       }
 
       await batch.commit();
-      
+
+      // ── Auto-claim any ghost_players records matching this athlete ─────────
+      try {
+        const claim = await claimGhostStats(
+          firestore,
+          user.uid,
+          values.phone || null,
+          userAccount.email || null,
+        );
+        if (claim.claimed > 0) {
+          const totalGoals   = claim.stats.reduce((s, m) => s + (m.goals   ?? 0), 0);
+          const totalAssists = claim.stats.reduce((s, m) => s + (m.assists ?? 0), 0);
+          toast({
+            title: `🎉 ${claim.claimed} match record${claim.claimed > 1 ? 's' : ''} claimed!`,
+            description: `Your coach already recorded your stats: ${totalGoals}G ${totalAssists}A across ${claim.claimed} appearance${claim.claimed > 1 ? 's' : ''}. They're now on your profile.`,
+          });
+        }
+      } catch {
+        // Non-fatal — profile was created; ghost claim failing shouldn't block onboarding
+      }
+
       const description = values.clubId && values.clubName
         ? `Your request has been sent to ${values.clubName}. You'll be notified once the admin approves you.`
         : "Your basic profile is saved. Now let's add your performance data.";

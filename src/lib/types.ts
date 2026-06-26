@@ -111,6 +111,7 @@ export interface AthleteProfile {
   matchHistory?: MatchEntry[];
   injuryHistory?: InjuryRecord[];
   previousTeams?: PreviousTeam[];
+  ghostStats?: GhostMatchStat[];
 
   detailedAttributes?: AttributeScores;
   attributesVerified?: boolean;
