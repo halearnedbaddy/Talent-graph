@@ -12,3 +12,9 @@ id = "Rwht9kt7wQvVpoEeU33Lw"
 uri = "file://TalentGraph_Privacy_Policy.docx"
 type = "word_document"
 title = "Talent Graph — Privacy Policy"
+
+[[outputs]]
+id = "6GlOjFhXliDH0vuKUT3KH"
+uri = "file://docs/marketing-and-support-feature-guide.md"
+type = "text"
+title = "Marketing & Client Support Feature Guide"
