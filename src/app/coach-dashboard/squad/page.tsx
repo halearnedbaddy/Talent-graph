@@ -13,9 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import {
   Users, Search, ShieldCheck, ChevronRight,
   Loader2, AlertTriangle, Star, MessageSquare,
-  UserPlus, UserMinus, Send, X
+  UserPlus, UserMinus, Send, X, Ghost, Phone, Mail, Calendar
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile } from '@/lib/types';
+import type { ClubMember, AthleteProfile, GhostPlayer } from '@/lib/types';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
@@ -54,6 +54,7 @@ export default function CoachSquadPage() {
   const [verifyFilter, setVerifyFilter] = useState<'all' | 'verified' | 'unverified'>('all');
   const [riskFilter, setRiskFilter] = useState('all');
 
+  const [activeTab, setActiveTab] = useState<'squad' | 'pending'>('squad');
   const [addOpen, setAddOpen] = useState(false);
   const [athleteSearch, setAthleteSearch] = useState('');
   const [searchResults, setSearchResults] = useState<AthleteProfile[]>([]);
@@ -74,6 +75,11 @@ export default function CoachSquadPage() {
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
   ), [firestore, clubId]);
   const { data: athletes, isLoading: athletesLoading } = useCollection<AthleteProfile>(athletesQuery);
+
+  const ghostQuery = useMemoFirebase(() => (
+    firestore && clubId ? query(collection(firestore, 'ghost_players'), where('clubId', '==', clubId), where('claimed', '==', false), orderBy('createdAt', 'desc')) : null
+  ), [firestore, clubId]);
+  const { data: ghostPlayers, isLoading: ghostLoading } = useCollection<GhostPlayer>(ghostQuery);
 
   const filtered = useMemo(() => {
     let list = athletes ?? [];
@@ -260,6 +266,71 @@ export default function CoachSquadPage() {
         </Button>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-1 bg-[#111827] border border-[#1E293B] rounded-xl p-1">
+        <button
+          onClick={() => setActiveTab('squad')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all',
+            activeTab === 'squad'
+              ? 'bg-[#00C853] text-black'
+              : 'text-[#94A3B8] hover:text-white'
+          )}
+        >
+          <Users className="h-3.5 w-3.5" />
+          Squad ({athletes?.length ?? 0})
+        </button>
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all',
+            activeTab === 'pending'
+              ? 'bg-[#FF6D00] text-black'
+              : 'text-[#94A3B8] hover:text-white'
+          )}
+        >
+          <Ghost className="h-3.5 w-3.5" />
+          Pending Members
+          {(ghostPlayers?.length ?? 0) > 0 && (
+            <span className={cn(
+              'px-1.5 py-0.5 rounded-full text-[9px] font-black',
+              activeTab === 'pending' ? 'bg-black/20 text-black' : 'bg-[#FF6D00] text-white'
+            )}>
+              {ghostPlayers?.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── PENDING MEMBERS TAB ── */}
+      {activeTab === 'pending' && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">
+            {ghostPlayers?.length ?? 0} unregistered player{(ghostPlayers?.length ?? 0) !== 1 ? 's' : ''} with recorded stats
+          </p>
+          {ghostLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-[#FF6D00]" />
+            </div>
+          ) : (ghostPlayers?.length ?? 0) === 0 ? (
+            <div className="text-center py-16">
+              <Ghost className="h-10 w-10 text-[#94A3B8] mx-auto mb-3 opacity-30" />
+              <p className="text-white font-bold">No pending members</p>
+              <p className="text-[#94A3B8] text-sm mt-1">
+                When you add unregistered players in Match Entry, they appear here.
+              </p>
+            </div>
+          ) : (
+            ghostPlayers?.map(gp => (
+              <GhostPlayerRow key={gp.id ?? gp.name} ghost={gp} />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── SQUAD TAB ── */}
+      {activeTab === 'squad' && (
+        <>
       {/* Squad KPIs */}
       <div className="grid grid-cols-4 gap-3">
         {[
@@ -422,8 +493,8 @@ export default function CoachSquadPage() {
         </Card>
       )}
 
-      {/* Add Athlete Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        {/* Add Athlete Dialog */}
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="bg-[#111827] border border-[#1E293B] text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="font-black uppercase tracking-wide text-white flex items-center gap-2">
@@ -493,6 +564,73 @@ export default function CoachSquadPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </>
+      )}
+    </div>
+  );
+}
+
+function GhostPlayerRow({ ghost: gp }: { ghost: GhostPlayer }) {
+  const totalGoals = gp.matchStats.reduce((s, m) => s + (m.goals ?? 0), 0);
+  const totalApps  = gp.matchStats.reduce((s, m) => s + (m.apps ?? 0), 0);
+  const lastMatch  = gp.matchStats[gp.matchStats.length - 1];
+  const createdDate = gp.createdAt
+    ? new Date(gp.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-[#111827] border border-[#1E2947] hover:border-[#FF6D00]/30 transition-colors">
+      {/* Ghost avatar */}
+      <div className="h-10 w-10 rounded-xl bg-[#1C2340] border-2 border-dashed border-[#2a2a5a] flex items-center justify-center shrink-0">
+        <Ghost className="h-4 w-4 text-[#44446a]" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-black text-[#aaa] truncate">{gp.name}</p>
+          <span className="bg-[#1e1e38] text-[#555] border border-[#33335a] text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest">
+            Unregistered
+          </span>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap mt-1">
+          {gp.position && (
+            <span className="text-[9px] font-black text-[#94A3B8] uppercase">{gp.position}</span>
+          )}
+          {gp.phone && (
+            <span className="flex items-center gap-1 text-[9px] text-[#94A3B8]">
+              <Phone className="h-2.5 w-2.5" /> {gp.phone}
+            </span>
+          )}
+          {gp.email && (
+            <span className="flex items-center gap-1 text-[9px] text-[#94A3B8]">
+              <Mail className="h-2.5 w-2.5" /> {gp.email}
+            </span>
+          )}
+          <span className="flex items-center gap-1 text-[9px] text-[#94A3B8]">
+            <Calendar className="h-2.5 w-2.5" /> Added {createdDate}
+          </span>
+        </div>
+        {lastMatch && (
+          <p className="text-[9px] text-[#555] mt-0.5">
+            Last: {lastMatch.opponent} · {lastMatch.competition}
+          </p>
+        )}
+      </div>
+
+      {/* Mini stats */}
+      <div className="flex items-center gap-4 shrink-0">
+        <div className="text-center hidden sm:block">
+          <p className="text-base font-black text-white">{totalApps}</p>
+          <p className="text-[8px] font-bold text-[#94A3B8]">Apps</p>
+        </div>
+        <div className="text-center hidden sm:block">
+          <p className="text-base font-black text-[#00C853]">{totalGoals}</p>
+          <p className="text-[8px] font-bold text-[#94A3B8]">Goals</p>
+        </div>
+        <Badge className="bg-[#FF6D00]/10 text-[#FF6D00] border border-[#FF6D00]/30 font-black text-[8px]">
+          Awaiting signup
+        </Badge>
+      </div>
     </div>
   );
 }

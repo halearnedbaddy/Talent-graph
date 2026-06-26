@@ -151,6 +151,42 @@ export interface ShowcaseVideo {
   uploadedAt: string;
 }
 
+export interface GhostMatchStat {
+  matchId?: string;
+  opponent: string;
+  date: string;
+  competition: string;
+  apps: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  mins: number;
+  rating: number;
+  cleanSheet: boolean;
+  pom: boolean;
+}
+
+export interface GhostPlayer {
+  id?: string;
+  name: string;
+  position: string;
+  phone?: string;
+  email?: string;
+  clubId: string;
+  coachId: string;
+  coachName?: string;
+  clubName?: string;
+  matchStats: GhostMatchStat[];
+  claimed: boolean;
+  claimedBy?: string;
+  claimedAt?: string;
+  smsSentAt?: string;
+  followUpScheduledAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProfileView {
   viewerId: string;
   viewerName: string;

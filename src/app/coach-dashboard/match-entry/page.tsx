@@ -39,6 +39,15 @@ type PlayerStat = {
 type GoalEvent = { id: number; scorer: string | null; assister: string | null; minute: string; type: string; ownGoal: boolean };
 type CardEvent  = { id: number; player: string | null; type: string; minute: string; reason: string };
 
+type GhostPlayerEntry = {
+  tempId: string;
+  name: string; position: string; phone: string; email: string;
+  apps: number; sub: number; subbed: number;
+  goals: number; assists: number;
+  cleanSheet: boolean; pom: boolean;
+  rating: number; yellowCards: number; redCards: number; mins: number;
+};
+
 // ─── PlayerPicker ────────────────────────────────────────────────────────────
 function PlayerPicker({ players, value, onChange, placeholder = 'Select player...' }: {
   players: SquadPlayer[]; value: string | null;
@@ -151,6 +160,10 @@ export default function CoachMatchEntryPage() {
   const [discipline, setDiscipline] = useState<CardEvent[]>([]);
   const [newCard, setNewCard]       = useState<CardEvent>({ id: 0, player: null, type: 'Yellow', minute: '', reason: 'Foul' });
   const [motm, setMotm]             = useState<string | null>(null);
+
+  const [ghostPlayers, setGhostPlayers] = useState<GhostPlayerEntry[]>([]);
+  const [showGhostForm, setShowGhostForm] = useState(false);
+  const [ghostForm, setGhostForm] = useState({ name: '', position: '', phone: '', email: '' });
 
   // ── Firebase data ────────────────────────────────────────────────────────
   const memberQuery = useMemoFirebase(() => (
@@ -291,6 +304,30 @@ export default function CoachMatchEntryPage() {
       if (exists) return prev.map(p => p.id === playerId ? { ...p, [field]: value } : p);
       return [...prev, { ...ensureStat(playerId), [field]: value }];
     });
+  };
+
+  // ── Ghost player helpers ──────────────────────────────────────────────────
+  const addGhostPlayer = () => {
+    if (!ghostForm.name.trim()) return;
+    const entry: GhostPlayerEntry = {
+      tempId: `ghost_${Date.now()}`,
+      name: ghostForm.name.trim(), position: ghostForm.position.trim(),
+      phone: ghostForm.phone.trim(), email: ghostForm.email.trim(),
+      apps: 1, sub: 0, subbed: 0,
+      goals: 0, assists: 0, cleanSheet: false, pom: false,
+      rating: 7, yellowCards: 0, redCards: 0, mins: 90,
+    };
+    setGhostPlayers(prev => [...prev, entry]);
+    setGhostForm({ name: '', position: '', phone: '', email: '' });
+    setShowGhostForm(false);
+  };
+
+  const updateGhostStat = (tempId: string, field: keyof GhostPlayerEntry, value: any) => {
+    setGhostPlayers(prev => prev.map(g => g.tempId === tempId ? { ...g, [field]: value } : g));
+  };
+
+  const removeGhostPlayer = (tempId: string) => {
+    setGhostPlayers(prev => prev.filter(g => g.tempId !== tempId));
   };
 
   // ── Goal / Card helpers ───────────────────────────────────────────────────
@@ -551,17 +588,57 @@ ${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${escHt
         }
       }
 
+      // ── Save ghost players ─────────────────────────────────────────────
+      if (!draft && ghostPlayers.length > 0) {
+        const coachName = user.displayName || user.email || 'Coach';
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://talent-graph.vercel.app';
+        const claimUrl = `${appUrl}/signup`;
+        const clubDisplayName = memberships?.[0]?.clubName ?? 'your club';
+        for (const gp of ghostPlayers) {
+          try {
+            await addDoc(collection(firestore, 'ghost_players'), {
+              name: gp.name, position: gp.position,
+              phone: gp.phone || null, email: gp.email || null,
+              clubId, coachId: user.uid, coachName,
+              clubName: clubDisplayName,
+              matchStats: [{
+                matchId: matchRef.id, opponent: match.opponent,
+                date: match.date, competition: match.competition,
+                apps: gp.apps, goals: gp.goals, assists: gp.assists,
+                yellowCards: gp.yellowCards, redCards: gp.redCards,
+                mins: gp.mins, rating: gp.rating,
+                cleanSheet: gp.cleanSheet, pom: gp.pom,
+              }],
+              claimed: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            if (gp.phone) {
+              try {
+                const token = await user.getIdToken();
+                await fetch('/api/sms/ghost-player', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ phone: gp.phone, coachName, clubName: clubDisplayName, claimUrl }),
+                });
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+
       if (!draft) {
         trackEvent('match_entry_saved', {
           player_count: playerStats.filter(p => p.athleteId).length,
           competition: match.competition,
         });
       }
-      toast({ title: draft ? '💾 Saved as draft' : '✓ Match published!', description: draft ? 'Continue editing later.' : `${playerStats.filter(p => p.athleteId).length} player profiles updated.` });
+      const ghostCount = ghostPlayers.length;
+      toast({ title: draft ? '💾 Saved as draft' : '✓ Match published!', description: draft ? 'Continue editing later.' : `${playerStats.filter(p => p.athleteId).length} player profiles updated.${ghostCount > 0 ? ` ${ghostCount} ghost profile${ghostCount > 1 ? 's' : ''} saved & SMS sent.` : ''}` });
       // Reset
       setPage(1); setMatch({ date: new Date().toISOString().slice(0, 10), opponent: '', venue: 'Home', competition: '', kickoff: '', season: '2025/26' });
       setTeamStats({ goalsFor: 0, goalsAgainst: 0, result: 'Draw', cleanSheet: false, failedToScore: false, possession: 50, shotsOnTarget: 0, shotsOffTarget: 0, corners: 0, fouls: 0, attendance: 0, matchReport: '' });
-      setGoals([]); setDiscipline([]); setMotm(null); setPlayerStats([]); setLiveLoaded(false);
+      setGoals([]); setDiscipline([]); setMotm(null); setPlayerStats([]); setGhostPlayers([]); setShowGhostForm(false); setLiveLoaded(false);
     } catch {
       toast({ title: 'Error', description: 'Could not save match.', variant: 'destructive' });
     } finally { setSaving(false); }
@@ -759,6 +836,83 @@ ${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${escHt
                       </div>
                     );
                   })
+                )}
+
+                {/* ── Ghost players (unregistered) ──────────────────── */}
+                {ghostPlayers.map(gp => (
+                  <div key={gp.tempId} style={{ ...sectionStyle, marginBottom: 10, border: '1px solid #333355', background: 'linear-gradient(135deg, #0d0d20 0%, #111128 100%)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#22223a', border: '2px dashed #44446a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#666', fontSize: 14, flexShrink: 0 }}>
+                        {gp.name[0].toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: '#aaa' }}>{gp.name}</div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
+                          {gp.position && <span style={{ fontSize: 11, color: '#666', fontWeight: 700, letterSpacing: 1 }}>{gp.position}</span>}
+                          <span style={{ background: '#1e1e38', color: '#666', fontWeight: 800, borderRadius: 4, padding: '2px 6px', fontSize: 9, letterSpacing: 1.5, border: '1px solid #33335a', textTransform: 'uppercase' }}>Unregistered</span>
+                          {gp.phone && <span style={{ fontSize: 9, color: '#555' }}>📱 SMS will be sent</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                        <button onClick={() => updateGhostStat(gp.tempId, 'pom', !gp.pom)} style={{ padding: '4px 10px', background: gp.pom ? '#f5a623' : '#1a1a2e', border: `1px solid ${gp.pom ? '#f5a623' : '#2a2a4a'}`, borderRadius: 6, color: gp.pom ? '#000' : '#555', fontSize: 11, fontWeight: 800, cursor: 'pointer', letterSpacing: 1 }}>🏆 POM</button>
+                        <button onClick={() => removeGhostPlayer(gp.tempId)} style={{ padding: '4px 8px', background: '#1a0a0a', border: '1px solid #4a1a1a', borderRadius: 6, color: '#e74c3c', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>✕</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
+                      <StatInput label="Goals"   value={gp.goals}       onChange={v => updateGhostStat(gp.tempId, 'goals', v)} />
+                      <StatInput label="Assists" value={gp.assists}     onChange={v => updateGhostStat(gp.tempId, 'assists', v)} />
+                      <StatInput label="Yellow"  value={gp.yellowCards} onChange={v => updateGhostStat(gp.tempId, 'yellowCards', v)} max={2} />
+                      <StatInput label="Red"     value={gp.redCards}    onChange={v => updateGhostStat(gp.tempId, 'redCards', v)} max={1} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                      <StatInput label="Mins" value={gp.mins} onChange={v => updateGhostStat(gp.tempId, 'mins', v)} max={120} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Status</label>
+                        <select value={gp.sub ? 'sub' : gp.subbed ? 'subbed' : 'starter'} onChange={e => { const v = e.target.value; updateGhostStat(gp.tempId, 'sub', v === 'sub' ? 1 : 0); updateGhostStat(gp.tempId, 'subbed', v === 'subbed' ? 1 : 0); updateGhostStat(gp.tempId, 'apps', 1); }} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#fff', padding: '8px 10px', fontSize: 14, width: '100%', outline: 'none' }}>
+                          <option value="starter">Starter</option>
+                          <option value="sub">Substitute In</option>
+                          <option value="subbed">Substituted Off</option>
+                        </select>
+                      </div>
+                    </div>
+                    <RatingInput value={gp.rating} onChange={v => updateGhostStat(gp.tempId, 'rating', v)} />
+                  </div>
+                ))}
+
+                {/* Add ghost player button / inline form */}
+                {showGhostForm ? (
+                  <div style={{ ...sectionStyle, border: '1px dashed #44446a', background: 'linear-gradient(135deg, #0a0a1e 0%, #0d0d22 100%)', marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: '#888', fontWeight: 700, letterSpacing: 1.5, marginBottom: 14, textTransform: 'uppercase' }}>👻 Add Player Not On Platform</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div>
+                        <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Full Name *</label>
+                        <input placeholder="e.g. John Kamau" value={ghostForm.name} onChange={e => setGhostForm(f => ({ ...f, name: e.target.value }))} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#fff', padding: '10px 14px', fontSize: 14, width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Position</label>
+                        <select value={ghostForm.position} onChange={e => setGhostForm(f => ({ ...f, position: e.target.value }))} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: ghostForm.position ? '#fff' : '#555', padding: '10px 10px', fontSize: 14, width: '100%', outline: 'none' }}>
+                          <option value="">Select position...</option>
+                          {['GK','CB','LB','RB','CDM','CM','CAM','LW','RW','ST','CF'].map(p => <option key={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Phone <span style={{ color: '#555', fontWeight: 400 }}>(sends SMS invite)</span></label>
+                        <input type="tel" placeholder="+254 7XX XXX XXX" value={ghostForm.phone} onChange={e => setGhostForm(f => ({ ...f, phone: e.target.value }))} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#fff', padding: '10px 14px', fontSize: 14, width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ color: '#888', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Email <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
+                        <input type="email" placeholder="optional" value={ghostForm.email} onChange={e => setGhostForm(f => ({ ...f, email: e.target.value }))} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#fff', padding: '10px 14px', fontSize: 14, width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button onClick={addGhostPlayer} disabled={!ghostForm.name.trim()} style={{ flex: 2, padding: '13px 0', background: ghostForm.name.trim() ? 'linear-gradient(135deg, #5a5a9a, #3a3a7a)' : '#1a1a2e', border: 'none', borderRadius: 8, color: ghostForm.name.trim() ? '#fff' : '#444', fontWeight: 800, fontSize: 13, cursor: ghostForm.name.trim() ? 'pointer' : 'not-allowed', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif" }}>✓ ADD PLAYER</button>
+                        <button onClick={() => { setShowGhostForm(false); setGhostForm({ name: '', position: '', phone: '', email: '' }); }} style={{ flex: 1, padding: '13px 0', background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#666', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: "'Rajdhani', sans-serif" }}>CANCEL</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowGhostForm(true)} style={{ width: '100%', padding: '14px 0', background: 'transparent', border: '2px dashed #333355', borderRadius: 10, color: '#666', fontWeight: 800, fontSize: 12, cursor: 'pointer', letterSpacing: 1, fontFamily: "'Rajdhani', sans-serif", marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 15 }}>👻</span> + ADD PLAYER NOT ON TALENT GRAPH
+                  </button>
                 )}
               </div>
             )}

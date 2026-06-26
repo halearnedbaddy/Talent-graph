@@ -637,5 +637,32 @@ service cloud.firestore {
       );
       allow delete: if isAdmin() || isClubAdmin();
     }
+
+    // ----------------------------------------------------------------------
+    // ghost_players — unregistered players with coach-entered match stats
+    // ----------------------------------------------------------------------
+    match /ghost_players/{ghostId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isStaffRole() ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        resource.data.clubId == ('club_' + request.auth.uid) ||
+        resource.data.coachId == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        isStaffRole() ||
+        isActiveMemberOfClub(request.resource.data.clubId) ||
+        request.resource.data.clubId == ('club_' + request.auth.uid) ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        isStaffRole() ||
+        resource.data.coachId == request.auth.uid ||
+        isActiveMemberOfClub(resource.data.clubId) ||
+        request.auth.uid == resource.data.claimedBy
+      );
+      allow delete: if isAdmin() || resource.data.coachId == request.auth.uid;
+    }
   }
 }
