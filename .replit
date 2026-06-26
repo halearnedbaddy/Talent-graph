@@ -45,3 +45,7 @@ NEXT_PUBLIC_APP_URL = "https://talent-graph.vercel.app"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-861fa5b4-5e0b-48d7-9cb7-f5ce499e7c4b"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 300000
