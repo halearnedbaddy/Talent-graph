@@ -55,6 +55,13 @@ service cloud.firestore {
       return isClubOwner(clubId) || isActiveMemberOfClub(clubId);
     }
 
+    // Returns true when the authenticated user has a pending squad invite from a
+    // specific club. Invite doc ID uses deterministic pattern {athleteId}_{clubId}.
+    function hasPendingSquadInvite(clubId) {
+      let invitePath = /databases/$(database)/documents/squad_invites/$(request.auth.uid + '_' + clubId);
+      return exists(invitePath) && get(invitePath).data.status == 'pending';
+    }
+
     // ----------------------------------------------------------------------
     // Users
     // FIX: Restrict read — users can read their own doc; scouts/coaches/admins
@@ -147,7 +154,9 @@ service cloud.firestore {
         allow write: if isSignedIn() && (
           clubId == ('club_' + request.auth.uid) ||
           isActiveMemberOfClub(clubId) ||
-          isAdmin()
+          isAdmin() ||
+          // Athlete accepting a squad invite — writes only their own squad entry, verified by pending invite
+          (memberId == request.auth.uid && hasPendingSquadInvite(clubId))
         );
       }
 
@@ -173,7 +182,10 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid &&
           (
             request.resource.data.role == 'admin' ||
-            (request.resource.data.status == 'pending' && request.resource.data.role in ['scout', 'coach', 'assistant_coach', 'analyst', 'gk_coach'])
+            (request.resource.data.status == 'pending' && request.resource.data.role in ['scout', 'coach', 'assistant_coach', 'analyst', 'gk_coach']) ||
+            // Athlete accepting a squad invite: verified via deterministic invite doc
+            (request.resource.data.role == 'athlete' && request.resource.data.status == 'active' &&
+              hasPendingSquadInvite(request.resource.data.clubId))
           )
         ) ||
         (isClubAdmin() && request.resource.data.status == 'club_invited') ||

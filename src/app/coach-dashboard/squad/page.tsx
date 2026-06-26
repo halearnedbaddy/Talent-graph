@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc, addDoc, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, addDoc, setDoc, getDocs, limit, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -201,7 +201,8 @@ export default function CoachSquadPage() {
     if (!firestore || !clubId || !user) return;
     setInviting(athlete.uid);
     try {
-      await addDoc(collection(firestore, 'squad_invites'), {
+      const inviteDocId = `${athlete.uid}_${clubId}`;
+      await setDoc(doc(firestore, 'squad_invites', inviteDocId), {
         athleteId: athlete.uid,
         athleteName: `${athlete.firstName} ${athlete.lastName}`,
         clubId,
