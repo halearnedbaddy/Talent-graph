@@ -436,6 +436,16 @@ export function AthleteDashboard({ userAccount, athleteProfile }: AthleteDashboa
                       className="w-full justify-start gap-3 h-12 font-bold text-sm"
                       asChild
                     >
+                      <Link href="/dashboard/trials" onClick={() => setMoreOpen(false)}>
+                        <Target className="h-4 w-4 text-primary" />
+                        Open Trials
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-3 h-12 font-bold text-sm"
+                      asChild
+                    >
                       <Link href="/dashboard/injury-tracker" onClick={() => setMoreOpen(false)}>
                         <Shield className="h-4 w-4 text-primary" />
                         Injury Tracker
