@@ -652,6 +652,7 @@ export interface SupportTicket {
   senderUserId: string | null;
   senderEmail: string;
   senderName: string;
+  senderPhone?: string | null;
   source: TicketSource;
   subject: string;
   status: TicketStatus;
@@ -703,6 +704,7 @@ export interface MarketingSegment {
     geography?: { country?: string; county?: string };
   };
   memberCount: number;
+  smsEligibleCount?: number;
   createdBy: string;
   lastRefreshedAt: string;
   createdAt: string;

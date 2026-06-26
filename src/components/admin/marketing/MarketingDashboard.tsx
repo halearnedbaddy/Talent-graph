@@ -15,7 +15,7 @@ import {
   Loader2, Plus, X, Send, Users, Megaphone, Zap, BarChart3,
   Mail, MessageSquare, Calendar, CheckCircle2, Clock, AlertCircle,
   Trash2, Play, Pause, RefreshCw, TrendingUp, Copy, Eye,
-  MousePointerClick, Target, ArrowRight, ChevronRight, Filter,
+  MousePointerClick, Target, ArrowRight, ChevronRight, Filter, Phone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -209,6 +209,8 @@ function SendConfirmModal({
   sending: boolean;
 }) {
   const cc = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email;
+  const isSms = campaign.channel === 'sms' || campaign.channel === 'both';
+  const smsReach = segment?.smsEligibleCount ?? null;
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -235,7 +237,25 @@ function SendConfirmModal({
               <span className="text-muted-foreground">Est. reach</span>
               <span className="font-black text-primary">{(segment?.memberCount ?? 0).toLocaleString()} recipients</span>
             </div>
+            {isSms && (
+              <div className="flex justify-between text-sm border-t pt-2 mt-1">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <Phone className="w-3 h-3" /> SMS eligible
+                </span>
+                {smsReach !== null ? (
+                  <span className="font-black text-purple-600">{smsReach.toLocaleString()} with phone</span>
+                ) : (
+                  <span className="text-muted-foreground text-xs italic">Refresh segment to calculate</span>
+                )}
+              </div>
+            )}
           </div>
+          {isSms && smsReach === 0 && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">No users in this segment have a phone number on file. Encourage users to add their phone in their settings for SMS delivery.</p>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">This will immediately send to all eligible recipients. Suppressed/unsubscribed contacts will be skipped automatically.</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
@@ -1159,9 +1179,17 @@ export function MarketingDashboard() {
                     </div>
                   </div>
 
-                  <div className="flex items-end gap-1 mb-3">
-                    <p className="text-3xl font-black text-purple-500">{seg.memberCount.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground mb-1">members</p>
+                  <div className="flex items-end gap-2 mb-2">
+                    <div>
+                      <p className="text-3xl font-black text-purple-500">{seg.memberCount.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">members</p>
+                    </div>
+                    {seg.smsEligibleCount !== undefined && (
+                      <div className="mb-0.5">
+                        <p className="text-lg font-black text-purple-400/70">{seg.smsEligibleCount.toLocaleString()}</p>
+                        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />SMS eligible</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1">

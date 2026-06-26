@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const cutoff = lastActiveDaysFilter ? Date.now() - lastActiveDaysFilter * 864e5 : null;
 
-  const count = allUsers.filter((u: any) => {
+  const eligible = allUsers.filter((u: any) => {
     const uf = u.fields || {};
     if (roleFilter && uf.role?.stringValue !== roleFilter) return false;
     if (cutoff && uf.lastActiveAt?.timestampValue) {
@@ -39,22 +39,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     if (countryFilter && uf.geography?.mapValue?.fields?.country?.stringValue !== countryFilter) return false;
     return true;
+  });
+
+  const count = eligible.length;
+  const smsEligibleCount = eligible.filter((u: any) => {
+    const phone = u.fields?.phone?.stringValue;
+    return phone && phone.trim().length > 5;
   }).length;
 
   const now = new Date().toISOString();
   await fetch(
-    `${FIRESTORE_BASE}/marketing_segments/${id}?updateMask.fieldPaths=memberCount&updateMask.fieldPaths=lastRefreshedAt`,
+    `${FIRESTORE_BASE}/marketing_segments/${id}?updateMask.fieldPaths=memberCount&updateMask.fieldPaths=smsEligibleCount&updateMask.fieldPaths=lastRefreshedAt`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fields: {
           memberCount: { integerValue: count },
+          smsEligibleCount: { integerValue: smsEligibleCount },
           lastRefreshedAt: { stringValue: now },
         },
       }),
     }
   );
 
-  return Response.json({ success: true, memberCount: count });
+  return Response.json({ success: true, memberCount: count, smsEligibleCount });
 }

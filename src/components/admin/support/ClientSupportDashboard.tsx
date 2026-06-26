@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2, Send, Search, MessageSquare, AlertCircle, Clock, CheckCircle2,
   Tag, StickyNote, Filter, Plus, ThumbsUp, ThumbsDown, X, ChevronDown,
-  TicketCheck, Users, Timer, TrendingUp, Star, StarHalf
+  TicketCheck, Users, Timer, TrendingUp, Star, StarHalf, Phone
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -59,7 +59,7 @@ function SlaTimer({ deadline }: { deadline: string }) {
 function NewTicketForm({ onClose, agentId, agentName }: { onClose: () => void; agentId: string; agentName: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [form, setForm] = useState({ senderEmail: '', senderName: '', subject: '', message: '', priority: 'medium' as TicketPriority });
+  const [form, setForm] = useState({ senderEmail: '', senderName: '', senderPhone: '', subject: '', message: '', priority: 'medium' as TicketPriority });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,6 +75,7 @@ function NewTicketForm({ onClose, agentId, agentName }: { onClose: () => void; a
         senderUserId: null,
         senderEmail: form.senderEmail,
         senderName: form.senderName || form.senderEmail,
+        senderPhone: form.senderPhone.trim() || null,
         source: 'in_app',
         subject: form.subject,
         status: 'open',
@@ -124,6 +125,14 @@ function NewTicketForm({ onClose, agentId, agentName }: { onClose: () => void; a
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Name</label>
                 <Input value={form.senderName} onChange={e => setForm(f => ({ ...f, senderName: e.target.value }))} placeholder="Full name" />
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Phone (optional — for SMS updates)</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input value={form.senderPhone} onChange={e => setForm(f => ({ ...f, senderPhone: e.target.value }))} placeholder="0712 345 678 or +254712345678" className="pl-8" />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">User will receive an SMS when you reply to this ticket.</p>
             </div>
             <div>
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Subject *</label>
@@ -233,9 +242,10 @@ export function ClientSupportDashboard() {
     setSending(true);
     try {
       const now = new Date().toISOString();
+      const agentDisplayName = user.displayName || user.email || 'Support Agent';
       await addDoc(collection(firestore, 'support_tickets', selectedId, 'messages'), {
         senderType: 'agent',
-        senderName: user.displayName || user.email || 'Support Agent',
+        senderName: agentDisplayName,
         body: replyText,
         sentVia: 'app',
         sentAt: now,
@@ -246,6 +256,18 @@ export function ClientSupportDashboard() {
         lastMessage: replyText.slice(0, 100),
       });
       setReplyText('');
+      if (selectedTicket?.senderPhone) {
+        fetch('/api/sms/support-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: selectedTicket.senderPhone,
+            userName: selectedTicket.senderName,
+            agentName: agentDisplayName,
+            ticketSubject: selectedTicket.subject,
+          }),
+        }).catch(() => {});
+      }
     } catch {
       toast({ variant: 'destructive', title: 'Failed to send reply', description: 'Please try again.' });
     } finally {
@@ -468,7 +490,14 @@ export function ClientSupportDashboard() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-bold text-sm leading-tight truncate">{selectedTicket.subject}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{selectedTicket.senderName} · {selectedTicket.senderEmail}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-xs text-muted-foreground">{selectedTicket.senderName} · {selectedTicket.senderEmail}</p>
+                      {selectedTicket.senderPhone && (
+                        <span className="text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <Phone className="w-2.5 h-2.5" />{selectedTicket.senderPhone}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <SlaTimer deadline={selectedTicket.slaDeadline} />
                       {selectedTicket.csatRating && (
