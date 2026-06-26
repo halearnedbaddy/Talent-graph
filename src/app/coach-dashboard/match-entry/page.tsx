@@ -373,17 +373,18 @@ export default function CoachMatchEntryPage() {
     const motmPlayer = getPlayer(motm);
     const tableRows = squadPlayers.map(p => {
       const ps = ensureStat(p.id);
+      const ratingColor = ps.rating >= 8 ? '#007A5E' : ps.rating >= 5 ? '#9A6400' : '#B91C1C';
       return `<tr>
-        <td>${p.number ?? '—'}</td>
-        <td>${p.name}</td>
-        <td>${p.position}</td>
+        <td>${escHtml(p.number ?? '—')}</td>
+        <td>${escHtml(p.name)}</td>
+        <td>${escHtml(p.position)}</td>
         <td>${ps.sub ? 'Sub' : ps.subbed ? 'Subbed' : 'Start'}</td>
-        <td style="text-align:center">${ps.mins}'</td>
-        <td style="text-align:center">${ps.goals}</td>
-        <td style="text-align:center">${ps.assists}</td>
-        <td style="text-align:center">${ps.yellowCards}</td>
-        <td style="text-align:center">${ps.redCards}</td>
-        <td style="text-align:center;color:${ps.rating >= 8 ? '#007A5E' : ps.rating >= 5 ? '#9A6400' : '#B91C1C'};font-weight:700">${ps.rating}/10</td>
+        <td style="text-align:center">${escHtml(ps.mins)}'</td>
+        <td style="text-align:center">${escHtml(ps.goals)}</td>
+        <td style="text-align:center">${escHtml(ps.assists)}</td>
+        <td style="text-align:center">${escHtml(ps.yellowCards)}</td>
+        <td style="text-align:center">${escHtml(ps.redCards)}</td>
+        <td style="text-align:center;color:${ratingColor};font-weight:700">${escHtml(ps.rating)}/10</td>
       </tr>`;
     }).join('');
 

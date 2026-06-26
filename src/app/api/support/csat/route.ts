@@ -26,7 +26,12 @@ export async function GET(req: NextRequest) {
   if (!ticketId || !rating || !['1', '2', '3', '4', '5'].includes(rating)) {
     return new NextResponse(errorPage('Invalid rating link.'), {
       status: 400,
-      headers: { 'Content-Type': 'text/html' },
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+      },
     });
   }
 
@@ -54,7 +59,12 @@ export async function GET(req: NextRequest) {
 
   return new NextResponse(thankYouPage(rating, label, color), {
     status: 200,
-    headers: { 'Content-Type': 'text/html' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+    },
   });
 }
 
@@ -98,8 +108,12 @@ function thankYouPage(rating: string, label: string, color: string): string {
 </html>`;
 }
 
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function errorPage(msg: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Error</title>
   <style>body{background:#0F172A;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;color:#94A3B8;font-size:14px;}</style>
-  </head><body><p>${msg}</p></body></html>`;
+  </head><body><p>${escHtml(msg)}</p></body></html>`;
 }

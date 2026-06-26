@@ -67,9 +67,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   transpilePackages: ['recharts'],
   allowedDevOrigins,
   async headers() {
