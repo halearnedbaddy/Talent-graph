@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, TrendingUp, Globe, Star } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck, TrendingUp, Globe, Star, Phone } from 'lucide-react';
 import Image from 'next/image';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,6 +29,7 @@ const formSchema = z.object({
   firstName: z.string().min(1, { message: "First name is required." }),
   lastName: z.string().min(1, { message: "Last name is required." }),
   email: z.string().email({ message: "Please enter a valid email." }),
+  phone: z.string().regex(/^[0-9+\s\-()]{7,15}$/, 'Enter a valid phone number (e.g. 0712 345678)').optional().or(z.literal('')),
   password: z.string().min(8, { message: "Password must be at least 8 characters." }),
   confirmPassword: z.string(),
   agreeToTerms: z.boolean().refine((val) => val === true, {
@@ -62,6 +63,7 @@ export default function SignupPage() {
       firstName: "",
       lastName: "",
       email: "",
+      phone: "",
       password: "",
       confirmPassword: "",
       agreeToTerms: false,
@@ -98,6 +100,7 @@ export default function SignupPage() {
         email: newUser.email,
         firstName: values.firstName,
         lastName: values.lastName,
+        ...(values.phone ? { phone: values.phone } : {}),
         creationTimestamp: new Date().toISOString(),
         isEmailVerified: false,
         subscribeToEmails: values.subscribeToEmails ?? false,
@@ -252,6 +255,24 @@ export default function SignupPage() {
                         <FormLabel className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Email address</FormLabel>
                         <FormControl>
                           <Input placeholder="m@example.com" className="h-12 rounded-2xl bg-muted/40" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                          Phone number <span className="text-muted-foreground/60 normal-case font-normal">(optional)</span>
+                        </FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="0712 345 678" className="h-12 rounded-2xl bg-muted/40 pl-10" {...field} />
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>

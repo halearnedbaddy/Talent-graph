@@ -501,6 +501,7 @@ const scoutFormSchema = z.object({
   sports: z.string().min(3, 'Please list at least one sport.'),
   website: z.string().url().optional().or(z.literal('')),
   bio: z.string().max(500).optional(),
+  phone: z.string().regex(/^[0-9+\s\-()]{7,15}$/, 'Enter a valid phone number').optional().or(z.literal('')),
   clubId: z.string().min(1, 'Club selection is required.'),
 });
 
@@ -514,7 +515,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
 
   const form = useForm<z.infer<typeof scoutFormSchema>>({
     resolver: zodResolver(scoutFormSchema),
-    defaultValues: { name: '', username: '', entityType: 'individual', sports: '', website: '', bio: '', clubId: '' },
+    defaultValues: { name: '', username: '', entityType: 'individual', sports: '', website: '', bio: '', phone: '', clubId: '' },
   });
 
   const clubsQuery = useMemoFirebase(() => (
@@ -545,6 +546,7 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
       };
       if (values.website) scoutData.website = values.website;
       if (values.bio) scoutData.bio = values.bio;
+      if (values.phone) scoutData.phone = values.phone;
       if (values.clubId) scoutData.clubId = values.clubId;
 
       // 1. Save user role and scout profile first
@@ -661,6 +663,13 @@ const ScoutProfileForm = ({ userAccount }: { userAccount: UserAccount }) => {
             )} />
             <FormField control={form.control} name="bio" render={({ field }) => (
               <FormItem><FormLabel>Professional Bio</FormLabel><FormControl><Textarea className="h-24" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="phone" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> Phone Number <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
+                <FormControl><Input placeholder="0712 345 678" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
             )} />
             <Button type="submit" className="w-full" disabled={isLoading}>{isLoading && <Loader2 className="animate-spin mr-2 h-4 w-4" />} Finish Setup</Button>
           </form>
