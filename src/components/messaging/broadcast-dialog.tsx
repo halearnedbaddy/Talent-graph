@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
-  collection, query, where, doc, setDoc, addDoc, updateDoc, getDoc,
+  collection, query, where, doc, setDoc, addDoc, updateDoc, getDoc, getDocs, documentId,
 } from 'firebase/firestore';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -11,10 +11,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Megaphone, Loader2, Users } from 'lucide-react';
+import { Megaphone, Loader2, Users, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { trackEvent } from '@/lib/analytics';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
+import { smsSend } from '@/hooks/useSMS';
 import type { ClubMember } from '@/lib/types';
 
 interface Props {
@@ -136,7 +137,42 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
         sentBy: user.uid,
       }).catch(() => {});
 
-      // ── Step 4: In-app notifications ──
+      // ── Step 4: SMS — batch-fetch phones from users collection ──
+      const memberIdsToSms = (squadMembers ?? [])
+        .map(m => m.userId)
+        .filter((id): id is string => Boolean(id) && id !== user.uid);
+
+      if (memberIdsToSms.length > 0) {
+        try {
+          // Firestore 'in' queries max 30 items — chunk if needed
+          const chunks: string[][] = [];
+          for (let i = 0; i < memberIdsToSms.length; i += 30) {
+            chunks.push(memberIdsToSms.slice(i, i + 30));
+          }
+          const phones: string[] = [];
+          for (const chunk of chunks) {
+            const snap = await getDocs(
+              query(collection(firestore, 'users'), where(documentId(), 'in', chunk))
+            );
+            snap.forEach(d => {
+              const phone = (d.data() as any).phone;
+              if (phone) phones.push(phone);
+            });
+          }
+          if (phones.length > 0) {
+            smsSend('announcement', {
+              phones,
+              clubName,
+              senderName,
+              message: text.trim(),
+            });
+          }
+        } catch (smsErr) {
+          console.error('[BroadcastDialog] SMS lookup failed:', smsErr);
+        }
+      }
+
+      // ── Step 5: In-app notifications ──
       for (const member of squadMembers ?? []) {
         if (member.userId && member.userId !== user.uid) {
           const memberRole = member.role || 'athlete';
@@ -195,9 +231,14 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
               Sending to{' '}
               <span className="font-black text-white">{memberCount} squad member{memberCount !== 1 ? 's' : ''}</span>
             </p>
-            <Badge className="ml-auto bg-[#00C853]/20 text-[#00C853] border-none font-black text-[9px] h-4 px-1.5">
-              + Push notif
-            </Badge>
+            <div className="ml-auto flex items-center gap-1">
+              <Badge className="bg-[#00C853]/20 text-[#00C853] border-none font-black text-[9px] h-4 px-1.5">
+                + Push
+              </Badge>
+              <Badge className="bg-blue-500/20 text-blue-400 border-none font-black text-[9px] h-4 px-1.5">
+                + SMS
+              </Badge>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -216,7 +257,7 @@ export function BroadcastDialog({ open, onClose, onSent }: Props) {
           </div>
 
           <p className="text-[10px] text-[#4B5563]">
-            This will post a pinned message in the club group chat and send a push notification to all squad members.
+            Posts a pinned message in the club group chat, sends a push notification, and texts every squad member who has a phone number on file.
           </p>
         </div>
 
