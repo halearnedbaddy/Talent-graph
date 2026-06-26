@@ -35,6 +35,7 @@ export default function CoachSettingsPage() {
   const router = useRouter();
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
+  const [phone, setPhone] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -56,8 +57,9 @@ export default function CoachSettingsPage() {
   useEffect(() => {
     if (!firestore || !user) return;
     getDoc(doc(firestore, 'users', user.uid)).then(snap => {
-      if (snap.exists() && snap.data().photoUrl) {
-        setPhotoPreview(snap.data().photoUrl);
+      if (snap.exists()) {
+        if (snap.data().photoUrl) setPhotoPreview(snap.data().photoUrl);
+        setPhone(snap.data().phone ?? '');
       }
     });
   }, [firestore, user]);
@@ -116,10 +118,17 @@ export default function CoachSettingsPage() {
   };
 
   const handleUpdateProfile = async () => {
-    if (!user || !displayName.trim()) return;
+    if (!user || !displayName.trim() || !firestore) return;
     setSaving(true);
     try {
-      await updateProfile(user, { displayName });
+      await Promise.all([
+        updateProfile(user, { displayName }),
+        updateDoc(doc(firestore, 'users', user.uid), {
+          displayName,
+          ...(phone ? { phone } : { phone: null }),
+          updatedAt: new Date().toISOString(),
+        }),
+      ]);
       toast({ title: 'Profile Updated ✓' });
     } catch {
       toast({ title: 'Error updating profile', variant: 'destructive' });
@@ -251,6 +260,18 @@ export default function CoachSettingsPage() {
               value={user?.email ?? ''}
               disabled
               className="bg-[#1C2333] border-[#1E293B] text-[#94A3B8] cursor-not-allowed"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] font-black text-[#94A3B8] uppercase flex items-center gap-1.5">
+              Phone Number <span className="font-normal normal-case text-[#4B5563]">(optional — for SMS)</span>
+            </Label>
+            <Input
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="0712 345 678"
+              className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853]"
             />
           </div>
 

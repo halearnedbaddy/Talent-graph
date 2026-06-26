@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,14 +88,23 @@ const DEFAULT_SETTINGS: ScoutSettings = {
 
 export function SettingsTab({ scoutProfile }: { scoutProfile: ScoutProfile }) {
   const firestore = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<ScoutSettings>(DEFAULT_SETTINGS);
+  const [phone, setPhone] = useState('');
 
   const scoutRef = useMemoFirebase(() => (
     firestore ? doc(firestore, 'scouts', scoutProfile.uid) : null
   ), [firestore, scoutProfile.uid]);
   const { data: scout } = useDoc<ScoutProfile & { settings?: ScoutSettings }>(scoutRef);
+
+  useEffect(() => {
+    if (!firestore || !scoutProfile.uid) return;
+    getDoc(doc(firestore, 'users', scoutProfile.uid)).then(snap => {
+      if (snap.exists()) setPhone(snap.data().phone ?? '');
+    });
+  }, [firestore, scoutProfile.uid]);
 
   useEffect(() => {
     if (scout?.settings) {
@@ -123,10 +132,17 @@ export function SettingsTab({ scoutProfile }: { scoutProfile: ScoutProfile }) {
     if (!firestore) return;
     setIsSaving(true);
     try {
-      await updateDoc(doc(firestore, 'scouts', scoutProfile.uid), {
-        settings,
-        updatedAt: new Date().toISOString(),
-      });
+      await Promise.all([
+        updateDoc(doc(firestore, 'scouts', scoutProfile.uid), {
+          settings,
+          ...(phone ? { phone } : {}),
+          updatedAt: new Date().toISOString(),
+        }),
+        updateDoc(doc(firestore, 'users', scoutProfile.uid), {
+          ...(phone ? { phone } : { phone: null }),
+          updatedAt: new Date().toISOString(),
+        }),
+      ]);
       toast({ title: 'Settings saved', description: 'Your preferences have been updated.' });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to save settings.' });
@@ -223,6 +239,19 @@ export function SettingsTab({ scoutProfile }: { scoutProfile: ScoutProfile }) {
               </div>
             </div>
           )}
+
+          <div className="space-y-2 pt-1">
+            <Label className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5" /> Phone Number <span className="font-normal normal-case text-[#4B5563]">(optional)</span>
+            </Label>
+            <Input
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="0712 345 678"
+              className="bg-[#1C2333] border-[#1E293B] text-white placeholder:text-[#4B5563] focus:border-[#00C853] h-11"
+            />
+            <p className="text-[10px] text-[#4B5563]">Add your number to receive club announcements and platform alerts by SMS.</p>
+          </div>
         </CardContent>
       </Card>
 

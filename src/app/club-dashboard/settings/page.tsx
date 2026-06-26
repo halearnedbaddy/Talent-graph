@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore, useDoc, useMemoFirebase, useAuth } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, Plus, X, Camera, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
+import { Loader2, Save, Plus, X, Camera, CheckCircle2, AlertCircle, Upload, Phone } from 'lucide-react';
 import type { ClubProfile, ClubSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { DeleteAccountDialog } from '@/components/account/delete-account-dialog';
@@ -23,6 +23,7 @@ export default function ClubSettingsPage() {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [clubId, setClubId] = useState<string | null>(null);
+    const [phone, setPhone] = useState('');
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const [logoPreview, setLogoPreview] = useState<string>('');
@@ -30,6 +31,13 @@ export default function ClubSettingsPage() {
     const [isCompressingLogo, setIsCompressingLogo] = useState(false);
     const [pendingLogoUrl, setPendingLogoUrl] = useState<string | null>(null);
     const [logoDragOver, setLogoDragOver] = useState(false);
+
+    useEffect(() => {
+        if (!firestore || !user) return;
+        getDoc(doc(firestore, 'users', user.uid)).then(snap => {
+            if (snap.exists()) setPhone(snap.data().phone ?? '');
+        });
+    }, [firestore, user]);
 
     useEffect(() => {
         if (!firestore || !user) return;
@@ -128,7 +136,7 @@ export default function ClubSettingsPage() {
     };
 
     const handleSave = async () => {
-        if (!firestore || !clubId) return;
+        if (!firestore || !clubId || !user) return;
         setIsSaving(true);
         try {
             const updates: Record<string, any> = {
@@ -136,7 +144,13 @@ export default function ClubSettingsPage() {
                 updatedAt: new Date().toISOString()
             };
             if (pendingLogoUrl) updates.logoUrl = pendingLogoUrl;
-            await updateDoc(doc(firestore, 'clubs', clubId), updates);
+            await Promise.all([
+                updateDoc(doc(firestore, 'clubs', clubId), updates),
+                updateDoc(doc(firestore, 'users', user.uid), {
+                    ...(phone ? { phone } : { phone: null }),
+                    updatedAt: new Date().toISOString(),
+                }),
+            ]);
             setPendingLogoUrl(null);
             toast({ title: 'Settings Updated', description: 'Organizational configuration synced.' });
         } catch (e) {
@@ -243,6 +257,29 @@ export default function ClubSettingsPage() {
                             )}
                         </div>
                     </button>
+                </CardContent>
+            </Card>
+
+            {/* Admin Contact */}
+            <Card className="border-none shadow-xl bg-background overflow-hidden">
+                <CardHeader className="bg-muted/50 border-b py-3 px-4">
+                    <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-primary" /> Admin Contact
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 space-y-3">
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase text-muted-foreground">
+                            Your Phone Number <span className="font-normal normal-case">(optional — for SMS notifications)</span>
+                        </Label>
+                        <Input
+                            value={phone}
+                            onChange={e => setPhone(e.target.value)}
+                            placeholder="0712 345 678"
+                            className="h-11 font-bold"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Your personal number as admin. Squad members add theirs via their own profile settings to receive club broadcast SMS messages.</p>
+                    </div>
                 </CardContent>
             </Card>
 

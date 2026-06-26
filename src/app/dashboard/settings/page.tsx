@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -70,11 +70,19 @@ export default function AthleteSettingsPage() {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<AthleteSettings>(DEFAULT_SETTINGS);
+  const [phone, setPhone] = useState('');
 
   const athleteRef = useMemoFirebase(() => (
     firestore && user?.uid ? doc(firestore, 'athletes', user.uid) : null
   ), [firestore, user?.uid]);
   const { data: profile, isLoading } = useDoc<AthleteProfile & { settings?: AthleteSettings }>(athleteRef);
+
+  useEffect(() => {
+    if (!firestore || !user?.uid) return;
+    getDoc(doc(firestore, 'users', user.uid)).then(snap => {
+      if (snap.exists()) setPhone(snap.data().phone ?? '');
+    });
+  }, [firestore, user?.uid]);
 
   useEffect(() => {
     if (!profile) return;
@@ -104,16 +112,23 @@ export default function AthleteSettingsPage() {
     if (!firestore || !user) return;
     setIsSaving(true);
     try {
-      await updateDoc(doc(firestore, 'athletes', user.uid), {
-        settings: {
-          notifications: settings.notifications,
-          privacy: settings.privacy,
-        },
-        activelyLooking: settings.marketplace.activelyLooking,
-        marketplaceBio: settings.marketplace.activelyLooking ? settings.marketplace.marketplaceBio : '',
-        availabilityDate: settings.marketplace.activelyLooking ? settings.marketplace.availabilityDate : '',
-        updatedAt: new Date().toISOString(),
-      });
+      await Promise.all([
+        updateDoc(doc(firestore, 'athletes', user.uid), {
+          settings: {
+            notifications: settings.notifications,
+            privacy: settings.privacy,
+          },
+          activelyLooking: settings.marketplace.activelyLooking,
+          marketplaceBio: settings.marketplace.activelyLooking ? settings.marketplace.marketplaceBio : '',
+          availabilityDate: settings.marketplace.activelyLooking ? settings.marketplace.availabilityDate : '',
+          ...(phone ? { phone } : {}),
+          updatedAt: new Date().toISOString(),
+        }),
+        updateDoc(doc(firestore, 'users', user.uid), {
+          ...(phone ? { phone } : { phone: null }),
+          updatedAt: new Date().toISOString(),
+        }),
+      ]);
       toast({ title: 'Settings saved', description: 'Your preferences have been updated.' });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save settings.' });
@@ -201,6 +216,19 @@ export default function AthleteSettingsPage() {
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <Label className="text-[10px] font-black uppercase text-muted-foreground flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5" /> Phone Number <span className="font-normal normal-case">(optional — for SMS notifications)</span>
+              </Label>
+              <Input
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="0712 345 678"
+                className="h-11 font-bold"
+              />
+              <p className="text-[10px] text-muted-foreground">Used to receive club announcements and match alerts via SMS.</p>
             </div>
           </CardContent>
         </Card>
