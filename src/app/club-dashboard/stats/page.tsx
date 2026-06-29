@@ -1,451 +1,1052 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, Trophy, Activity, TrendingUp, Target, Loader2, Users, Star, Flame, Shield } from 'lucide-react';
-import type { ClubMatch, ClubMember, AthleteProfile } from '@/lib/types';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  BarChart3, Trophy, Loader2, Users, Star, Shield, Target, Activity,
+  ArrowUpDown, ArrowUp, ArrowDown, Download, AlertTriangle,
+} from 'lucide-react';
+import type { ClubMatch, ClubMember, AthleteProfile, MatchEntry } from '@/lib/types';
+import { cn } from '@/lib/utils';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type SortDir = 'asc' | 'desc';
+type VenueKey = 'all' | 'home' | 'away' | 'neutral';
+
+interface PlayerRow {
+  uid: string;
+  name: string;
+  position: string;
+  username?: string;
+  apps: number;
+  goals: number;
+  assists: number;
+  shots: number;
+  pom: number;
+  mins: number;
+  yellows: number;
+  reds: number;
+  fouls: number;
+  saves: number;
+  avgRating: number | null;
+  won: number;
+  drawn: number;
+  lost: number;
+  hasRisk: boolean;
+}
+
+interface VenueBucket {
+  played: number;
+  goals: number;
+  conceded: number;
+  won: number;
+  lost: number;
+  drawn: number;
+  cleanSheets: number;
+  attendance: number;
+  attCount: number;
+  yellows: number;
+  reds: number;
+  fouls: number;
+  penalties: number;
+}
+
+// ── Pure helpers ──────────────────────────────────────────────────────────────
+
+function getVenueType(m: ClubMatch): 'home' | 'away' | 'neutral' {
+  const v = (m.venue || '').toLowerCase().trim();
+  if (v === 'home') return 'home';
+  if (v === 'away') return 'away';
+  return 'neutral';
+}
+
+function getMatchYear(m: ClubMatch) {
+  return (m.date || '').slice(0, 4);
+}
+
+function getEntryYear(e: MatchEntry) {
+  return ((e as any).date || '').slice(0, 4);
+}
+
+function parseScore(score?: string): [number, number] {
+  if (!score) return [0, 0];
+  const parts = score.split('-');
+  return [Number(parts[0]) || 0, Number(parts[1]) || 0];
+}
+
+function emptyBucket(): VenueBucket {
+  return {
+    played: 0, goals: 0, conceded: 0, won: 0, lost: 0, drawn: 0,
+    cleanSheets: 0, attendance: 0, attCount: 0, yellows: 0, reds: 0,
+    fouls: 0, penalties: 0,
+  };
+}
+
+function exportCSV(headers: string[], rows: (string | number)[][], filename: string) {
+  const escape = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Shared UI atoms ───────────────────────────────────────────────────────────
+
+function KpiCard({
+  label, value, sub, color = 'text-primary', icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color?: string;
+  icon?: React.ElementType;
+}) {
+  return (
+    <Card className="border-none shadow-md bg-background">
+      <CardContent className="pt-5 pb-4 px-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
+            <p className={cn('text-3xl font-black mt-1 leading-none truncate', color)}>{value}</p>
+            {sub && (
+              <p className="text-[9px] text-muted-foreground mt-1.5 font-bold uppercase tracking-wider truncate">{sub}</p>
+            )}
+          </div>
+          {Icon && (
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Icon className="w-4 h-4 text-primary" />
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SortIcon({ col, sortCol, dir }: { col: string; sortCol: string; dir: SortDir }) {
+  if (col !== sortCol) return <ArrowUpDown className="w-3 h-3 opacity-25 ml-1 inline-block" />;
+  return dir === 'asc'
+    ? <ArrowUp className="w-3 h-3 ml-1 inline-block text-primary" />
+    : <ArrowDown className="w-3 h-3 ml-1 inline-block text-primary" />;
+}
+
+function RatingBadge({ rating }: { rating: number | null }) {
+  if (rating === null) return <span className="text-xs text-muted-foreground font-mono">—</span>;
+  const cls = rating >= 7
+    ? 'bg-green-500/10 text-green-700 border-green-300'
+    : rating >= 5
+      ? 'bg-amber-500/10 text-amber-700 border-amber-300'
+      : 'bg-red-500/10 text-red-700 border-red-300';
+  return (
+    <Badge variant="outline" className={cn('font-mono text-xs px-1.5 py-0', cls)}>
+      {rating.toFixed(2)}
+    </Badge>
+  );
+}
+
+function SortableTh({
+  col, sortCol, dir, onSort, children, className,
+}: {
+  col: string; sortCol: string; dir: SortDir;
+  onSort: (c: string) => void; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <TableHead
+      className={cn(
+        'text-[9px] font-black uppercase tracking-widest cursor-pointer select-none hover:text-primary whitespace-nowrap transition-colors',
+        className,
+      )}
+      onClick={() => onSort(col)}
+    >
+      {children}
+      <SortIcon col={col} sortCol={sortCol} dir={dir} />
+    </TableHead>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
+        <BarChart3 className="w-5 h-5 text-muted-foreground/50" />
+      </div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function VenueTableHeader() {
+  return (
+    <TableRow className="hover:bg-transparent bg-neutral-900">
+      <TableHead className="text-[9px] font-black uppercase text-white sticky left-0 bg-neutral-900 min-w-[150px]">Metric</TableHead>
+      <TableHead className="text-[9px] font-black uppercase text-white text-center min-w-[70px]">Total</TableHead>
+      <TableHead className="text-[9px] font-black uppercase text-green-400 text-center min-w-[70px] bg-green-500/10">Home</TableHead>
+      <TableHead className="text-[9px] font-black uppercase text-blue-400 text-center min-w-[70px] bg-blue-500/10">Away</TableHead>
+      <TableHead className="text-[9px] font-black uppercase text-neutral-300 text-center min-w-[70px] bg-neutral-500/10">Neutral</TableHead>
+    </TableRow>
+  );
+}
+
+function VenueRow({
+  label, all, home, away, neutral, fmt,
+}: {
+  label: string;
+  all: number; home: number; away: number; neutral: number;
+  fmt?: (n: number) => string;
+}) {
+  const f = fmt ?? String;
+  return (
+    <TableRow className="hover:bg-muted/20 border-b last:border-0">
+      <TableCell className="font-black text-xs sticky left-0 bg-background/95 backdrop-blur whitespace-nowrap">{label}</TableCell>
+      <TableCell className="text-center font-mono text-xs font-bold">{f(all)}</TableCell>
+      <TableCell className="text-center font-mono text-xs bg-green-500/5">{f(home)}</TableCell>
+      <TableCell className="text-center font-mono text-xs bg-blue-500/5">{f(away)}</TableCell>
+      <TableCell className="text-center font-mono text-xs bg-neutral-500/5">{f(neutral)}</TableCell>
+    </TableRow>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function StatisticsHubPage() {
   const { user } = useUser();
   const firestore = useFirestore();
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
+  // ── Filter state ────────────────────────────────────────────────────────────
+  const [season, setSeason] = useState<string>('all');
+  const [matchType, setMatchType] = useState<string>('all');
+  const [venueFilter, setVenueFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState('players');
+
+  // ── Player table sort ───────────────────────────────────────────────────────
+  const [sortCol, setSortCol] = useState('goals');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const handleSort = useCallback((col: string) => {
+    setSortDir(prev => sortCol === col ? (prev === 'asc' ? 'desc' : 'asc') : 'desc');
+    setSortCol(col);
+  }, [sortCol]);
+
+  // ── Club context ─────────────────────────────────────────────────────────────
   const clubMemberQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid)) : null
+    firestore && user
+      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
+      : null
   ), [firestore, user]);
-  const { data: userMemberships } = useCollection<ClubMember>(clubMemberQuery);
-  const clubId = userMemberships?.[0]?.clubId;
+  const { data: memberships } = useCollection<ClubMember>(clubMemberQuery);
+  const clubId = memberships?.[0]?.clubId;
 
+  // ── Data ─────────────────────────────────────────────────────────────────────
   const matchesQuery = useMemoFirebase(() => (
-    firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
+    firestore && clubId
+      ? query(collection(firestore, 'matches'), where('clubId', '==', clubId))
+      : null
   ), [firestore, clubId]);
-  const { data: matches } = useCollection<ClubMatch>(matchesQuery);
+  const { data: rawMatches, isLoading: matchesLoading } = useCollection<ClubMatch>(matchesQuery);
 
   const athletesQuery = useMemoFirebase(() => (
-    firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
+    firestore && clubId
+      ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId))
+      : null
   ), [firestore, clubId]);
-  const { data: athletes } = useCollection<AthleteProfile>(athletesQuery);
+  const { data: rawAthletes, isLoading: athletesLoading } = useCollection<AthleteProfile>(athletesQuery);
 
-  const teamStats = useMemo(() => {
-    if (!matches || matches.length === 0) return { W: 0, L: 0, D: 0, GS: 0, GC: 0, GD: 0, totalYellows: 0, totalReds: 0, highestAttendance: 0, unbeatenStreak: 0, winStreak: 0, lossStreak: 0 };
+  // ── Season list ──────────────────────────────────────────────────────────────
+  const seasons = useMemo(() => {
+    const years = new Set<string>();
+    (rawMatches || []).forEach(m => { const y = getMatchYear(m); if (y) years.add(y); });
+    return Array.from(years).sort().reverse();
+  }, [rawMatches]);
 
-    const sorted = [...matches].sort((a, b) => a.date.localeCompare(b.date));
-    let W = 0, L = 0, D = 0, GS = 0, GC = 0, totalYellows = 0, totalReds = 0, highestAttendance = 0;
+  // ── Filtered matches ─────────────────────────────────────────────────────────
+  const matches = useMemo(() => {
+    let ms = rawMatches || [];
+    if (season !== 'all') ms = ms.filter(m => getMatchYear(m) === season);
+    if (matchType !== 'all') ms = ms.filter(m => (m.category || 'other') === matchType);
+    if (venueFilter !== 'all') ms = ms.filter(m => getVenueType(m) === venueFilter);
+    return ms;
+  }, [rawMatches, season, matchType, venueFilter]);
 
-    let unbeatenStreak = 0, winStreak = 0, lossStreak = 0;
-    let curUnbeaten = 0, curWin = 0, curLoss = 0;
+  // ── Player rows ──────────────────────────────────────────────────────────────
+  const playerRows = useMemo<PlayerRow[]>(() => {
+    if (!rawAthletes) return [];
+    return rawAthletes.map(a => {
+      let history: MatchEntry[] = a.matchHistory || [];
+      if (season !== 'all') history = history.filter(e => getEntryYear(e) === season);
+      if (matchType !== 'all') history = history.filter(e => (e.category || 'other') === matchType);
+      // venue filter doesn't apply at individual MatchEntry level (no venue field)
 
-    for (const m of sorted) {
-      if (m.result === 'W') { W++; curWin++; curLoss = 0; curUnbeaten++; }
-      else if (m.result === 'L') { L++; curLoss++; curWin = 0; curUnbeaten = 0; }
-      else if (m.result === 'D') { D++; curWin = 0; curLoss = 0; curUnbeaten++; }
+      const apps     = history.reduce((s, e) => s + (Number(e.apps)     || 0), 0);
+      const goals    = history.reduce((s, e) => s + (Number(e.goals)    || 0), 0);
+      const assists  = history.reduce((s, e) => s + (Number(e.assists)  || 0), 0);
+      const shots    = history.reduce((s, e) => s + (Number(e.shots)    || 0), 0);
+      const fouls    = history.reduce((s, e) => s + (Number(e.fouls)    || 0), 0);
+      const saves    = history.reduce((s, e) => s + (Number(e.saves)    || 0), 0);
+      const mins     = history.reduce((s, e) => s + (Number(e.minutes)  || 0), 0);
+      const yellows  = history.reduce((s, e) => s + (Number(e.yellowCards) || 0), 0);
+      const reds     = history.reduce((s, e) => s + (Number(e.redCards)    || 0), 0);
+      const pom      = history.filter(e => e.manOfTheMatch).length;
 
-      winStreak = Math.max(winStreak, curWin);
-      lossStreak = Math.max(lossStreak, curLoss);
-      unbeatenStreak = Math.max(unbeatenStreak, curUnbeaten);
+      const rated = history.filter(e => e.rating > 0);
+      const avgRating = rated.length > 0
+        ? rated.reduce((s, e) => s + e.rating, 0) / rated.length
+        : null;
 
-      const parts = m.score?.split('-') || ['0', '0'];
-      GS += Number(parts[0]) || 0;
-      GC += Number(parts[1]) || 0;
+      const won   = history.filter(e => (e as any).result === 'W').length;
+      const drawn = history.filter(e => (e as any).result === 'D').length;
+      const lost  = history.filter(e => (e as any).result === 'L').length;
 
-      totalYellows += Number(m.totalYellowCards) || 0;
-      totalReds += Number(m.totalRedCards) || 0;
+      return {
+        uid: a.uid,
+        name: `${a.firstName} ${a.lastName}`,
+        position: a.position || '',
+        username: a.username,
+        apps, goals, assists, shots, fouls, saves,
+        pom, mins, yellows, reds, avgRating, won, drawn, lost,
+        hasRisk: yellows >= 4,
+      };
+    });
+  }, [rawAthletes, season, matchType]);
 
-      if ((m.attendance || 0) > highestAttendance) highestAttendance = m.attendance || 0;
+  // ── Sorted player rows ───────────────────────────────────────────────────────
+  const sortedPlayers = useMemo(() => {
+    return [...playerRows].sort((a, b) => {
+      const av = (a as any)[sortCol] ?? (sortCol === 'avgRating' ? -1 : 0);
+      const bv = (b as any)[sortCol] ?? (sortCol === 'avgRating' ? -1 : 0);
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [playerRows, sortCol, sortDir]);
+
+  // ── Venue buckets (team + goal + discipline) ──────────────────────────────────
+  const venueBuckets = useMemo(() => {
+    const buckets: Record<VenueKey, VenueBucket> = {
+      all: emptyBucket(), home: emptyBucket(), away: emptyBucket(), neutral: emptyBucket(),
+    };
+
+    for (const m of matches) {
+      const vt = getVenueType(m);
+      const [gs, gc] = parseScore(m.score);
+
+      for (const key of ['all', vt] as VenueKey[]) {
+        const b = buckets[key];
+        b.played++;
+        b.goals += gs;
+        b.conceded += gc;
+        if (m.result === 'W') b.won++;
+        else if (m.result === 'L') b.lost++;
+        else if (m.result === 'D') b.drawn++;
+        if (gc === 0 && m.result !== undefined) b.cleanSheets++;
+        if (m.attendance) { b.attendance += m.attendance; b.attCount++; }
+        b.yellows += Number(m.totalYellowCards) || 0;
+        b.reds += Number(m.totalRedCards) || 0;
+        b.fouls += Number((m as any).totalFouls) || 0;
+        b.penalties += Number((m as any).penaltiesConceded) || 0;
+      }
     }
-
-    return { W, L, D, GS, GC, GD: GS - GC, totalYellows, totalReds, highestAttendance, unbeatenStreak, winStreak, lossStreak };
+    return buckets;
   }, [matches]);
 
-  const athletePerformance = selectedAthleteId ? athletes?.find(a => a.uid === selectedAthleteId) : null;
+  // ── Derived KPIs ─────────────────────────────────────────────────────────────
+  const ts = venueBuckets.all;
+  const winRatePct     = ts.played > 0 ? Math.round((ts.won / ts.played) * 100) : 0;
+  const cleanSheetPct  = ts.played > 0 ? Math.round((ts.cleanSheets / ts.played) * 100) : 0;
+  const avgAttendance  = ts.attCount > 0 ? Math.round(ts.attendance / ts.attCount) : 0;
+  const avgGoals       = ts.played > 0 ? (ts.goals / ts.played).toFixed(2) : '0.00';
 
-  const categoryBreakdown = useMemo(() => {
-    if (!matches) return {};
-    return matches.reduce((acc: Record<string, { W: number; L: number; D: number }>, m) => {
-      const cat = m.category || 'other';
-      if (!acc[cat]) acc[cat] = { W: 0, L: 0, D: 0 };
-      if (m.result) acc[cat][m.result]++;
-      return acc;
-    }, {});
-  }, [matches]);
+  const topScorer  = useMemo(() => [...playerRows].sort((a, b) => b.goals - a.goals)[0] ?? null, [playerRows]);
+  const topRated   = useMemo(() => {
+    const rated = playerRows.filter(p => p.avgRating !== null);
+    return rated.length ? [...rated].sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0))[0] : null;
+  }, [playerRows]);
+  const mostDisciplined = useMemo(() => (
+    playerRows.filter(p => p.yellows === 0 && p.reds === 0 && p.apps > 0)
+      .sort((a, b) => b.apps - a.apps)[0] ?? null
+  ), [playerRows]);
+  const worstOffender = useMemo(() => (
+    [...playerRows].sort((a, b) => (b.yellows + b.reds * 3) - (a.yellows + a.reds * 3))[0] ?? null
+  ), [playerRows]);
+  const riskPlayers = useMemo(() => playerRows.filter(p => p.hasRisk).sort((a, b) => b.yellows - a.yellows), [playerRows]);
+  const avgTeamRating = useMemo(() => {
+    const rated = playerRows.filter(p => p.avgRating !== null);
+    if (!rated.length) return null;
+    return rated.reduce((s, p) => s + p.avgRating!, 0) / rated.length;
+  }, [playerRows]);
+  const totalPom = useMemo(() => playerRows.reduce((s, p) => s + p.pom, 0), [playerRows]);
+  const scorers  = useMemo(() => playerRows.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 10), [playerRows]);
+  const foulRatePerMatch = ts.played > 0 ? (ts.fouls / ts.played).toFixed(1) : '0.0';
 
+  // ── CSV exports ───────────────────────────────────────────────────────────────
+  const handleExportPlayers = () => {
+    exportCSV(
+      ['Name', 'Position', 'Apps', 'Goals', 'Assists', 'Shots', 'POM', 'Avg Rating', 'Yellows', 'Reds', 'Mins', 'Won', 'Drawn', 'Lost'],
+      sortedPlayers.map(p => [
+        p.name, p.position, p.apps, p.goals, p.assists, p.shots, p.pom,
+        p.avgRating !== null ? p.avgRating.toFixed(2) : '',
+        p.yellows, p.reds, p.mins, p.won, p.drawn, p.lost,
+      ]),
+      `player-stats-${season}.csv`,
+    );
+  };
+
+  const handleExportVenue = (label: string) => {
+    const b = venueBuckets;
+    exportCSV(
+      ['Metric', 'Total', 'Home', 'Away', 'Neutral'],
+      [
+        ['Games Played',    b.all.played,      b.home.played,      b.away.played,      b.neutral.played],
+        ['Won',             b.all.won,          b.home.won,         b.away.won,         b.neutral.won],
+        ['Drawn',           b.all.drawn,        b.home.drawn,       b.away.drawn,       b.neutral.drawn],
+        ['Lost',            b.all.lost,         b.home.lost,        b.away.lost,        b.neutral.lost],
+        ['Goals Scored',    b.all.goals,        b.home.goals,       b.away.goals,       b.neutral.goals],
+        ['Goals Conceded',  b.all.conceded,     b.home.conceded,    b.away.conceded,    b.neutral.conceded],
+        ['Clean Sheets',    b.all.cleanSheets,  b.home.cleanSheets, b.away.cleanSheets, b.neutral.cleanSheets],
+        ['Yellow Cards',    b.all.yellows,      b.home.yellows,     b.away.yellows,     b.neutral.yellows],
+        ['Red Cards',       b.all.reds,         b.home.reds,        b.away.reds,        b.neutral.reds],
+      ],
+      `${label}-${season}.csv`,
+    );
+  };
+
+  // ── Loading ───────────────────────────────────────────────────────────────────
+  const isLoading = matchesLoading || athletesLoading;
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
+
+      {/* Page header */}
       <div>
-        <h1 className="text-3xl font-black tracking-tight uppercase">Statistics Hub</h1>
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Organization-wide data aggregates</p>
+        <h1 className="text-2xl font-black tracking-tight uppercase">Statistics Hub</h1>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+          Athletic intelligence dashboard
+        </p>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <div className="overflow-x-auto no-scrollbar mb-6">
+      {/* ── Global filter bar ─────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 pb-1">
+        <Select value={season} onValueChange={setSeason}>
+          <SelectTrigger className="h-8 w-[120px] text-[10px] font-black uppercase">
+            <SelectValue placeholder="Season" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Seasons</SelectItem>
+            {seasons.map(y => <SelectItem key={y} value={y}>{y} / {String(Number(y) + 1).slice(2)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={matchType} onValueChange={setMatchType}>
+          <SelectTrigger className="h-8 w-[110px] text-[10px] font-black uppercase">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="league">League</SelectItem>
+            <SelectItem value="cup">Cup</SelectItem>
+            <SelectItem value="friendly">Friendly</SelectItem>
+            <SelectItem value="national">National</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={venueFilter} onValueChange={setVenueFilter}>
+          <SelectTrigger className="h-8 w-[110px] text-[10px] font-black uppercase">
+            <SelectValue placeholder="Venue" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Venues</SelectItem>
+            <SelectItem value="home">Home</SelectItem>
+            <SelectItem value="away">Away</SelectItem>
+            <SelectItem value="neutral">Neutral</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {(season !== 'all' || matchType !== 'all' || venueFilter !== 'all') && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-[10px] font-black uppercase text-muted-foreground"
+            onClick={() => { setSeason('all'); setMatchType('all'); setVenueFilter('all'); }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="overflow-x-auto no-scrollbar mb-4">
           <TabsList className="bg-background border p-1 h-11 w-max min-w-full">
-            <TabsTrigger value="overview" className="text-[10px] font-black uppercase px-3">Overview</TabsTrigger>
-            <TabsTrigger value="streaks" className="text-[10px] font-black uppercase px-3">Streaks</TabsTrigger>
-            <TabsTrigger value="leaderboard" className="text-[10px] font-black uppercase px-3">Rankings</TabsTrigger>
-            <TabsTrigger value="individual" className="text-[10px] font-black uppercase px-3">Player</TabsTrigger>
+            <TabsTrigger value="players"    className="text-[10px] font-black uppercase px-4">Player Stats</TabsTrigger>
+            <TabsTrigger value="team"       className="text-[10px] font-black uppercase px-4">Team Stats</TabsTrigger>
+            <TabsTrigger value="goals"      className="text-[10px] font-black uppercase px-4">Goal Stats</TabsTrigger>
+            <TabsTrigger value="discipline" className="text-[10px] font-black uppercase px-4">Discipline</TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="overview" className="space-y-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
-            <StatCard label="Matches Won" value={teamStats.W} icon={Trophy} color="text-green-600" sub="League of champions" />
-            <StatCard label="Drawn" value={teamStats.D} icon={Activity} sub="Equal contest" />
-            <StatCard label="Matches Lost" value={teamStats.L} icon={Target} color="text-red-600" sub="Recovery area" />
-            <StatCard label="Goal Difference" value={teamStats.GD > 0 ? `+${teamStats.GD}` : teamStats.GD} icon={TrendingUp} color={teamStats.GD >= 0 ? 'text-green-600' : 'text-red-600'} sub={`${teamStats.GS} scored / ${teamStats.GC} conceded`} />
+        {/* ════════════════════ PLAYER STATS ════════════════════ */}
+        <TabsContent value="players" className="space-y-5">
+
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard label="Players Tracked"  value={playerRows.length}         icon={Users} />
+            <KpiCard
+              label="Avg Team Rating"
+              value={avgTeamRating !== null ? avgTeamRating.toFixed(2) : '--'}
+              icon={BarChart3}
+              color={avgTeamRating !== null ? (avgTeamRating >= 7 ? 'text-green-600' : avgTeamRating >= 5 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}
+            />
+            <KpiCard
+              label="Top Performer (POM)"
+              value={totalPom}
+              sub={topRated ? `Best avg: ${topRated.name.split(' ')[0]} (${topRated.avgRating!.toFixed(2)})` : undefined}
+              icon={Star}
+              color="text-yellow-600"
+            />
+            <KpiCard
+              label="Top Scorer"
+              value={topScorer?.goals ?? 0}
+              sub={topScorer?.name}
+              icon={Trophy}
+              color="text-green-600"
+            />
           </div>
+
+          {/* Action bar */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              {sortedPlayers.length} {sortedPlayers.length === 1 ? 'player' : 'players'}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-[10px] font-black uppercase gap-1.5"
+              onClick={handleExportPlayers}
+              disabled={sortedPlayers.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </Button>
+          </div>
+
+          {sortedPlayers.length === 0 ? (
+            <EmptyState label="No player stats recorded for the current filters" />
+          ) : (
+            <>
+              {/* ── Desktop table ── */}
+              <Card className="border-none shadow-lg overflow-hidden hidden md:block">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-neutral-900">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-[9px] font-black uppercase tracking-widest text-white sticky left-0 bg-neutral-900 min-w-[160px]">
+                          Player
+                        </TableHead>
+                        <SortableTh col="apps"      sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">Apps</SortableTh>
+                        <SortableTh col="goals"     sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-green-400 text-center">Goals</SortableTh>
+                        <SortableTh col="assists"   sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">Ast</SortableTh>
+                        <SortableTh col="shots"     sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">Shots</SortableTh>
+                        <SortableTh col="pom"       sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-yellow-400 text-center">POM</SortableTh>
+                        <SortableTh col="avgRating" sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">Rating</SortableTh>
+                        <SortableTh col="yellows"   sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-yellow-400 text-center">🟨</SortableTh>
+                        <SortableTh col="reds"      sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-red-400 text-center">🟥</SortableTh>
+                        <SortableTh col="mins"      sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">Mins</SortableTh>
+                        <SortableTh col="won"       sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-green-400 text-center">W</SortableTh>
+                        <SortableTh col="drawn"     sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-white text-center">D</SortableTh>
+                        <SortableTh col="lost"      sortCol={sortCol} dir={sortDir} onSort={handleSort} className="text-red-400 text-center">L</SortableTh>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedPlayers.map((p, i) => (
+                        <TableRow
+                          key={p.uid}
+                          className={cn('hover:bg-primary/5 transition-colors', i % 2 === 1 && 'bg-muted/10')}
+                        >
+                          <TableCell className="sticky left-0 bg-inherit min-w-[160px]">
+                            <div className="flex items-center gap-2">
+                              <div className="min-w-0">
+                                <p className="font-black text-xs uppercase truncate max-w-[130px]">{p.name}</p>
+                                <p className="text-[8px] font-bold text-muted-foreground uppercase">{p.position}</p>
+                              </div>
+                              {p.hasRisk && (
+                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" title="Discipline risk: 4+ yellow cards" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-xs">{p.apps || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs font-black text-green-700">{p.goals || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{p.assists || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{p.shots || '—'}</TableCell>
+                          <TableCell className="text-center text-xs">
+                            {p.pom > 0
+                              ? <span className="flex items-center justify-center gap-0.5"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />{p.pom}</span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <RatingBadge rating={p.avgRating} />
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-xs font-bold text-yellow-700">{p.yellows || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs font-bold text-red-700">{p.reds || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{p.mins ? p.mins.toLocaleString() : '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs font-bold text-green-700">{p.won || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs text-muted-foreground">{p.drawn || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs font-bold text-red-700">{p.lost || '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+
+              {/* ── Mobile card stacks ── */}
+              <div className="md:hidden space-y-3">
+                {sortedPlayers.map(p => (
+                  <Card key={p.uid} className="border-none shadow-sm bg-background overflow-hidden">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-black text-sm uppercase truncate">{p.name}</p>
+                            {p.hasRisk && <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                          </div>
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase">{p.position}</p>
+                        </div>
+                        <RatingBadge rating={p.avgRating} />
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                        {[
+                          { l: 'Apps', v: p.apps },
+                          { l: 'Goals', v: p.goals },
+                          { l: 'Ast', v: p.assists },
+                          { l: 'POM', v: p.pom },
+                        ].map(({ l, v }) => (
+                          <div key={l} className="bg-muted/30 rounded-lg py-1.5">
+                            <p className="text-[8px] font-black uppercase text-muted-foreground">{l}</p>
+                            <p className="font-black text-sm">{v || '—'}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-2.5 border-t text-[9px] font-black uppercase">
+                        <span className="text-yellow-700">{p.yellows}🟨</span>
+                        <span className="text-red-700">{p.reds}🟥</span>
+                        <span className="text-muted-foreground">{p.mins}min</span>
+                        <span className="text-green-700">W{p.won}</span>
+                        <span className="text-muted-foreground">D{p.drawn}</span>
+                        <span className="text-red-700">L{p.lost}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ════════════════════ TEAM STATS ════════════════════ */}
+        <TabsContent value="team" className="space-y-5">
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Yellow Cards" value={teamStats.totalYellows} icon={Activity} color="text-yellow-600" sub="Total discipline" />
-            <StatCard label="Red Cards" value={teamStats.totalReds} icon={Activity} color="text-red-600" sub="Sending offs" />
-            <StatCard label="Highest Attendance" value={teamStats.highestAttendance > 0 ? teamStats.highestAttendance.toLocaleString() : '--'} icon={Users} sub="Peak crowd" />
-            <StatCard label="Total Played" value={matches?.length || 0} icon={BarChart3} sub="Institutional sample" />
+            <KpiCard
+              label="Win Rate"
+              value={`${winRatePct}%`}
+              sub={`${ts.won}W · ${ts.drawn}D · ${ts.lost}L`}
+              icon={Trophy}
+              color="text-green-600"
+            />
+            <KpiCard
+              label="Goals Scored"
+              value={ts.goals}
+              sub={`${ts.conceded} conceded · GD ${ts.goals - ts.conceded >= 0 ? '+' : ''}${ts.goals - ts.conceded}`}
+              icon={Target}
+            />
+            <KpiCard
+              label="Clean Sheet %"
+              value={`${cleanSheetPct}%`}
+              sub={`${ts.cleanSheets} of ${ts.played} matches`}
+              icon={Shield}
+              color="text-blue-600"
+            />
+            <KpiCard
+              label="Avg Attendance"
+              value={avgAttendance > 0 ? avgAttendance.toLocaleString() : '--'}
+              sub={ts.attCount > 0 ? `${ts.attCount} matches recorded` : 'No attendance data'}
+              icon={Users}
+            />
           </div>
 
-          <Card className="border-none shadow-xl bg-background overflow-hidden">
-            <CardHeader className="bg-neutral-50 border-b">
-              <CardTitle className="text-sm font-black uppercase tracking-widest">Win/Loss Ratio</CardTitle>
-            </CardHeader>
-            <CardContent className="p-8">
-              <div className="flex h-8 w-full rounded-2xl overflow-hidden bg-muted">
-                <div className="h-full bg-green-600 transition-all" style={{ width: `${(teamStats.W / (matches?.length || 1)) * 100}%` }} />
-                <div className="h-full bg-neutral-400 transition-all" style={{ width: `${(teamStats.D / (matches?.length || 1)) * 100}%` }} />
-                <div className="h-full bg-red-600 transition-all" style={{ width: `${(teamStats.L / (matches?.length || 1)) * 100}%` }} />
-              </div>
-              <div className="flex justify-between mt-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                <span className="text-green-600">W: {Math.round((teamStats.W / (matches?.length || 1)) * 100)}%</span>
-                <span>D: {Math.round((teamStats.D / (matches?.length || 1)) * 100)}%</span>
-                <span className="text-red-600">L: {Math.round((teamStats.L / (matches?.length || 1)) * 100)}%</span>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              {matches.length} {matches.length === 1 ? 'match' : 'matches'} in view
+            </p>
+            <Button
+              size="sm" variant="outline"
+              className="h-8 text-[10px] font-black uppercase gap-1.5"
+              onClick={() => handleExportVenue('team-stats')}
+              disabled={matches.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </Button>
+          </div>
 
-          {Object.keys(categoryBreakdown).length > 0 && (
+          {matches.length === 0 ? (
+            <EmptyState label="No match data for the selected filters" />
+          ) : (
+            <>
+              <Card className="border-none shadow-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader><VenueTableHeader /></TableHeader>
+                    <TableBody>
+                      <VenueRow label="Games Played" all={ts.played}      home={venueBuckets.home.played}      away={venueBuckets.away.played}      neutral={venueBuckets.neutral.played} />
+                      <VenueRow label="Won"          all={ts.won}          home={venueBuckets.home.won}          away={venueBuckets.away.won}          neutral={venueBuckets.neutral.won} />
+                      <VenueRow label="Drawn"        all={ts.drawn}        home={venueBuckets.home.drawn}        away={venueBuckets.away.drawn}        neutral={venueBuckets.neutral.drawn} />
+                      <VenueRow label="Lost"         all={ts.lost}         home={venueBuckets.home.lost}         away={venueBuckets.away.lost}         neutral={venueBuckets.neutral.lost} />
+                      <VenueRow label="Goals Scored" all={ts.goals}        home={venueBuckets.home.goals}        away={venueBuckets.away.goals}        neutral={venueBuckets.neutral.goals} />
+                      <VenueRow label="Goals Conceded" all={ts.conceded}   home={venueBuckets.home.conceded}     away={venueBuckets.away.conceded}     neutral={venueBuckets.neutral.conceded} />
+                      <VenueRow label="Clean Sheets" all={ts.cleanSheets}  home={venueBuckets.home.cleanSheets}  away={venueBuckets.away.cleanSheets}  neutral={venueBuckets.neutral.cleanSheets} />
+                      <VenueRow
+                        label="Avg Attendance"
+                        all={ts.attCount > 0 ? Math.round(ts.attendance / ts.attCount) : 0}
+                        home={venueBuckets.home.attCount > 0 ? Math.round(venueBuckets.home.attendance / venueBuckets.home.attCount) : 0}
+                        away={venueBuckets.away.attCount > 0 ? Math.round(venueBuckets.away.attendance / venueBuckets.away.attCount) : 0}
+                        neutral={venueBuckets.neutral.attCount > 0 ? Math.round(venueBuckets.neutral.attendance / venueBuckets.neutral.attCount) : 0}
+                        fmt={n => n > 0 ? n.toLocaleString() : '—'}
+                      />
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+
+              {/* Result distribution bars */}
+              <Card className="border-none shadow-sm bg-background">
+                <CardHeader className="pb-2 pt-4 px-5">
+                  <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    Result Distribution by Venue
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-5 pb-5 space-y-4">
+                  {(['all', 'home', 'away', 'neutral'] as VenueKey[]).map(key => {
+                    const b = venueBuckets[key];
+                    if (b.played === 0) return null;
+                    return (
+                      <div key={key}>
+                        <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1.5">
+                          <span className={cn(
+                            key === 'home' ? 'text-green-600' : key === 'away' ? 'text-blue-600' : key === 'neutral' ? 'text-neutral-500' : ''
+                          )}>{key}</span>
+                          <span>{b.played} played</span>
+                        </div>
+                        <div className="h-6 flex rounded-xl overflow-hidden bg-muted/40 gap-px">
+                          {b.won > 0 && (
+                            <div
+                              className="bg-green-600 flex items-center justify-center text-[8px] font-black text-white transition-all"
+                              style={{ width: `${(b.won / b.played) * 100}%` }}
+                            >
+                              {b.won > 1 || b.won / b.played > 0.15 ? `W${b.won}` : ''}
+                            </div>
+                          )}
+                          {b.drawn > 0 && (
+                            <div
+                              className="bg-neutral-400 flex items-center justify-center text-[8px] font-black text-white transition-all"
+                              style={{ width: `${(b.drawn / b.played) * 100}%` }}
+                            >
+                              {b.drawn > 1 || b.drawn / b.played > 0.15 ? `D${b.drawn}` : ''}
+                            </div>
+                          )}
+                          {b.lost > 0 && (
+                            <div
+                              className="bg-red-600 flex items-center justify-center text-[8px] font-black text-white transition-all"
+                              style={{ width: `${(b.lost / b.played) * 100}%` }}
+                            >
+                              {b.lost > 1 || b.lost / b.played > 0.15 ? `L${b.lost}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ════════════════════ GOAL STATS ════════════════════ */}
+        <TabsContent value="goals" className="space-y-5">
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard label="Total Goals"       value={ts.goals}      icon={Trophy}   color="text-green-600" />
+            <KpiCard
+              label="Home vs Away"
+              value={`${venueBuckets.home.goals} / ${venueBuckets.away.goals}`}
+              sub="Home / Away goals"
+              icon={Target}
+            />
+            <KpiCard
+              label="Top Scorer"
+              value={topScorer?.goals ?? 0}
+              sub={topScorer?.name}
+              icon={Star}
+              color="text-yellow-600"
+            />
+            <KpiCard label="Avg Goals / Match" value={avgGoals}       icon={BarChart3} />
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              {matches.length} {matches.length === 1 ? 'match' : 'matches'} in view
+            </p>
+            <Button
+              size="sm" variant="outline"
+              className="h-8 text-[10px] font-black uppercase gap-1.5"
+              onClick={() => handleExportVenue('goal-stats')}
+              disabled={matches.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </Button>
+          </div>
+
+          {matches.length === 0 ? (
+            <EmptyState label="No goal data for the selected filters" />
+          ) : (
+            <Card className="border-none shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><VenueTableHeader /></TableHeader>
+                  <TableBody>
+                    <VenueRow label="Goals Scored" all={ts.goals} home={venueBuckets.home.goals} away={venueBuckets.away.goals} neutral={venueBuckets.neutral.goals} />
+                    <VenueRow
+                      label="Avg Goals / Match"
+                      all={ts.played > 0 ? ts.goals / ts.played : 0}
+                      home={venueBuckets.home.played > 0 ? venueBuckets.home.goals / venueBuckets.home.played : 0}
+                      away={venueBuckets.away.played > 0 ? venueBuckets.away.goals / venueBuckets.away.played : 0}
+                      neutral={venueBuckets.neutral.played > 0 ? venueBuckets.neutral.goals / venueBuckets.neutral.played : 0}
+                      fmt={n => n > 0 ? n.toFixed(2) : '—'}
+                    />
+                    <VenueRow label="Goals Conceded" all={ts.conceded} home={venueBuckets.home.conceded} away={venueBuckets.away.conceded} neutral={venueBuckets.neutral.conceded} />
+                    <VenueRow
+                      label="Clean Sheets"
+                      all={ts.cleanSheets} home={venueBuckets.home.cleanSheets} away={venueBuckets.away.cleanSheets} neutral={venueBuckets.neutral.cleanSheets}
+                    />
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          )}
+
+          {/* Top scorers leaderboard */}
+          {scorers.length > 0 && (
+            <Card className="border-none shadow-lg overflow-hidden">
+              <CardHeader className="bg-neutral-900 text-white py-3 px-4">
+                <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-yellow-400" /> Top Scorers
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {scorers.map((p, i) => (
+                  <div
+                    key={p.uid}
+                    className={cn(
+                      'flex items-center gap-4 px-4 py-3 border-b last:border-0',
+                      i % 2 === 1 && 'bg-muted/10',
+                    )}
+                  >
+                    <span className={cn(
+                      'text-xl font-black w-7 shrink-0 text-center',
+                      i === 0 ? 'text-yellow-500' : i === 1 ? 'text-neutral-400' : i === 2 ? 'text-amber-700' : 'text-muted-foreground/40',
+                    )}>
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-sm uppercase truncate">{p.name}</p>
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase">{p.position}</p>
+                    </div>
+                    <div className="flex items-center gap-5 shrink-0">
+                      <div className="text-center">
+                        <p className="text-[8px] font-black text-muted-foreground uppercase">Goals</p>
+                        <p className="font-black text-2xl text-green-600 leading-none mt-0.5">{p.goals}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[8px] font-black text-muted-foreground uppercase">Ast</p>
+                        <p className="font-black text-2xl leading-none mt-0.5">{p.assists}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[8px] font-black text-muted-foreground uppercase">Apps</p>
+                        <p className="font-black text-lg text-muted-foreground leading-none mt-0.5">{p.apps}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ════════════════════ DISCIPLINE ════════════════════ */}
+        <TabsContent value="discipline" className="space-y-5">
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard
+              label="Total Cards"
+              value={ts.yellows + ts.reds}
+              sub={`${ts.yellows} yellow · ${ts.reds} red`}
+              icon={Activity}
+              color="text-yellow-600"
+            />
+            <KpiCard
+              label="Most Disciplined"
+              value={mostDisciplined?.name.split(' ')[0] ?? '--'}
+              sub={mostDisciplined ? `${mostDisciplined.apps} apps, 0 cards` : 'No data'}
+              icon={Shield}
+              color="text-green-600"
+            />
+            <KpiCard
+              label="Worst Offender"
+              value={worstOffender?.name.split(' ')[0] ?? '--'}
+              sub={worstOffender ? `${worstOffender.yellows}🟨 ${worstOffender.reds}🟥` : 'No data'}
+              icon={AlertTriangle}
+              color="text-red-600"
+            />
+            <KpiCard label="Foul Rate / Match" value={foulRatePerMatch} icon={Target} />
+          </div>
+
+          {/* Risk player badges */}
+          {riskPlayers.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                Discipline Risk — 4+ Yellow Cards
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {riskPlayers.map(p => (
+                  <Badge
+                    key={p.uid}
+                    variant="outline"
+                    className="border-amber-400 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 gap-1.5 px-3 py-1.5"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span className="font-black text-[10px] uppercase">{p.name}</span>
+                    <span className="font-mono text-[10px]">{p.yellows}🟨 {p.reds}🟥</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              {matches.length} {matches.length === 1 ? 'match' : 'matches'} in view
+            </p>
+            <Button
+              size="sm" variant="outline"
+              className="h-8 text-[10px] font-black uppercase gap-1.5"
+              onClick={() => handleExportVenue('discipline-stats')}
+              disabled={matches.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </Button>
+          </div>
+
+          {/* Team-level discipline by venue */}
+          {matches.length === 0 ? (
+            <EmptyState label="No discipline data for the selected filters" />
+          ) : (
+            <Card className="border-none shadow-lg overflow-hidden">
+              <CardHeader className="bg-muted/40 border-b py-3 px-4">
+                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Team Discipline by Venue
+                </CardTitle>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><VenueTableHeader /></TableHeader>
+                  <TableBody>
+                    <VenueRow label="Yellow Cards"       all={ts.yellows}  home={venueBuckets.home.yellows}  away={venueBuckets.away.yellows}  neutral={venueBuckets.neutral.yellows} />
+                    <VenueRow label="Red Cards"          all={ts.reds}     home={venueBuckets.home.reds}     away={venueBuckets.away.reds}     neutral={venueBuckets.neutral.reds} />
+                    <VenueRow label="Fouls"              all={ts.fouls}    home={venueBuckets.home.fouls}    away={venueBuckets.away.fouls}    neutral={venueBuckets.neutral.fouls} />
+                    <VenueRow label="Penalties Conceded" all={ts.penalties} home={venueBuckets.home.penalties} away={venueBuckets.away.penalties} neutral={venueBuckets.neutral.penalties} />
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          )}
+
+          {/* Player discipline record */}
+          {playerRows.some(p => p.yellows > 0 || p.reds > 0 || p.fouls > 0) && (
             <Card className="border-none shadow-sm bg-background overflow-hidden">
-              <CardHeader className="bg-neutral-50 border-b">
-                <CardTitle className="text-sm font-black uppercase tracking-widest">Performance by Category</CardTitle>
+              <CardHeader className="bg-muted/40 border-b py-3 px-4">
+                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Player Discipline Record
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent bg-muted/30">
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest">Category</TableHead>
-                      <TableHead className="text-center font-black text-[10px] uppercase tracking-widest text-green-600">W</TableHead>
-                      <TableHead className="text-center font-black text-[10px] uppercase tracking-widest">D</TableHead>
-                      <TableHead className="text-center font-black text-[10px] uppercase tracking-widest text-red-600">L</TableHead>
-                      <TableHead className="text-right font-black text-[10px] uppercase tracking-widest">Win Rate</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest">Player</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest text-center text-yellow-700">Yellow</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest text-center text-red-700">Red</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest text-center">Fouls</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest text-center">Apps</TableHead>
+                      <TableHead className="text-[9px] font-black uppercase tracking-widest text-center">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Object.entries(categoryBreakdown).map(([cat, stats]) => {
-                      const total = stats.W + stats.L + stats.D;
-                      const winRate = total > 0 ? Math.round((stats.W / total) * 100) : 0;
-                      return (
-                        <TableRow key={cat} className="hover:bg-muted/20">
-                          <TableCell><Badge variant="outline" className="font-black uppercase text-[9px]">{cat}</Badge></TableCell>
-                          <TableCell className="text-center font-black text-green-600">{stats.W}</TableCell>
-                          <TableCell className="text-center font-mono">{stats.D}</TableCell>
-                          <TableCell className="text-center font-black text-red-600">{stats.L}</TableCell>
-                          <TableCell className="text-right font-black text-primary">{winRate}%</TableCell>
+                    {[...playerRows]
+                      .filter(p => p.yellows > 0 || p.reds > 0 || p.fouls > 0)
+                      .sort((a, b) => (b.yellows + b.reds * 3) - (a.yellows + a.reds * 3))
+                      .map((p, i) => (
+                        <TableRow key={p.uid} className={cn('hover:bg-muted/20', i % 2 === 1 && 'bg-muted/10')}>
+                          <TableCell>
+                            <p className="font-black text-xs uppercase">{p.name}</p>
+                            <p className="text-[8px] font-bold text-muted-foreground uppercase">{p.position}</p>
+                          </TableCell>
+                          <TableCell className="text-center font-mono font-black text-yellow-700">{p.yellows || '—'}</TableCell>
+                          <TableCell className="text-center font-mono font-black text-red-700">{p.reds || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs text-muted-foreground">{p.fouls || '—'}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">{p.apps}</TableCell>
+                          <TableCell className="text-center">
+                            {p.hasRisk ? (
+                              <Badge variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/30 text-amber-700 text-[8px] gap-1 px-1.5 py-0.5">
+                                <AlertTriangle className="w-2.5 h-2.5" /> Risk
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-green-400 bg-green-50 dark:bg-green-950/30 text-green-700 text-[8px] px-1.5 py-0.5">
+                                OK
+                              </Badge>
+                            )}
+                          </TableCell>
                         </TableRow>
-                      );
-                    })}
+                      ))}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
           )}
         </TabsContent>
-
-        <TabsContent value="streaks" className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="border-none shadow-xl bg-background overflow-hidden border-l-4 border-l-green-500">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-green-500" /> Best Win Streak
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-6xl font-black text-green-600">{teamStats.winStreak}</div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2">Consecutive Wins</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-xl bg-background overflow-hidden border-l-4 border-l-blue-500">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-blue-500" /> Unbeaten Streak
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-6xl font-black text-blue-600">{teamStats.unbeatenStreak}</div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2">Games Without Defeat</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-xl bg-background overflow-hidden border-l-4 border-l-red-500">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-red-500" /> Worst Loss Streak
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-6xl font-black text-red-600">{teamStats.lossStreak}</div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2">Consecutive Losses</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="border-none shadow-sm bg-background overflow-hidden">
-            <CardHeader className="bg-neutral-50 border-b">
-              <CardTitle className="text-sm font-black uppercase tracking-widest">Match Results Timeline</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="flex flex-wrap gap-2">
-                {[...(matches || [])].sort((a, b) => a.date.localeCompare(b.date)).map((m, i) => (
-                  <div
-                    key={m.id}
-                    title={`${m.opponent} ${m.score || ''} (${m.date})`}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-black cursor-default ${
-                      m.result === 'W' ? 'bg-green-600' : m.result === 'L' ? 'bg-red-600' : m.result === 'D' ? 'bg-neutral-500' : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {m.result || '?'}
-                  </div>
-                ))}
-                {(!matches || matches.length === 0) && (
-                  <p className="text-sm text-muted-foreground">No match results yet.</p>
-                )}
-              </div>
-              {matches && matches.length > 0 && (
-                <div className="flex items-center gap-4 mt-4 text-[9px] font-black uppercase tracking-widest text-muted-foreground">
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-600 inline-block" /> Win</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-neutral-500 inline-block" /> Draw</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-600 inline-block" /> Loss</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="border-none shadow-sm bg-background">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Discipline Record</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl border border-yellow-200">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-yellow-700">Yellow Cards</span>
-                  <span className="text-3xl font-black text-yellow-600">{teamStats.totalYellows}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-red-50 rounded-xl border border-red-200">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-red-700">Red Cards</span>
-                  <span className="text-3xl font-black text-red-600">{teamStats.totalReds}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-sm bg-background">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Attendance Record</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Highest Attendance</span>
-                  <span className="text-3xl font-black text-primary">{teamStats.highestAttendance > 0 ? teamStats.highestAttendance.toLocaleString() : '--'}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Matches with Attendance Data</span>
-                  <span className="text-2xl font-black">{matches?.filter(m => m.attendance && m.attendance > 0).length || 0}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="leaderboard">
-          <Card className="border-none shadow-2xl bg-background overflow-hidden">
-            <CardHeader className="bg-neutral-900 text-white py-3 px-4">
-              <CardTitle className="text-sm font-black uppercase tracking-widest">Institutional Leaderboard</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {/* Mobile card list */}
-              <div className="divide-y md:hidden">
-                {athletes?.sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map((a, idx) => {
-                  const career = a.matchHistory || [];
-                  const goals = career.reduce((acc, m) => acc + (Number(m.goals) || 0), 0);
-                  const assists = career.reduce((acc, m) => acc + (Number(m.assists) || 0), 0);
-                  const motm = career.filter(m => m.manOfTheMatch).length;
-                  const ratingSum = career.reduce((acc, m) => acc + ((Number(m.rating) || 0) * (Number(m.apps) || 0)), 0);
-                  const totalApps = career.reduce((acc, m) => acc + (Number(m.apps) || 0), 0);
-                  const avg = totalApps > 0 ? (ratingSum / totalApps).toFixed(1) : '--';
-                  return (
-                    <div key={a.uid} className="flex items-center gap-3 p-4">
-                      <span className="text-sm font-black text-muted-foreground w-5 shrink-0">{idx + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black uppercase text-sm truncate">{a.firstName} {a.lastName}</p>
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase mt-0.5">{a.position}</p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 text-right">
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-muted-foreground">G/A</p>
-                          <p className="text-sm font-black">{goals}/{assists}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-muted-foreground">CSI</p>
-                          <p className="text-sm font-black text-primary">{a.compositeScoutingIndex || '--'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-neutral-50">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-[9px] font-black uppercase">#</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase">Athlete</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase text-center">Goals</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase text-center">Assists</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase text-center">Avg Rating</TableHead>
-                      <TableHead className="text-[9px] font-black uppercase text-right">CSI</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {athletes?.sort((a, b) => (b.compositeScoutingIndex || 0) - (a.compositeScoutingIndex || 0)).map((a, idx) => {
-                      const career = a.matchHistory || [];
-                      const goals = career.reduce((acc, m) => acc + (Number(m.goals) || 0), 0);
-                      const assists = career.reduce((acc, m) => acc + (Number(m.assists) || 0), 0);
-                      const motm = career.filter(m => m.manOfTheMatch).length;
-                      const ratingSum = career.reduce((acc, m) => acc + ((Number(m.rating) || 0) * (Number(m.apps) || 0)), 0);
-                      const totalApps = career.reduce((acc, m) => acc + (Number(m.apps) || 0), 0);
-                      const avg = totalApps > 0 ? (ratingSum / totalApps).toFixed(1) : '--';
-                      return (
-                        <TableRow key={a.uid} className="hover:bg-muted/30">
-                          <TableCell className="font-black text-muted-foreground text-sm w-8">{idx + 1}</TableCell>
-                          <TableCell className="font-black uppercase text-xs">{a.firstName} {a.lastName}</TableCell>
-                          <TableCell className="text-center font-mono text-xs">{goals}</TableCell>
-                          <TableCell className="text-center font-mono text-xs">{assists}</TableCell>
-                          <TableCell className="text-center text-xs">
-                            {motm > 0 && <span className="flex items-center justify-center gap-1"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />{motm}</span>}
-                            {motm === 0 && <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-center font-black text-primary text-xs">{avg}</TableCell>
-                          <TableCell className="text-right font-black text-primary">{a.compositeScoutingIndex || '--'}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="individual">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-            <div className="lg:col-span-1 space-y-3">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Squad Member</h3>
-              <div className="divide-y bg-background border rounded-xl overflow-hidden">
-                {athletes?.map(a => (
-                  <div key={a.uid} onClick={() => setSelectedAthleteId(a.uid)} className={`p-3 min-h-[44px] flex flex-col justify-center cursor-pointer transition-colors hover:bg-muted/50 active:bg-muted/70 ${selectedAthleteId === a.uid ? 'bg-primary/5 border-l-4 border-primary' : ''}`}>
-                    <p className="text-xs font-black uppercase">{a.firstName} {a.lastName}</p>
-                    <p className="text-[9px] font-bold text-muted-foreground uppercase">{a.position}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="lg:col-span-3">
-              {athletePerformance ? (
-                <Card className="border-none shadow-2xl bg-background overflow-hidden">
-                  <CardHeader className="bg-muted/50 border-b p-4 sm:p-6">
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="min-w-0">
-                        <CardTitle className="text-xl font-black uppercase tracking-tight truncate">{athletePerformance.firstName} {athletePerformance.lastName}</CardTitle>
-                        <p className="text-xs font-bold text-primary uppercase tracking-[0.2em] mt-1">{athletePerformance.readinessTier || 'Developing'}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-4xl font-black tracking-tighter leading-none">{athletePerformance.compositeScoutingIndex || '--'}</p>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-1">Rating</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="grid grid-cols-2 md:grid-cols-4 border-b">
-                      <MetricItem label="Efficiency" value={athletePerformance.efficiencyIndex} />
-                      <MetricItem label="Consistency" value={athletePerformance.consistencyIndex} />
-                      <MetricItem label="Risk Index" value={athletePerformance.riskIndex} />
-                      <MetricItem label="Performance" value={athletePerformance.performanceIndex} />
-                    </div>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader className="bg-muted/30">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead className="text-[9px] font-black uppercase">Competition</TableHead>
-                            <TableHead className="text-[9px] font-black uppercase text-center">Mins</TableHead>
-                            <TableHead className="text-[9px] font-black uppercase text-center">G/A</TableHead>
-                            <TableHead className="text-[9px] font-black uppercase text-center">MoM</TableHead>
-                            <TableHead className="text-[9px] font-black uppercase text-right">Rating</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {athletePerformance.matchHistory?.map((m, i) => (
-                            <TableRow key={i} className="hover:bg-muted/30">
-                              <TableCell className="text-xs font-bold uppercase">
-                                {m.competition}
-                                {m.opponent && <span className="text-muted-foreground font-normal"> vs {m.opponent}</span>}
-                              </TableCell>
-                              <TableCell className="text-center font-mono text-xs">{m.minutes}</TableCell>
-                              <TableCell className="text-center font-mono text-xs">{m.goals}/{m.assists}</TableCell>
-                              <TableCell className="text-center">{m.manOfTheMatch ? <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mx-auto" /> : <span className="text-muted-foreground">—</span>}</TableCell>
-                              <TableCell className="text-right font-black text-primary text-xs">{Number(m.rating || 0).toFixed(1)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground bg-muted/10 rounded-3xl border-4 border-dashed">
-                  <Activity className="w-14 h-14 mb-4 opacity-10" />
-                  <p className="font-black uppercase tracking-widest text-sm">Select an athlete</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon: Icon, sub, color }: any) {
-  return (
-    <Card className="border-none shadow-sm bg-background">
-      <CardHeader className="p-4 pb-2 space-y-0 flex flex-row items-center justify-between">
-        <CardTitle className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</CardTitle>
-        <Icon className="w-3 h-3 text-muted-foreground" />
-      </CardHeader>
-      <CardContent className="p-4 pt-0">
-        <div className={`text-2xl font-black ${color || 'text-foreground'}`}>{value}</div>
-        <p className="text-[8px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter">{sub}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetricItem({ label, value }: { label: string; value?: number }) {
-  return (
-    <div className="p-6 text-center border-r last:border-0 hover:bg-muted/20 transition-colors">
-      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
-      <p className="text-2xl font-black">{value || '--'}</p>
     </div>
   );
 }
