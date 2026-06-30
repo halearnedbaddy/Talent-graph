@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import {
   collection, query, where, orderBy, addDoc, updateDoc, doc,
@@ -155,13 +155,13 @@ function ApplicantsModal({ trial, onClose }: { trial: Trial; onClose: () => void
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  useState(() => {
+  useEffect(() => {
     if (!firestore) return;
     getDocs(collection(firestore, 'club_trials', trial.id, 'applications')).then(snap => {
       setApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as Application)));
       setLoading(false);
     });
-  });
+  }, [firestore, trial.id]);
 
   const updateStatus = async (appId: string, status: 'accepted' | 'declined') => {
     if (!firestore) return;
