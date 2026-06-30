@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
-import type { ClubMember, AthleteProfile, UserAccount, LiveMatch, LiveMatchEvent } from '@/lib/types';
+import type { AthleteProfile, UserAccount, LiveMatch, LiveMatchEvent } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { calculateTalentGraphScore } from '@/lib/scoring-calculator';
 import { useToast } from '@/hooks/use-toast';
 import { trackEvent } from '@/lib/analytics';
@@ -166,11 +167,7 @@ export default function CoachMatchEntryPage() {
   const [ghostForm, setGhostForm] = useState({ name: '', position: '', phone: '', email: '' });
 
   // ── Firebase data ────────────────────────────────────────────────────────
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, clubName } = useCoachClub();
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null
@@ -594,7 +591,7 @@ ${teamStats.matchReport ? `<h2>📋 Match Report</h2><div class="report">${escHt
         const coachName = user.displayName || user.email || 'Coach';
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://talent-graph.vercel.app';
         const claimUrl = `${appUrl}/signup`;
-        const clubDisplayName = memberships?.[0]?.clubName ?? 'your club';
+        const clubDisplayName = clubName || 'your club';
         for (const gp of ghostPlayers) {
           try {
             await addDoc(collection(firestore, 'ghost_players'), {

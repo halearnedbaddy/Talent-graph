@@ -15,7 +15,8 @@ import {
   Loader2, AlertTriangle, Star, MessageSquare,
   UserPlus, UserMinus, Send, X, Ghost, Phone, Mail, Calendar
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile, GhostPlayer } from '@/lib/types';
+import type { AthleteProfile, GhostPlayer } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
@@ -62,14 +63,8 @@ export default function CoachSquadPage() {
   const [inviting, setInviting] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
-  const clubName = memberships?.[0]?.clubName ?? 'Your Club';
+  const { clubId, clubName, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null

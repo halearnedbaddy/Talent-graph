@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useUser, useFirestore, useCollection, useMemoFirebase, useAuth } from '@/firebase';
+import { useUser, useFirestore, useAuth } from '@/firebase';
 import { collection, query, where, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Settings, User, Lock, Bell, Loader2, CheckCircle2, LogOut, Camera, Upload, AlertCircle } from 'lucide-react';
-import type { ClubMember } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
@@ -46,13 +46,8 @@ export default function CoachSettingsPage() {
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const [photoDragOver, setPhotoDragOver] = useState(false);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid))
-      : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const membership = memberships?.[0];
+  const { clubName, membershipsLoaded } = useCoachClub();
+  const membership = membershipsLoaded ? { clubName } : null;
 
   useEffect(() => {
     if (!firestore || !user) return;

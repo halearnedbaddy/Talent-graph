@@ -3,3 +3,4 @@
 - [Club admin clubId lookup](club-admin-clubid.md) — club admin's clubId lives in club_members where userId==uid (no status filter); admin has role='admin'
 - [SMS / BulkSMS architecture](sms-bulksms-arch.md) — BulkSMS Kenya uses api.bulksms.com + Basic auth (username:password); lib/bulksms.ts is the core client, lib/sms.ts wraps it; idToken for coach pages comes from user.getIdToken() in a useEffect
 - [Security audit decisions](security-audit.md) — Firebase API key in config.ts is a false positive (public by design); no Admin SDK; internal auth uses SMS_SECRET header; key remaining risks: no rate limiting, no token revocation
+- [Firestore concurrent listener limit](firestore-listener-limit.md) — 16+ onSnapshot listeners on the same collection triggers INTERNAL ASSERTION FAILED; fix by sharing data via React context from layout rather than each page subscribing independently.

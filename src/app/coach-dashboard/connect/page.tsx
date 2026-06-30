@@ -6,19 +6,15 @@ import { CoachClubInvitations } from '@/components/coach/club-invitations';
 import { ClubInvitationsCard } from '@/components/scout/club-invitations-card';
 import { Loader2, Link2, Building2, CheckCircle2 } from 'lucide-react';
 import type { ClubMember, UserAccount } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { Badge } from '@/components/ui/badge';
 
 export default function CoachConnectPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const activeMembership = memberships?.[0];
+  const { clubId, clubName, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const pendingQuery = useMemoFirebase(() => (
     firestore && user
@@ -69,15 +65,15 @@ export default function CoachConnectPage() {
       </div>
 
       {/* Current club status */}
-      {activeMembership ? (
+      {clubId ? (
         <div className="flex items-center gap-3 p-4 rounded-2xl border border-[#00C853]/30 bg-[#00C853]/5">
           <CheckCircle2 className="h-5 w-5 text-[#00C853] shrink-0" />
           <div className="min-w-0">
             <p className="text-sm font-black text-white">
-              Affiliated with <span className="text-[#00C853]">{activeMembership.clubName || 'your club'}</span>
+              Affiliated with <span className="text-[#00C853]">{clubName || 'your club'}</span>
             </p>
             <p className="text-[10px] text-[#94A3B8] font-bold uppercase tracking-wide mt-0.5">
-              Role: {activeMembership.role} · Status: Active
+              Status: Active
             </p>
           </div>
         </div>

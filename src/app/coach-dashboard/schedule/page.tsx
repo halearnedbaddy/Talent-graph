@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Calendar, Plus, ChevronLeft, ChevronRight, Loader2, Trophy, Dumbbell, Clock, MapPin, CheckCircle2 } from 'lucide-react';
-import type { ClubMember, ClubMatch } from '@/lib/types';
+import type { ClubMatch } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 import {
   format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -64,13 +65,7 @@ export default function CoachSchedulePage() {
   const [notifyEvent, setNotifyEvent] = useState<NotificationEvent | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, clubName } = useCoachClub();
 
   const eventsQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'schedule_events'), where('clubId', '==', clubId)) : null
@@ -152,7 +147,7 @@ export default function CoachSchedulePage() {
           onClose={() => setNotifyOpen(false)}
           event={notifyEvent}
           clubId={clubId ?? ''}
-          clubName={memberships?.[0]?.clubName ?? 'Club'}
+          clubName={clubName || 'Club'}
           coachName={user?.displayName ?? 'Coach'}
           userToken={idToken}
         />

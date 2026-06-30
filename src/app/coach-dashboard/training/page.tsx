@@ -20,7 +20,8 @@ import {
   Users, BookOpen, X, Check, PenLine,
   TrendingUp, AlertCircle, XCircle, BarChart3, Calendar
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile } from '@/lib/types';
+import type { AthleteProfile } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isBefore, startOfToday } from 'date-fns';
 import { sendClubNotification } from '@/hooks/usePushNotifications';
@@ -134,13 +135,7 @@ export default function CoachTrainingPage() {
   const [notifyEvent, setNotifyEvent] = useState<NotificationEvent | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, clubName: membershipClubName } = useCoachClub();
 
   const sessionsQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'training_sessions'), where('clubId', '==', clubId)) : null
@@ -659,7 +654,7 @@ export default function CoachTrainingPage() {
           event={notifyEvent}
           athletes={(athletes ?? undefined) as any}
           clubId={clubId ?? ''}
-          clubName={memberships?.[0]?.clubName ?? 'Club'}
+          clubName={membershipClubName || 'Club'}
           coachName={user?.displayName ?? 'Coach'}
           userToken={idToken}
         />

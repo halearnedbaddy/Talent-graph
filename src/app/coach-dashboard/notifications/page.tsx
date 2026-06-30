@@ -1,27 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
-import type { ClubMember } from '@/lib/types';
 import { NotificationCenter } from '@/components/coach/notification-center';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { Loader2, MessageSquare, Bell } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CoachNotificationsPage() {
-  const { user } = useUser();
-  const firestore = useFirestore();
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
-  const clubName = memberships?.[0]?.clubName || 'Your Club';
+  const { clubId, clubName, membershipsLoaded } = useCoachClub();
 
-  if (isLoading) {
+  if (!membershipsLoaded) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-7 h-7 animate-spin text-[#00C853]" />

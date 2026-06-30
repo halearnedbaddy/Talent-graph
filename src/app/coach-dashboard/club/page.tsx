@@ -10,6 +10,7 @@ import {
   Phone, Globe, Loader2, Star, Calendar
 } from 'lucide-react';
 import type { ClubMember, ClubProfile, AthleteProfile, ClubMatch } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 
@@ -19,13 +20,8 @@ export default function CoachClubViewPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
   const { data: club, isLoading: clubLoading } = useDoc<ClubProfile>(clubRef);

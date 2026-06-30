@@ -12,7 +12,8 @@ import {
   Loader2, Building2, Dumbbell, Clock, MessageSquare, Settings
 } from 'lucide-react';
 import Link from 'next/link';
-import type { ClubMember, AthleteProfile, ClubMatch, ClubProfile, UserAccount } from '@/lib/types';
+import type { AthleteProfile, ClubMatch, ClubProfile, UserAccount } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { ClubInvitationsCard } from '@/components/scout/club-invitations-card';
 import { CoachClubInvitations } from '@/components/coach/club-invitations';
 import { useMemo } from 'react';
@@ -47,13 +48,8 @@ export default function CoachOverviewPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
   const { data: clubProfile } = useDoc<ClubProfile>(clubRef);

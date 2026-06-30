@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection as col, query as q, where as wh } from 'firebase/firestore';
+import { useUser, useFirestore } from '@/firebase';
 import { Bell, Megaphone, CheckCheck, Loader2, Building2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { ClubMember } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 
 interface AlertItem {
   id: string;
@@ -26,11 +25,7 @@ export default function CoachAlertsPage() {
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user ? q(col(firestore, 'club_members'), wh('userId', '==', user.uid), wh('status', '==', 'active')) : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const clubName = memberships?.[0]?.clubName ?? '';
+  const { clubName } = useCoachClub();
 
   useEffect(() => {
     if (!firestore || !user?.uid) return;

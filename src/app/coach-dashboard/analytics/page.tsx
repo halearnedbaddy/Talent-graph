@@ -19,7 +19,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LineChart, Line, Legend
 } from 'recharts';
-import type { ClubMember, AthleteProfile, ClubMatch } from '@/lib/types';
+import type { AthleteProfile, ClubMatch } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useSearchParams } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 
@@ -41,13 +42,8 @@ export default function CoachAnalyticsPage() {
   const [analyticsPositionFilter, setAnalyticsPositionFilter] = useState('All');
   const [analyticsSortBy, setAnalyticsSortBy] = useState<'csi' | 'risk' | 'age'>('csi');
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null

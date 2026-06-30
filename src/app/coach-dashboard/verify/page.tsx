@@ -17,7 +17,8 @@ import {
   AlertTriangle, Eye, Ruler, Weight, Zap, Clock,
   ChevronDown, ChevronUp, Edit3, Check, RotateCcw, Search, X
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile } from '@/lib/types';
+import type { AthleteProfile } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 import { smsSend } from '@/hooks/useSMS';
 import { format, parseISO } from 'date-fns';
@@ -54,13 +55,8 @@ export default function CoachVerifyPage() {
   const [verifyNotes, setVerifyNotes] = useState('');
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user
-      ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active'))
-      : null
-  ), [firestore, user]);
-  const { data: memberships, isLoading: memberLoading } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId;
+  const { clubId, membershipsLoaded } = useCoachClub();
+  const memberLoading = !membershipsLoaded;
 
   const allAthletesQuery = useMemoFirebase(() => (
     firestore && clubId

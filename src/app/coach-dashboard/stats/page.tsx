@@ -17,7 +17,8 @@ import {
   ChevronUp, ChevronDown, ChevronsUpDown, Loader2,
   Plus, ChevronLeft, ChevronRight, Star
 } from 'lucide-react';
-import type { ClubMember, AthleteProfile } from '@/lib/types';
+import type { AthleteProfile } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 
 // ─── Firestore shapes ─────────────────────────────────────────────────────────
@@ -479,12 +480,8 @@ export default function StatsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  // ── memberships ───────────────────────────────────────────────────────────
-  const memberQ = useMemoFirebase(() =>
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null,
-    [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQ);
-  const clubId = memberships?.[0]?.clubId ?? null;
+  // ── club context ──────────────────────────────────────────────────────────
+  const { clubId } = useCoachClub();
 
   // ── matches ───────────────────────────────────────────────────────────────
   const matchQ = useMemoFirebase(() =>

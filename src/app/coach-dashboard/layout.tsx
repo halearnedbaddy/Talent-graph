@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/coach/notification-bell';
 import { useCoachNotifications } from '@/hooks/useCoachNotifications';
 import { SupportDialog } from '@/components/support/support-dialog';
+import { CoachClubContext } from './coach-context';
 
 const navItems = [
   { href: '/coach-dashboard', label: 'Overview', icon: Home, exact: true },
@@ -49,9 +50,10 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   const memberQuery = useMemoFirebase(() => (
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
   ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
+  const { data: memberships, isLoading: membershipLoading } = useCollection<ClubMember>(memberQuery);
   const membership = memberships?.[0];
   const clubId = membership?.clubId ?? null;
+  const membershipsLoaded = !membershipLoading;
 
   const pendingInviteQuery = useMemoFirebase(() => (
     firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'club_invited')) : null
@@ -251,7 +253,9 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
         {/* Content */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 pb-24 md:pb-8">
-          {children}
+          <CoachClubContext.Provider value={{ clubId, clubName: membership?.clubName ?? '', membershipsLoaded }}>
+            {children}
+          </CoachClubContext.Provider>
         </main>
 
         {/* Mobile bottom nav */}

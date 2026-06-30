@@ -16,7 +16,8 @@ import {
   Loader2, ChevronLeft, Play, Clock, Zap,
   Flag, CheckCircle2, XCircle, Shield
 } from 'lucide-react';
-import type { ClubMember, ClubMatch, LiveMatch, LiveMatchEvent } from '@/lib/types';
+import type { ClubMatch, LiveMatch, LiveMatchEvent } from '@/lib/types';
+import { useCoachClub } from '@/app/coach-dashboard/coach-context';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -77,11 +78,7 @@ export default function LiveMatchPage() {
   const [submitting, setSubmitting] = useState(false);
   const [setupForm, setSetupForm] = useState({ homeTeam: '', awayTeam: '', linkedMatchId: '' });
 
-  const memberQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
-  ), [firestore, user]);
-  const { data: memberships } = useCollection<ClubMember>(memberQuery);
-  const clubId = memberships?.[0]?.clubId ?? null;
+  const { clubId, clubName } = useCoachClub();
 
   const scheduledMatchesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'matches'), where('clubId', '==', clubId)) : null
@@ -247,7 +244,7 @@ export default function LiveMatchPage() {
             <p className="text-[11px] font-black text-[#94A3B8] uppercase tracking-widest">Today's Fixtures</p>
             {upcomingMatches.map(m => (
               <button key={m.id}
-                onClick={() => { setSetupForm({ homeTeam: memberships?.[0]?.clubName ?? '', awayTeam: m.opponent, linkedMatchId: m.id }); setView('setup'); }}
+                onClick={() => { setSetupForm({ homeTeam: clubName, awayTeam: m.opponent, linkedMatchId: m.id }); setView('setup'); }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1C2333] border border-[#1E293B] hover:border-[#00C853]/30 transition-all text-left">
                 <Trophy className="h-4 w-4 text-amber-400 shrink-0" />
                 <div className="flex-1 min-w-0">
