@@ -195,8 +195,14 @@ export default function CoachOverviewPage() {
 
   if (memberLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-[#1C2333] rounded-lg" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-[#1C2333] rounded-2xl" />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-[#1C2333] rounded-2xl" />)}
+        </div>
       </div>
     );
   }

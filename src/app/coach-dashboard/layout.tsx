@@ -87,8 +87,25 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
   if (isUserLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0A0E1A]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
+      <div className="flex min-h-screen bg-[#0A0E1A] animate-pulse">
+        <aside className="hidden md:flex flex-col w-[260px] border-r border-[#1E293B] bg-[#111827] shrink-0">
+          <div className="p-4 pt-5 space-y-2">
+            <div className="h-10 bg-[#1C2333] rounded-xl mb-4" />
+            {[...Array(9)].map((_, i) => <div key={i} className="h-9 bg-[#1C2333] rounded-xl" />)}
+          </div>
+        </aside>
+        <div className="flex-1 md:ml-[260px]">
+          <div className="h-14 border-b border-[#1E293B] bg-[#111827]" />
+          <div className="p-6 space-y-4">
+            <div className="h-8 w-48 bg-[#1C2333] rounded-lg" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-[#1C2333] rounded-2xl" />)}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => <div key={i} className="h-36 bg-[#1C2333] rounded-2xl" />)}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

@@ -53,7 +53,7 @@ export function useCollection<T = any>(
   type StateDataType = ResultItemType[] | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => targetRefOrQuery != null);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   // Memoize the query path to use as a stable dependency
@@ -89,13 +89,7 @@ export function useCollection<T = any>(
           id: doc.id,
         }));
         
-        setData(prevData => {
-          if (JSON.stringify(prevData) === JSON.stringify(results)) {
-            return prevData;
-          }
-          return results;
-        });
-
+        setData(results);
         setError(null);
         setIsLoading(false);
       },

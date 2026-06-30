@@ -200,7 +200,13 @@ export default function InjuryTrackerPage() {
   };
 
   if (isLoading) {
-    return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
+    return (
+      <div className="max-w-2xl mx-auto p-4 space-y-4 animate-pulse">
+        <div className="h-8 w-40 bg-muted rounded-lg" />
+        <div className="h-28 bg-muted rounded-xl" />
+        {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-muted rounded-xl" />)}
+      </div>
+    );
   }
 
   return (

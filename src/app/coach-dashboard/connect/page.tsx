@@ -38,8 +38,16 @@ export default function CoachConnectPage() {
 
   if (isUserLoading || memberLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#00C853]" />
+      <div className="space-y-6 max-w-2xl mx-auto animate-pulse">
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-xl bg-[#1C2333] shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-6 w-32 bg-[#1C2333] rounded" />
+            <div className="h-4 w-56 bg-[#1C2333] rounded" />
+          </div>
+        </div>
+        <div className="h-32 bg-[#1C2333] rounded-2xl" />
+        <div className="h-48 bg-[#1C2333] rounded-2xl" />
       </div>
     );
   }

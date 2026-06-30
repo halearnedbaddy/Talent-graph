@@ -39,7 +39,7 @@ export function useDoc<T = any>(
   type StateDataType = WithId<T> | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => docRef != null);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   // Use the doc path as the dependency, which is a stable string.
@@ -61,13 +61,7 @@ export function useDoc<T = any>(
           ? { ...(snapshot.data() as T), id: snapshot.id }
           : null;
 
-        setData(prevData => {
-          if (JSON.stringify(prevData) === JSON.stringify(newData)) {
-            return prevData;
-          }
-          return newData;
-        });
-        
+        setData(newData);
         setError(null);
         setIsLoading(false);
       },
