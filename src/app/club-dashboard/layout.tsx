@@ -22,7 +22,6 @@ import {
   Unlock,
   CreditCard,
   GraduationCap,
-  Target,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -51,7 +50,6 @@ const navItems = [
   { href: '/club-dashboard/stats', label: 'Stats', icon: BarChart },
   { href: '/club-dashboard/verification', label: 'Verify', icon: ClipboardCheck },
   { href: '/club-dashboard/notifications', label: 'Alerts', icon: Bell },
-  { href: '/club-dashboard/trials', label: 'Open Trials', icon: Target },
   { href: '/club-dashboard/trial-unlocks', label: 'Trial Unlocks', icon: Unlock },
   { href: '/club-dashboard/billing', label: 'Billing', icon: CreditCard },
   { href: '/club-dashboard/settings', label: 'Settings', icon: Settings },
