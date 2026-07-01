@@ -199,6 +199,17 @@ function TemplatePreviewModal({ campaign, onClose }: { campaign: MarketingCampai
 
 // ─── Send Confirmation Modal ──────────────────────────────────────────────────
 
+interface DryRunRecipient { name: string; role: string; hasEmail: boolean; hasPhone: boolean; emailMasked?: string; phoneMasked?: string; }
+interface DryRunResult { total: number; emailEligible: number; smsEligible: number; suppressed: number; channel: string; recipients: DryRunRecipient[]; }
+
+const ROLE_COLORS: Record<string, string> = {
+  athlete: 'bg-green-100 text-green-700',
+  coach:   'bg-blue-100 text-blue-700',
+  scout:   'bg-purple-100 text-purple-700',
+  club:    'bg-amber-100 text-amber-700',
+  analyst: 'bg-rose-100 text-rose-700',
+};
+
 function SendConfirmModal({
   campaign, segment, onConfirm, onClose, sending,
 }: {
@@ -208,18 +219,46 @@ function SendConfirmModal({
   onClose: () => void;
   sending: boolean;
 }) {
+  const { user } = useUser();
   const cc = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email;
   const isSms = campaign.channel === 'sms' || campaign.channel === 'both';
   const smsReach = segment?.smsEligibleCount ?? null;
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<DryRunResult | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const handlePreview = async () => {
+    if (previewData) { setPreviewOpen(v => !v); return; }
+    if (!user) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/marketing/campaigns/${campaign.id}/preview`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setPreviewData(await res.json());
+    } catch (e: any) {
+      setPreviewError(e?.message ?? 'Failed to load preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="pb-2">
+      <Card className="w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <CardHeader className="pb-2 shrink-0">
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Send className="w-4 h-4 text-primary" /> Confirm Send
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 overflow-y-auto">
           <div className="bg-muted/30 rounded-lg p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Campaign</span>
@@ -250,12 +289,102 @@ function SendConfirmModal({
               </div>
             )}
           </div>
+
           {isSms && smsReach === 0 && (
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700">No users in this segment have a phone number on file. Encourage users to add their phone in their settings for SMS delivery.</p>
             </div>
           )}
+
+          {/* ── Dry-run preview toggle ── */}
+          <button
+            type="button"
+            onClick={handlePreview}
+            disabled={previewLoading}
+            className="w-full flex items-center justify-between rounded-lg border border-dashed border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+          >
+            <span className="flex items-center gap-1.5">
+              {previewLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Eye className="w-3.5 h-3.5" />}
+              {previewLoading ? 'Loading recipients…' : previewOpen ? 'Hide recipient preview' : 'Preview recipients (dry run)'}
+            </span>
+            {!previewLoading && <ChevronRight className={cn('w-3.5 h-3.5 transition-transform', previewOpen && 'rotate-90')} />}
+          </button>
+
+          {previewOpen && (
+            <div className="space-y-2">
+              {previewError ? (
+                <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {previewError}
+                </div>
+              ) : previewData ? (
+                <>
+                  {/* Summary chips */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { label: 'Total',      value: previewData.total,          color: 'text-foreground' },
+                      { label: 'Email',      value: previewData.emailEligible,  color: 'text-blue-600' },
+                      { label: 'SMS',        value: previewData.smsEligible,    color: 'text-purple-600' },
+                      { label: 'Suppressed', value: previewData.suppressed,     color: 'text-rose-600' },
+                    ].map(chip => (
+                      <div key={chip.label} className="bg-muted/40 rounded-lg p-2 text-center">
+                        <p className={cn('text-sm font-black leading-tight', chip.color)}>{chip.value.toLocaleString()}</p>
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{chip.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Recipient list */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-muted/30 px-3 py-1.5 flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Sample recipients {previewData.total > 50 && `(first 50 of ${previewData.total.toLocaleString()})`}
+                      </p>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto divide-y divide-border/50">
+                      {previewData.recipients.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">No eligible recipients found.</p>
+                      ) : (
+                        previewData.recipients.map((r, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/20">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">
+                                {r.name[0]?.toUpperCase() ?? '?'}
+                              </div>
+                              <span className="font-medium truncate max-w-[130px]">{r.name}</span>
+                              <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded capitalize shrink-0', ROLE_COLORS[r.role] ?? 'bg-muted text-muted-foreground')}>
+                                {r.role}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              {r.hasEmail && (
+                                <span className="flex items-center gap-0.5 text-blue-600" title={r.emailMasked}>
+                                  <Mail className="w-3 h-3" />
+                                </span>
+                              )}
+                              {r.hasPhone && (
+                                <span className="flex items-center gap-0.5 text-purple-600" title={r.phoneMasked}>
+                                  <Phone className="w-3 h-3" />
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    Suppressed/unsubscribed contacts are excluded from counts above.
+                  </p>
+                </>
+              ) : null}
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground">This will immediately send to all eligible recipients. Suppressed/unsubscribed contacts will be skipped automatically.</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
