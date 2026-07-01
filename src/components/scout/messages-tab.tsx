@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import type { ScoutProfile, ScoutConnection, AthleteProfile } from '@/lib/types';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc, addDoc, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, query, doc, setDoc, addDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,9 +36,11 @@ interface Props {
   scoutProfile: ScoutProfile;
   composeTarget?: AthleteProfile | null;
   onComposeClose?: () => void;
+  allAthletes: AthleteProfile[] | null;
+  connections: ScoutConnection[] | null;
 }
 
-export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Props) {
+export function MessagesTab({ scoutProfile, composeTarget, onComposeClose, allAthletes, connections }: Props) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [composeOpen, setComposeOpen] = useState(false);
@@ -52,10 +54,7 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
   const [isReplying, setIsReplying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const connectionsQuery = useMemoFirebase(() => (
-    firestore ? query(collection(firestore, 'scout_connections'), where('scoutId', '==', scoutProfile.uid)) : null
-  ), [firestore, scoutProfile.uid]);
-  const { data: connections, isLoading: connectionsLoading } = useCollection<ScoutConnection>(connectionsQuery);
+  const connectionsLoading = connections === null;
 
   const activeChatMessagesQuery = useMemoFirebase(() => (
     firestore && activeChatConn
@@ -71,25 +70,15 @@ export function MessagesTab({ scoutProfile, composeTarget, onComposeClose }: Pro
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeChatMessages]);
 
-  const athletesSearchQuery = useMemoFirebase(() => (
-    firestore && athleteSearch.length > 1 ? collection(firestore, 'athletes') : null
-  ), [firestore, athleteSearch]);
-  const { data: searchAthletes } = useCollection<AthleteProfile>(athletesSearchQuery);
-
   const filteredSearchAthletes = useMemo(() => {
-    if (!searchAthletes || athleteSearch.length < 2) return [];
+    if (!allAthletes || athleteSearch.length < 2) return [];
     const q = athleteSearch.toLowerCase();
-    return searchAthletes.filter(a =>
+    return allAthletes.filter(a =>
       `${a.firstName} ${a.lastName}`.toLowerCase().includes(q)
     ).slice(0, 8);
-  }, [searchAthletes, athleteSearch]);
+  }, [allAthletes, athleteSearch]);
 
   const connectionAthleteIds = useMemo(() => new Set(connections?.map(c => c.athleteId) || []), [connections]);
-
-  const allAthletesQuery = useMemoFirebase(() => (
-    firestore && (connections?.length ?? 0) > 0 ? collection(firestore, 'athletes') : null
-  ), [firestore, connections]);
-  const { data: allAthletes } = useCollection<AthleteProfile>(allAthletesQuery);
 
   const athleteMap = useMemo(() => {
     const map: Record<string, AthleteProfile> = {};

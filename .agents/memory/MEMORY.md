@@ -1,6 +1,1 @@
-- [DM Conversation ID separator](dm-conv-id.md) — must use `_dm_` separator, not `_`; UserSearchDialog and relationships.ts must match
-- [MessagesHub defaultConversationId sync](messages-hub-default-conv.md) — useState init doesn't react to prop changes; always add a useEffect to sync when prop arrives async
-- [Club admin clubId lookup](club-admin-clubid.md) — club admin's clubId lives in club_members where userId==uid (no status filter); admin has role='admin'
-- [SMS / BulkSMS architecture](sms-bulksms-arch.md) — BulkSMS Kenya uses api.bulksms.com + Basic auth (username:password); lib/bulksms.ts is the core client, lib/sms.ts wraps it; idToken for coach pages comes from user.getIdToken() in a useEffect
-- [Security audit decisions](security-audit.md) — Firebase API key in config.ts is a false positive (public by design); no Admin SDK; internal auth uses SMS_SECRET header; key remaining risks: no rate limiting, no token revocation
-- [Firestore concurrent listener limit](firestore-listener-limit.md) — 16+ onSnapshot listeners on the same collection triggers INTERNAL ASSERTION FAILED; fix by sharing data via React context from layout rather than each page subscribing independently.
+- [Firestore listener hygiene](firestore-listener-hygiene.md) — INTERNAL ASSERTION FAILED ca9/ve:-1: caused by duplicate onSnapshot on same path; lift shared queries to parent; intercept console.error not window.error for Firebase Logger.

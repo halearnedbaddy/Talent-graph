@@ -86,9 +86,11 @@ interface Props {
   onSave: (a: AthleteProfile) => void;
   onSendMessage?: (a: AthleteProfile) => void;
   initialFilters?: SearchFilters;
+  allAthletes: AthleteProfile[] | null;
+  savedSearches: SavedSearch[] | null;
 }
 
-export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage, initialFilters }: Props) {
+export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage, initialFilters, allAthletes, savedSearches }: Props) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,15 +123,10 @@ export function SearchTab({ scoutProfile, compareList, onCompare, savedIds, onSa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ, filterKey]);
 
-  const athletesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'athletes') : null), [firestore]);
-  const { data: athletes, isLoading } = useCollection<AthleteProfile>(athletesQuery);
+  const isLoading = allAthletes === null;
+  const savedLoading = savedSearches === null;
 
-  const savedSearchesQuery = useMemoFirebase(() => (
-    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'savedSearches') : null
-  ), [firestore, scoutProfile.uid]);
-  const { data: savedSearches, isLoading: savedLoading } = useCollection<SavedSearch>(savedSearchesQuery);
-
-  const filtered = useMemo(() => filterAndSort(athletes || [], debouncedQ, filters), [athletes, debouncedQ, filters]);
+  const filtered = useMemo(() => filterAndSort(allAthletes || [], debouncedQ, filters), [allAthletes, debouncedQ, filters]);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const compareIds = new Set(compareList.map(a => a.uid));

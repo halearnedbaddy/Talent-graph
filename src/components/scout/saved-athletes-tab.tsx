@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import type { AthleteProfile, ScoutProfile, SavedAthlete } from '@/lib/types';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { ScoutAthleteCard } from './scout-athlete-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,27 +21,20 @@ interface Props {
   savedIds: Set<string>;
   onUnsave: (athleteId: string) => void;
   onSendMessage?: (a: AthleteProfile) => void;
+  allAthletes: AthleteProfile[] | null;
+  savedRecords: SavedAthlete[] | null;
+  privateNotes: Array<{ id: string; notes?: string }> | null;
 }
 
-export function SavedAthletesTab({ scoutProfile, compareList, onCompare, savedIds, onUnsave, onSendMessage }: Props) {
+export function SavedAthletesTab({ scoutProfile, compareList, onCompare, savedIds, onUnsave, onSendMessage, allAthletes, savedRecords, privateNotes }: Props) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [notesAthlete, setNotesAthlete] = useState<{ id: string; name: string; notes: string } | null>(null);
   const [notesDraft, setNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
 
-  const allAthletesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'athletes') : null), [firestore]);
-  const { data: allAthletes } = useCollection<AthleteProfile>(allAthletesQuery);
+  const isLoading = savedRecords === null;
 
-  const savedAthletesQuery = useMemoFirebase(() => (
-    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'savedAthletes') : null
-  ), [firestore, scoutProfile.uid]);
-  const { data: savedRecords, isLoading } = useCollection<SavedAthlete>(savedAthletesQuery);
-
-  const notesQuery = useMemoFirebase(() => (
-    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'privateNotes') : null
-  ), [firestore, scoutProfile.uid]);
-  const { data: privateNotes } = useCollection<{ id: string; notes?: string }>(notesQuery);
   const notesMap = useMemo(() => {
     const map: Record<string, string> = {};
     privateNotes?.forEach(n => { if (n.id && n.notes) map[n.id] = n.notes; });

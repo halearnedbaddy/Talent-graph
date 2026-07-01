@@ -2,8 +2,6 @@
 
 import { useState, useMemo } from 'react';
 import type { AthleteProfile, ScoutProfile } from '@/lib/types';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
 import { ScoutAthleteCard } from './scout-athlete-card';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,10 +29,10 @@ interface Props {
   savedIds: Set<string>;
   onSave: (a: AthleteProfile) => void;
   onSendMessage?: (a: AthleteProfile) => void;
+  allAthletes: AthleteProfile[] | null;
 }
 
-export function MarketplaceTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage }: Props) {
-  const firestore = useFirestore();
+export function MarketplaceTab({ scoutProfile, compareList, onCompare, savedIds, onSave, onSendMessage, allAthletes }: Props) {
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const [county, setCounty] = useState('all');
   const [ageRange, setAgeRange] = useState([15, 35]);
@@ -43,10 +41,8 @@ export function MarketplaceTab({ scoutProfile, compareList, onCompare, savedIds,
   const [unattachedOnly, setUnattachedOnly] = useState(false);
   const [sort, setSort] = useState<'recent' | 'score'>('recent');
 
-  const athletesQuery = useMemoFirebase(() => (
-    firestore ? query(collection(firestore, 'athletes'), where('activelyLooking', '==', true)) : null
-  ), [firestore]);
-  const { data: athletes, isLoading } = useCollection<AthleteProfile>(athletesQuery);
+  const isLoading = allAthletes === null;
+  const athletes = useMemo(() => (allAthletes || []).filter(a => a.activelyLooking), [allAthletes]);
 
   const compareIds = new Set(compareList.map(a => a.uid));
 

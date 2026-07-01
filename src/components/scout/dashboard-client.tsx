@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { ScoutProfile, AthleteProfile, SavedAthlete, SearchFilters } from '@/lib/types';
+import type { ScoutProfile, AthleteProfile, SavedAthlete, SearchFilters, SavedSearch, ScoutConnection } from '@/lib/types';
 import { signOut } from 'firebase/auth';
 import { useAuth, useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { trackEvent } from '@/lib/analytics';
@@ -62,6 +62,27 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
   ), [firestore, scoutProfile.uid]);
   const { data: savedRecords } = useCollection<SavedAthlete>(savedAthletesQuery);
   const savedIds = new Set(savedRecords?.map(r => r.athleteId) || []);
+
+  // ── Shared data fetched once here so tabs don't create duplicate listeners ──
+  const allAthletesQuery = useMemoFirebase(() => (
+    firestore ? collection(firestore, 'athletes') : null
+  ), [firestore]);
+  const { data: allAthletes } = useCollection<AthleteProfile>(allAthletesQuery);
+
+  const savedSearchesQuery = useMemoFirebase(() => (
+    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'savedSearches') : null
+  ), [firestore, scoutProfile.uid]);
+  const { data: savedSearches } = useCollection<SavedSearch>(savedSearchesQuery);
+
+  const connectionsQuery = useMemoFirebase(() => (
+    firestore ? query(collection(firestore, 'scout_connections'), where('scoutId', '==', scoutProfile.uid)) : null
+  ), [firestore, scoutProfile.uid]);
+  const { data: connections } = useCollection<ScoutConnection>(connectionsQuery);
+
+  const privateNotesQuery = useMemoFirebase(() => (
+    firestore ? collection(firestore, 'scoutData', scoutProfile.uid, 'privateNotes') : null
+  ), [firestore, scoutProfile.uid]);
+  const { data: privateNotes } = useCollection<{ id: string; notes?: string }>(privateNotesQuery);
 
   const handleCompare = useCallback((athlete: AthleteProfile) => {
     setCompareList(prev => {
@@ -256,6 +277,8 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               savedIds={savedIds}
               onSave={handleSave}
               initialFilters={searchFiltersFromAlert}
+              allAthletes={allAthletes}
+              savedSearches={savedSearches}
             />
           )}
           {activeTab === 'alerts' && (
@@ -271,6 +294,7 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               onCompare={handleCompare}
               savedIds={savedIds}
               onSave={handleSave}
+              allAthletes={allAthletes}
             />
           )}
           {activeTab === 'compare' && (
@@ -287,13 +311,20 @@ export function ScoutDashboardClient({ scoutProfile }: { scoutProfile: ScoutProf
               onCompare={handleCompare}
               savedIds={savedIds}
               onUnsave={handleUnsave}
+              allAthletes={allAthletes}
+              savedRecords={savedRecords}
+              privateNotes={privateNotes}
             />
           )}
           {activeTab === 'pipeline' && (
             <PipelineTab scoutProfile={scoutProfile} onGoToSearch={() => setActiveTab('search')} />
           )}
           {activeTab === 'messages' && (
-            <MessagesTab scoutProfile={scoutProfile} />
+            <MessagesTab
+              scoutProfile={scoutProfile}
+              allAthletes={allAthletes}
+              connections={connections}
+            />
           )}
           {activeTab === 'invitations' && (
             <InvitationFormTab scoutProfile={scoutProfile} />

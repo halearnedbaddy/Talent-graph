@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, type ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { FirebaseProvider } from '@/firebase/provider';
 import { initializeFirebase, getSdks } from '@/firebase';
 import { FirebaseApp } from 'firebase/app';
@@ -24,22 +24,29 @@ function buildServices(): FirebaseServices {
   return getSdks(firebaseApp);
 }
 
+// These substrings appear in the Firebase Logger message for the Firestore
+// internal stream assertion failure. Firebase logs via console.error (through
+// its Logger class), NOT as an uncaught exception, so window.addEventListener
+// ('error') will NOT catch it. We must override console.error instead.
 const FIRESTORE_FATAL_PATTERNS = [
   'INTERNAL ASSERTION FAILED',
-  'Unexpected state',
   'FIRESTORE_INTERNAL',
+  'ID: ca9',
 ];
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
   const [services, setServices] = useState<FirebaseServices | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [streamError, setStreamError] = useState(false);
+  // Ref guards: prevent multiple simultaneous recovery attempts.
+  const recovering = useRef(false);
 
   const reinitialize = useCallback(() => {
+    recovering.current = false;
     setStreamError(false);
     setServices(null);
-    // Allow React to flush the null state (unmounts all Firestore hooks)
-    // before rebuilding services so all onSnapshot listeners are dropped cleanly.
+    // Allow React to flush the null state (drops every onSnapshot listener cleanly)
+    // before rebuilding services, so we start from a clean Firestore connection.
     setTimeout(() => {
       try {
         setServices(buildServices());
@@ -55,35 +62,54 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
     setServices(buildServices());
   }, []);
 
-  // Global handler for Firestore SDK internal assertion failures.
-  // These are thrown as uncaught errors — not surfaced through onSnapshot callbacks —
-  // and will leave all active listeners in a broken state if not recovered.
+  // Override console.error to intercept Firebase Logger assertion messages.
+  // Firebase SDK calls Logger.error → Logger.defaultLogHandler → console.error
+  // for internal assertion failures. These are NOT uncaught exceptions, so the
+  // window 'error' event never fires for them.
   useEffect(() => {
     if (!isMounted) return;
 
-    const handleGlobalError = (event: ErrorEvent) => {
-      const msg = String(event.message || '');
-      const isFatal = FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p));
-      if (isFatal) {
-        console.warn('[TG] Firestore stream assertion error detected. Triggering recovery.', msg);
-        event.preventDefault(); // suppress browser error overlay in dev
-        setStreamError(true);
+    const original = console.error.bind(console);
+
+    console.error = (...args: Parameters<typeof console.error>) => {
+      // Always pass through so the message is still visible in the console.
+      original(...args);
+
+      if (!recovering.current) {
+        const msg = args.map(a => String(a ?? '')).join(' ');
+        if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+          recovering.current = true;
+          original('[TG] Firestore stream assertion error detected — triggering recovery in 800ms');
+          // Small delay: let Firebase finish its own internal error handling
+          // (it will restart the stream) before we drop and rebuild services.
+          setTimeout(() => setStreamError(true), 800);
+        }
       }
     };
 
+    // Also catch genuine uncaught exceptions / rejected promises for good measure.
+    const handleGlobalError = (event: ErrorEvent) => {
+      const msg = String(event.message || '');
+      if (!recovering.current && FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+        event.preventDefault();
+        recovering.current = true;
+        setTimeout(() => setStreamError(true), 800);
+      }
+    };
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const msg = String(event.reason?.message || event.reason || '');
-      const isFatal = FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p));
-      if (isFatal) {
-        console.warn('[TG] Firestore promise rejection detected. Triggering recovery.', msg);
+      if (!recovering.current && FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
         event.preventDefault();
-        setStreamError(true);
+        recovering.current = true;
+        setTimeout(() => setStreamError(true), 800);
       }
     };
 
     window.addEventListener('error', handleGlobalError);
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
     return () => {
+      console.error = original;
       window.removeEventListener('error', handleGlobalError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
@@ -103,7 +129,9 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
         <WifiOff className="h-10 w-10 text-muted-foreground" />
         <div className="text-center">
           <p className="font-bold text-lg">Connection interrupted</p>
-          <p className="text-sm text-muted-foreground mt-1">The database connection was lost. Tap below to reconnect.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            The database stream was lost. Tap below to reconnect.
+          </p>
         </div>
         <Button onClick={reinitialize} className="gap-2">
           <RefreshCw className="h-4 w-4" />
