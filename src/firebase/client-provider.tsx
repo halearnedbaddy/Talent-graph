@@ -62,75 +62,29 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
     setServices(buildServices());
   }, []);
 
-  // Override console.error to intercept Firebase Logger assertion messages.
-  // Firebase SDK calls Logger.error → Logger.defaultLogHandler → console.error
-  // for internal assertion failures. These are NOT uncaught exceptions, so the
-  // window 'error' event never fires for them.
+  // The beforeInteractive script in layout.tsx handles suppressing the Firebase
+  // assertion error from the Next.js dev overlay (console.error override +
+  // capture-phase window error handler). Here we only need to detect the error
+  // and trigger the reconnection banner — we do this by watching console.warn
+  // for the pattern our early script redirects fatal errors to.
   useEffect(() => {
     if (!isMounted) return;
 
-    const original = console.error.bind(console);
-
-    console.error = (...args: Parameters<typeof console.error>) => {
-      // Check BEFORE calling original — calling original(...args) would itself
-      // be attributed to this file by Next.js devtools and increment the error
-      // counter again, turning 13 issues into 19.
+    const originalWarn = console.warn.bind(console);
+    console.warn = (...args: Parameters<typeof console.warn>) => {
+      originalWarn(...args);
       const msg = args.map(a => String(a ?? '')).join(' ');
-      const isFatal = FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p));
-
-      if (isFatal) {
-        // Redirect to warn: visible in console but not counted as a devtools
-        // "Console Error". The recovery mechanism is the real response.
-        // eslint-disable-next-line no-console
-        console.warn('[TG] Firestore stream assertion (suppressed from error log):', msg.slice(0, 200));
-        if (!recovering.current) {
-          recovering.current = true;
-          // Small delay: let Firebase finish its own internal error handling
-          // (it will attempt stream restart) before we drop and rebuild services.
-          setTimeout(() => setStreamError(true), 800);
-        }
-      } else {
-        // All other errors pass through normally.
-        original(...args);
+      if (
+        FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p)) &&
+        !recovering.current
+      ) {
+        recovering.current = true;
+        setTimeout(() => setStreamError(true), 800);
       }
     };
-
-    // Firebase SDK also *throws* the assertion error after calling console.error.
-    // The throw fires window 'error'. Next.js devtools registers a bubble-phase
-    // listener for this — registering ours in the CAPTURE phase means we run first.
-    // Calling stopImmediatePropagation() then prevents Next.js's listener from
-    // seeing it at all, eliminating the "Runtime Error" badge.
-    const handleGlobalError = (event: ErrorEvent) => {
-      const msg = String(event.message || '');
-      if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
-        // Block ALL subsequent listeners (including Next.js devtools).
-        event.stopImmediatePropagation();
-        event.preventDefault();
-        if (!recovering.current) {
-          recovering.current = true;
-          setTimeout(() => setStreamError(true), 800);
-        }
-      }
-    };
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const msg = String(event.reason?.message || event.reason || '');
-      if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
-        event.preventDefault();
-        if (!recovering.current) {
-          recovering.current = true;
-          setTimeout(() => setStreamError(true), 800);
-        }
-      }
-    };
-
-    // capture: true → runs before Next.js's bubble-phase error listeners
-    window.addEventListener('error', handleGlobalError, { capture: true });
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
     return () => {
-      console.error = original;
-      window.removeEventListener('error', handleGlobalError, { capture: true });
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      console.warn = originalWarn;
     };
   }, [isMounted]);
 

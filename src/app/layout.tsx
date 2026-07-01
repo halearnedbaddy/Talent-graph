@@ -40,6 +40,15 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        {/*
+          Suppress Firebase SDK internal assertion errors from Next.js dev overlay.
+          Firebase throws "INTERNAL ASSERTION FAILED (ID: ca9)" on stream resets —
+          a recoverable connection glitch. This inline script runs FIRST in the
+          <head>, before Next.js registers its own error listeners, so our
+          capture-phase handler wins the registration race.
+        */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var P=['INTERNAL ASSERTION FAILED','ID: ca9','FIRESTORE_INTERNAL'];function m(s){return P.some(function(p){return String(s).indexOf(p)!=-1;});}var e=console.error.bind(console);console.error=function(){var s=Array.prototype.join.call(arguments,' ');if(m(s)){console.warn('[TG] Firebase assertion (suppressed):',s.slice(0,120));return;}e.apply(console,arguments);};window.addEventListener('error',function(ev){if(m(ev.message)){ev.stopImmediatePropagation();ev.preventDefault();}},true);window.addEventListener('unhandledrejection',function(ev){var s=(ev.reason&&ev.reason.message)||String(ev.reason||'');if(m(s))ev.preventDefault();});})();` }} />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
