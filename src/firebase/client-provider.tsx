@@ -72,18 +72,26 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
     const original = console.error.bind(console);
 
     console.error = (...args: Parameters<typeof console.error>) => {
-      // Always pass through so the message is still visible in the console.
-      original(...args);
+      // Check BEFORE calling original — calling original(...args) would itself
+      // be attributed to this file by Next.js devtools and increment the error
+      // counter again, turning 13 issues into 19.
+      const msg = args.map(a => String(a ?? '')).join(' ');
+      const isFatal = FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p));
 
-      if (!recovering.current) {
-        const msg = args.map(a => String(a ?? '')).join(' ');
-        if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+      if (isFatal) {
+        // Redirect to warn: visible in console but not counted as a devtools
+        // "Console Error". The recovery mechanism is the real response.
+        // eslint-disable-next-line no-console
+        console.warn('[TG] Firestore stream assertion (suppressed from error log):', msg.slice(0, 200));
+        if (!recovering.current) {
           recovering.current = true;
-          original('[TG] Firestore stream assertion error detected — triggering recovery in 800ms');
           // Small delay: let Firebase finish its own internal error handling
-          // (it will restart the stream) before we drop and rebuild services.
+          // (it will attempt stream restart) before we drop and rebuild services.
           setTimeout(() => setStreamError(true), 800);
         }
+      } else {
+        // All other errors pass through normally.
+        original(...args);
       }
     };
 
