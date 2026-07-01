@@ -592,7 +592,7 @@ export default function StatisticsHubPage() {
                                 <p className="text-[8px] font-bold text-muted-foreground uppercase">{p.position}</p>
                               </div>
                               {p.hasRisk && (
-                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" title="Discipline risk: 4+ yellow cards" />
+                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" aria-label="Discipline risk: 4+ yellow cards" />
                               )}
                             </div>
                           </TableCell>

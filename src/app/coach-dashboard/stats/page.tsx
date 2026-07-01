@@ -632,8 +632,8 @@ export default function StatsPage() {
 
     const dir = playerSort.dir === 'asc' ? 1 : -1;
     rows.sort((a, b) => {
-      const av = (a as Record<string, unknown>)[playerSort.col] ?? 0;
-      const bv = (b as Record<string, unknown>)[playerSort.col] ?? 0;
+      const av = (a as unknown as Record<string, unknown>)[playerSort.col] ?? 0;
+      const bv = (b as unknown as Record<string, unknown>)[playerSort.col] ?? 0;
       if (typeof av === 'string') return dir * (av as string).localeCompare(bv as string);
       return dir * ((av as number) - (bv as number));
     });
