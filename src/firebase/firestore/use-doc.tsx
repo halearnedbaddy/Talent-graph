@@ -1,6 +1,6 @@
 'use client';
     
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   DocumentReference,
   onSnapshot,
@@ -41,11 +41,20 @@ export function useDoc<T = any>(
   const [data, setData] = useState<StateDataType>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Track the latest unsubscribe so cleanup is always synchronous.
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   // Use the doc path as the dependency, which is a stable string.
   const docPath = docRef?.path;
 
   useEffect(() => {
+    // Eagerly cancel any previous subscription before setting up a new one.
+    // This prevents the double-listener race condition during rapid navigation.
+    if (unsubscribeRef.current) {
+      try { unsubscribeRef.current(); } catch { /* Firebase internal assertion — safe to swallow */ }
+      unsubscribeRef.current = null;
+    }
+
     if (!docPath || !docRef) {
       setIsLoading(false);
       setData(null);
@@ -53,10 +62,15 @@ export function useDoc<T = any>(
       return;
     }
 
+    // Guard so stale snapshot callbacks from a dying subscription never
+    // update state after this effect has been superseded or unmounted.
+    let isActive = true;
     setIsLoading(true);
+
     const unsubscribe = onSnapshot(
       docRef,
       (snapshot: DocumentSnapshot<DocumentData>) => {
+        if (!isActive) return;
         const newData: StateDataType = snapshot.exists()
           ? { ...(snapshot.data() as T), id: snapshot.id }
           : null;
@@ -72,6 +86,7 @@ export function useDoc<T = any>(
         setIsLoading(false);
       },
       (err: FirestoreError) => {
+        if (!isActive) return;
         const contextualError = new FirestorePermissionError({
           operation: 'get',
           path: docPath,
@@ -85,7 +100,13 @@ export function useDoc<T = any>(
       }
     );
 
-    return () => { try { unsubscribe(); } catch { /* Firebase internal assertion — safe to swallow on cleanup */ } };
+    unsubscribeRef.current = unsubscribe;
+
+    return () => {
+      isActive = false;
+      try { unsubscribe(); } catch { /* Firebase internal assertion — safe to swallow on cleanup */ }
+      unsubscribeRef.current = null;
+    };
   }, [docPath]); // Re-run only if the document path string changes.
 
   return { data, isLoading, error };

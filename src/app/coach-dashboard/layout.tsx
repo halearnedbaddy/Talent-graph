@@ -48,16 +48,16 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const memberQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
-  ), [firestore, user]);
+    firestore && user?.uid ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'active')) : null
+  ), [firestore, user?.uid]);
   const { data: memberships, isLoading: membershipLoading } = useCollection<ClubMember>(memberQuery);
   const membership = memberships?.[0];
   const clubId = membership?.clubId ?? null;
   const membershipsLoaded = !membershipLoading;
 
   const pendingInviteQuery = useMemoFirebase(() => (
-    firestore && user ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'club_invited')) : null
-  ), [firestore, user]);
+    firestore && user?.uid ? query(collection(firestore, 'club_members'), where('userId', '==', user.uid), where('status', '==', 'club_invited')) : null
+  ), [firestore, user?.uid]);
   const { data: pendingInvites } = useCollection<ClubMember>(pendingInviteQuery);
   const pendingInviteCount = pendingInvites?.length ?? 0;
 
