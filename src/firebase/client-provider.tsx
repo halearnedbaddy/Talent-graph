@@ -95,30 +95,41 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
       }
     };
 
-    // Also catch genuine uncaught exceptions / rejected promises for good measure.
+    // Firebase SDK also *throws* the assertion error after calling console.error.
+    // The throw fires window 'error'. Next.js devtools registers a bubble-phase
+    // listener for this — registering ours in the CAPTURE phase means we run first.
+    // Calling stopImmediatePropagation() then prevents Next.js's listener from
+    // seeing it at all, eliminating the "Runtime Error" badge.
     const handleGlobalError = (event: ErrorEvent) => {
       const msg = String(event.message || '');
-      if (!recovering.current && FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+      if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+        // Block ALL subsequent listeners (including Next.js devtools).
+        event.stopImmediatePropagation();
         event.preventDefault();
-        recovering.current = true;
-        setTimeout(() => setStreamError(true), 800);
+        if (!recovering.current) {
+          recovering.current = true;
+          setTimeout(() => setStreamError(true), 800);
+        }
       }
     };
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const msg = String(event.reason?.message || event.reason || '');
-      if (!recovering.current && FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
+      if (FIRESTORE_FATAL_PATTERNS.some(p => msg.includes(p))) {
         event.preventDefault();
-        recovering.current = true;
-        setTimeout(() => setStreamError(true), 800);
+        if (!recovering.current) {
+          recovering.current = true;
+          setTimeout(() => setStreamError(true), 800);
+        }
       }
     };
 
-    window.addEventListener('error', handleGlobalError);
+    // capture: true → runs before Next.js's bubble-phase error listeners
+    window.addEventListener('error', handleGlobalError, { capture: true });
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
     return () => {
       console.error = original;
-      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('error', handleGlobalError, { capture: true });
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
   }, [isMounted]);
