@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Query,
   onSnapshot,
@@ -37,17 +37,30 @@ export interface InternalQuery extends Query<DocumentData> {
   }
 }
 
+/** Extracts a human-readable path string for error messages only — not used as a React dep. */
+function getQueryPath(q: Query<DocumentData> | CollectionReference<DocumentData>): string {
+  try {
+    if (q.type === 'collection') return (q as CollectionReference).path;
+    return (q as unknown as InternalQuery)._query.path.canonicalString();
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * React hook to subscribe to a Firestore collection or query in real-time.
  * Handles nullable references/queries.
- * 
+ *
+ * IMPORTANT: Always pass a memoized query (via useMemoFirebase / useMemo).
+ * The hook uses the query object reference as its subscription key — a new
+ * object reference triggers a fresh onSnapshot subscription. This correctly
+ * handles queries with filter conditions (unlike a path-only string key).
+ *
  * @template T Optional type for document data. Defaults to any.
- * @param {CollectionReference<DocumentData> | Query<DocumentData> | null | undefined} targetRefOrQuery -
- * The Firestore CollectionReference or Query. Waits if null/undefined.
- * @returns {UseCollectionResult<T>} Object with data, isLoading, error.
+ * @param targetRefOrQuery The Firestore CollectionReference or Query. Waits if null/undefined.
  */
 export function useCollection<T = any>(
-    targetRefOrQuery: (CollectionReference<DocumentData> | Query<DocumentData>)  | null | undefined,
+    targetRefOrQuery: (CollectionReference<DocumentData> | Query<DocumentData>) | null | undefined,
 ): UseCollectionResult<T> {
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
@@ -56,24 +69,8 @@ export function useCollection<T = any>(
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
-  // Memoize the query path to use as a stable dependency
-  const queryPath = useMemo(() => {
-    if (!targetRefOrQuery) return null;
-    try {
-        if (targetRefOrQuery.type === 'collection') {
-            return (targetRefOrQuery as CollectionReference).path;
-        }
-        // This is a hack to get the path from a query. It's not public API but necessary here.
-        return (targetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
-    } catch (e) {
-        // Fallback for safety if internal API changes or object is not as expected
-        return JSON.stringify(targetRefOrQuery);
-    }
-  }, [targetRefOrQuery]);
-
-
   useEffect(() => {
-    if (!queryPath || !targetRefOrQuery) {
+    if (!targetRefOrQuery) {
       setIsLoading(false);
       setData(null);
       setError(null);
@@ -81,6 +78,9 @@ export function useCollection<T = any>(
     }
 
     setIsLoading(true);
+    // Compute path once for use in error reporting inside this closure.
+    const path = getQueryPath(targetRefOrQuery);
+
     const unsubscribe = onSnapshot(
       targetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
@@ -88,7 +88,7 @@ export function useCollection<T = any>(
           ...(doc.data() as T),
           id: doc.id,
         }));
-        
+
         setData(prevData => {
           if (JSON.stringify(prevData) === JSON.stringify(results)) {
             return prevData;
@@ -102,7 +102,7 @@ export function useCollection<T = any>(
       (err: FirestoreError) => {
         const contextualError = new FirestorePermissionError({
           operation: 'list',
-          path: queryPath,
+          path,
         });
 
         setError(contextualError);
@@ -114,7 +114,13 @@ export function useCollection<T = any>(
     );
 
     return () => unsubscribe();
-  }, [queryPath]); // Re-run only if the query path string changes
+    // Use the query object reference as the dependency.
+    // useMemoFirebase (wraps useMemo) returns the same reference when its own
+    // deps haven't changed, so this is stable and avoids spurious re-subscriptions.
+    // Crucially, when query filters change a new object is returned, which correctly
+    // triggers re-subscription — something a path-only string key cannot do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetRefOrQuery]);
 
   return { data, isLoading, error };
 }
