@@ -85,7 +85,7 @@ export function useDoc<T = any>(
       }
     );
 
-    return () => unsubscribe();
+    return () => { try { unsubscribe(); } catch { /* Firebase internal assertion — safe to swallow on cleanup */ } };
   }, [docPath]); // Re-run only if the document path string changes.
 
   return { data, isLoading, error };

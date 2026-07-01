@@ -23,10 +23,7 @@ export default function CoachConnectPage() {
   ), [firestore, user]);
   const { data: pendingInvites } = useCollection<ClubMember>(pendingQuery);
 
-  const userDocRef = useMemoFirebase(() => (
-    firestore && user?.uid ? doc(firestore, 'users', user.uid) : null
-  ), [firestore, user?.uid]);
-  const { data: userAccount } = useDoc<UserAccount>(userDocRef);
+  const { userAccount } = useCoachClub();
   const coachName = userAccount
     ? `${(userAccount as any).firstName || ''} ${(userAccount as any).lastName || ''}`.trim() || user?.displayName || 'Coach'
     : user?.displayName || 'Coach';

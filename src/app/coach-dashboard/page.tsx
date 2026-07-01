@@ -54,8 +54,7 @@ export default function CoachOverviewPage() {
   const clubRef = useMemoFirebase(() => (firestore && clubId ? doc(firestore, 'clubs', clubId) : null), [firestore, clubId]);
   const { data: clubProfile } = useDoc<ClubProfile>(clubRef);
 
-  const userDocRef = useMemoFirebase(() => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null), [firestore, user?.uid]);
-  const { data: userAccount } = useDoc<UserAccount>(userDocRef);
+  const { userAccount } = useCoachClub();
 
   const athletesQuery = useMemoFirebase(() => (
     firestore && clubId ? query(collection(firestore, 'athletes'), where('affiliatedClubId', '==', clubId)) : null

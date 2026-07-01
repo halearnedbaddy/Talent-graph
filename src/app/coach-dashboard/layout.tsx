@@ -253,7 +253,7 @@ export default function CoachDashboardLayout({ children }: { children: React.Rea
 
         {/* Content */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 pb-24 md:pb-8">
-          <CoachClubContext.Provider value={{ clubId, clubName: membership?.clubName ?? '', membershipsLoaded }}>
+          <CoachClubContext.Provider value={{ clubId, clubName: membership?.clubName ?? '', membershipsLoaded, userAccount: userAccount ?? null }}>
             {children}
           </CoachClubContext.Provider>
         </main>

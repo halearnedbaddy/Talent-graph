@@ -113,7 +113,7 @@ export function useCollection<T = any>(
       }
     );
 
-    return () => unsubscribe();
+    return () => { try { unsubscribe(); } catch { /* Firebase internal assertion — safe to swallow on cleanup */ } };
     // Use the query object reference as the dependency.
     // useMemoFirebase (wraps useMemo) returns the same reference when its own
     // deps haven't changed, so this is stable and avoids spurious re-subscriptions.
