@@ -83,7 +83,9 @@ service cloud.firestore {
     match /athletes/{athleteId} {
       allow read: if isSignedIn();
       allow create: if isOwner(athleteId);
-      allow update: if isOwner(athleteId) || isScoutRole() || isClubAdmin() || isAdmin() || isStaffRole();
+      // Scouts can read athletes but must NOT update athlete profile documents.
+      // Scout-specific data (notes, saved lists) lives under scoutData/{scoutId}.
+      allow update: if isOwner(athleteId) || isClubAdmin() || isAdmin() || isStaffRole();
       allow delete: if isOwner(athleteId) || isAdmin();
 
       match /scout_reports/{reportId} {
@@ -320,11 +322,16 @@ service cloud.firestore {
     // Connections & Messaging
     // ----------------------------------------------------------------------
     match /scout_connections/{connectionId} {
-      allow read: if isSignedIn();
+      // Restrict read to participants and admins — previously open to all signed-in users.
+      allow read: if isSignedIn() && (
+        resource.data.scoutId == request.auth.uid ||
+        resource.data.athleteId == request.auth.uid ||
+        isAdmin()
+      );
       allow create: if isSignedIn() && request.resource.data.scoutId == request.auth.uid;
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.scoutId ||
-        request.auth.uid == request.resource.data.athleteId ||
+        request.auth.uid == resource.data.athleteId ||
         isAdmin()
       );
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.scoutId);
@@ -484,6 +491,17 @@ service cloud.firestore {
     // ----------------------------------------------------------------------
     // Admin / Platform
     // ----------------------------------------------------------------------
+    // scoutData — all sub-collections are private to the owning scout.
+    // Previously only privateNotes was protected; savedAthletes and savedSearches
+    // had no rules at all (any signed-in user could read any scout's lists).
+    match /scoutData/{scoutId}/savedAthletes/{docId} {
+      allow read, write: if isOwner(scoutId);
+    }
+
+    match /scoutData/{scoutId}/savedSearches/{searchId} {
+      allow read, write: if isOwner(scoutId);
+    }
+
     match /scoutData/{scoutId}/privateNotes/{athleteId} {
       allow read, write: if isOwner(scoutId);
     }
