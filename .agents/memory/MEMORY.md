@@ -1,1 +1,2 @@
 - [Firestore listener hygiene](firestore-listener-hygiene.md) — INTERNAL ASSERTION FAILED ca9/ve:-1: caused by duplicate onSnapshot on same path; lift shared queries to parent; intercept console.error not window.error for Firebase Logger.
+- [Firebase assertion suppression](firebase-assertion-suppression.md) — Next.js dev overlay wraps console.error after any useEffect or module-level override; only Object.defineProperty getter/setter in layout <head> script wins the race.
